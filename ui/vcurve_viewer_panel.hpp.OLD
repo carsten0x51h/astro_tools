@@ -1,0 +1,91 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#ifndef _VCURVE_VIEWER_PANEL_HPP_
+#define _VCURVE_VIEWER_PANEL_HPP_ _VCURVE_VIEWER_PANEL_HPP_
+
+#include <qwt_plot.h>
+#include <qwt_plot_curve.h>
+#include <qwt_plot_grid.h>
+
+#include "ui_vcurve_viewer_panel.hpp"
+#include "qevent.h"
+#include "../vcurve.hpp"
+
+using namespace std;
+
+class VCurveViewerPanel : public QWidget, private Ui_VCurveViewerPanel {
+private:
+  Q_OBJECT
+  const VCurveT<int /*focus index*/, double> * mVCurve;
+  float mIsFocusPos, mMinFocusPos, mMaxFocusPos;
+
+  QwtPlotGrid * mGrid;
+
+  QwtPlotCurve * mVCurvePlot;
+  QwtPlotCurve * mDottedVCurvePlot;
+  QwtPlotCurve * mFocusIsPosLinePlot, * mFocusMinPosLinePlot, * mFocusMaxPosLinePlot;
+
+  QwtArray<QwtDoublePoint> mCurveData;
+  QwtArray<QwtDoublePoint> mFocusIsPosLineData, mFocusMinPosLineData, mFocusMaxPosLineData;
+
+  QwtPlotCurve * addCurvePlot(const string & inCurveName, const QColor & inCurveColor, int inPenWidth, QwtPlotCurve::CurveStyle inStyle = QwtPlotCurve::Lines);
+
+public:
+  // TODO: We may want to display multiple VCurves?! Required?
+  VCurveViewerPanel(QWidget * parent = 0);
+  ~VCurveViewerPanel();
+  inline void setVCurve(const VCurveT<int, double> * inVCurve, float inIsFocusPos, bool inAutoUpdate = true) {
+    mVCurve = inVCurve;
+    mIsFocusPos = inIsFocusPos;
+    if (inAutoUpdate)
+      replotCurve();
+  }
+  inline void removeFocusBounds() {
+    mMinFocusPos = -1;
+    mMaxFocusPos = -1;
+    replotCurve();
+  }
+  inline void setFocusMinBound(int inMin, bool inAutoUpdate = true) {
+    mMinFocusPos = inMin;
+    if (inAutoUpdate)
+      replotCurve();
+  }
+  inline void setFocusMaxBound(int inMax, bool inAutoUpdate = true) {
+    mMaxFocusPos = inMax;
+    if (inAutoUpdate)
+      replotCurve();
+  }
+  inline void update() { replotCurve(); }
+  
+private slots:
+
+private:
+  void replotCurve();
+
+signals:
+
+private slots:
+
+};
+
+#endif // _VCURVE_VIEWER_PANEL_HPP_

@@ -1,0 +1,94 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#ifndef _SCRIPT_EDITOR_PANEL_HPP_
+#define _SCRIPT_EDITOR_PANEL_HPP_ _SCRIPT_EDITOR_PANEL_HPP_
+
+//#include <Qt/qfiledialog.h>
+#include <QFileDialog>
+
+#include "ui_script_editor_panel.hpp"
+#include "qevent.h"
+
+#include <iostream>
+#include <fstream>
+
+
+using namespace std;
+
+class QConsole;
+
+class ScriptEditorPanel : public QWidget, private Ui_ScriptEditorPanel {
+private:
+  Q_OBJECT
+
+  //ScriptInterpreterT * mScriptInterpreter;
+  QConsole * mConsole;
+
+private slots:
+  void on_mBtnOpenFile_pressed() {
+    QString fileName = QFileDialog::getOpenFileName(this, tr("Open script"), ".", tr("Script Files (*.py)"));    
+    string fileNameStr = fileName.toAscii().data();
+    
+    cerr << "Filename to open selected: " << fileNameStr << endl;
+    
+    // Open file...
+    string line;
+    ifstream scriptFile(fileNameStr.c_str());
+    if (scriptFile.is_open()) {
+      mEditScript->clear();
+      while(getline(scriptFile, line)) {
+	mEditScript->append(QString::fromUtf8(line.c_str()));
+      }
+      scriptFile.close();
+    } else {
+      // TODO: Better error handling...
+      cout << "Unable to open file " << fileNameStr << endl;
+    }
+  }
+
+  void on_mBtnExecuteStopScript_pressed();
+
+public:
+  ScriptEditorPanel(QWidget *parent = 0);
+  ~ScriptEditorPanel();
+
+
+  // inline void setScriptInterpreter(ScriptInterpreterT * inScriptInterpreter) {
+  //   mScriptInterpreter = inScriptInterpreter;
+  // }
+  // inline ScriptInterpreterT * getScriptInterpreter() const {
+  //   return mScriptInterpreter;
+  // }
+
+
+
+  inline void setScript(const string & inScript) {
+    cerr << "Setting script... : " << inScript << endl;
+    mEditScript->setPlainText(inScript.c_str());
+  }
+  string getScript() const {
+    return mEditScript->toPlainText().toAscii().data();
+  }
+};
+
+#endif // _SCRIPT_EDITOR_PANEL_HPP_

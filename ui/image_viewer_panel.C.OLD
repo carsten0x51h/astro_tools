@@ -1,0 +1,281 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#include "fwhm_panel.hpp"
+#include "hfd_panel.hpp"
+#include "image_viewer_panel.hpp"
+#include <QPainter>
+#include <QWheelEvent>
+
+// TODO: Rename image viewer to RegionSelect or something... StarSelect?!
+
+#include <iostream>
+#include "../centroid.hpp"
+#include "../focus_finder.hpp"
+#include "../fwhm.hpp"
+#include "../hfd.hpp"
+
+using namespace std;
+
+const float ImageViewerPanel::sMinScale = 0.1;
+const float ImageViewerPanel::sMaxScale = 10.0;
+
+ImageViewerPanel::ImageViewerPanel(QWidget* inParent) : QWidget(inParent), mZoomFactor(1.0), mBlackValue(0), mWhiteValue(65535), mSelectStatus(SelectStatusT::NONE), mX(0), mY(0), mRegionX(0), mRegionY(0), mRegionW(0), mRegionH(0) {
+  setupUi(this);
+
+  imgLbl->installEventFilter(this);
+  imgLbl->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+
+  QSizePolicy sizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+  sizePolicy.setHorizontalStretch(0);
+  sizePolicy.setVerticalStretch(0);
+
+  mHfdPanel = new HfdPanel(this);
+  sizePolicy.setHeightForWidth(mHfdPanel->sizePolicy().hasHeightForWidth());
+  mHfdPanel->setSizePolicy(sizePolicy);
+  mHfdPanel->setSizeIncrement(QSize(0, 0));
+  mHfdPanel->replot();
+  mMeasureGridLayout->addWidget(mHfdPanel, 0 /*row*/, 0 /*col*/, 1 /*row span*/, 1 /*col span*/);
+
+  mHorzFwhmPanel = new FwhmPanel(this);
+  sizePolicy.setHeightForWidth(mHorzFwhmPanel->sizePolicy().hasHeightForWidth());
+  mHorzFwhmPanel->setSizePolicy(sizePolicy);
+  mHorzFwhmPanel->setSizeIncrement(QSize(0, 0));
+  mHorzFwhmPanel->replot();
+  mMeasureGridLayout->addWidget(mHorzFwhmPanel, 0, 1, 1, 1);
+
+  mVertFwhmPanel = new FwhmPanel(this);
+  sizePolicy.setHeightForWidth(mVertFwhmPanel->sizePolicy().hasHeightForWidth());
+  mVertFwhmPanel->setSizePolicy(sizePolicy);
+  mVertFwhmPanel->setSizeIncrement(QSize(0, 0));
+  mVertFwhmPanel->replot();
+  mMeasureGridLayout->addWidget(mVertFwhmPanel, 0, 2, 1, 1);
+}
+
+ImageViewerPanel::~ImageViewerPanel() {
+  if (mHorzFwhmPanel) {
+    delete mHorzFwhmPanel;
+    mHorzFwhmPanel = 0;
+  }
+  if (mVertFwhmPanel) {
+    delete mVertFwhmPanel;
+    mVertFwhmPanel = 0;
+  }
+  if (mHfdPanel) {
+    delete mHfdPanel;
+    mHfdPanel = 0;
+  }
+}
+
+// TODO: use already existing function of CImg?!
+float ImageViewerPanel::getMaxPixelValue(const CImg<float> & inImg) {
+  float maxValue = 0.0;
+  cimg_forXY(inImg, x, y) {
+    float value = inImg(x, y, 0);
+    if (maxValue < value)
+      maxValue = value;
+  }
+  return maxValue;
+}
+
+void ImageViewerPanel::setImage(const CImg<float> & inImg) {
+  mImg = inImg; // Make a copy
+  //mWhiteValue = pow(2.0, (float)mImg.depth());
+  //cerr << "Depth: " << mImg.depth << " --> mWhiteValue: " << mWhiteValue << endl;
+
+  mWhiteValue = ImageViewerPanel::getMaxPixelValue(inImg);
+  mWhiteSpin->setValue(mWhiteValue);
+  mWhiteSlider->setValue(mWhiteValue);
+  this->updateImage();
+}
+
+void ImageViewerPanel::cimgToQtImage(const CImg<float> & inImg, int inBlackValue, int inWhiteValue, float inZoomFactor, QImage * outImgQt) {
+  // Apply black/white limits and convert to 8 bit picture
+  //QImage imgQt(mImg.width(), mImg.height(), QImage::Format_ARGB32);
+  if (! outImgQt)
+    return; // TODO: Throw...
+
+  float factor = 255.0 / fabs(inBlackValue - inWhiteValue);
+  cimg_forXY(inImg, x, y) {
+    float value = inImg(x, y, 0);
+    float bottomCutValue = (value - inBlackValue > 0 ? value : 0);
+    float topCutValue = (inWhiteValue - bottomCutValue > 0 ? bottomCutValue : 65535); // TODO: Generalize?! factors?! 65535.0
+    int pixValue = factor * topCutValue;
+    outImgQt->setPixel(x, y, qRgb(pixValue, pixValue, pixValue));
+  }
+
+  // Scale the image
+  *outImgQt = outImgQt->scaledToWidth( ceil(outImgQt->width() * inZoomFactor) /*, Qt::SmoothTransformation*/);
+}
+
+void ImageViewerPanel::drawRegion(QImage * outImgQt) {
+  QPainter painter;
+
+  const float windowWidth = FocusFinderT::sWindowWidthPx * mZoomFactor; // px
+  const float windowHeight = FocusFinderT::sWindowHeightPx * mZoomFactor; // px
+  const size_t crossSize = 8 * mZoomFactor; // px
+
+  cerr << "drawRegion!!! mX: " << mX << ", mY: " << mY << endl;
+
+  QColor c = (mSelectStatus == SelectStatusT::VALID ? QColor(0, 255, 0) : QColor(255, 0, 0));
+
+  painter.begin(outImgQt);
+  painter.setPen(QPen(c));
+  painter.setBrush(QBrush(c, Qt::NoBrush));
+  painter.drawRect(QRect(mX - ceil(windowWidth / 2.0) + 1, mY - ceil(windowHeight / 2.0) + 1, windowWidth, windowHeight));
+
+  painter.setPen(QPen(QColor(255, 0, 0)));
+  painter.setBrush(QBrush(QColor(255, 0, 0), Qt::NoBrush));
+  painter.drawLine(QLine(mX - crossSize, mY, mX + crossSize, mY));
+  painter.drawLine(QLine(mX, mY - crossSize, mX, mY + crossSize));
+
+  painter.end();
+}
+
+void ImageViewerPanel::updateImage() {
+  cerr << "Updating image... mBlackValue: " << mBlackValue << ", mWhiteValue: " << mWhiteValue << ", mZoomFactor: " << mZoomFactor << endl;
+  QImage imgQt(mImg.width(), mImg.height(), QImage::Format_ARGB32);
+  this->cimgToQtImage(mImg, mBlackValue, mWhiteValue, mZoomFactor, & imgQt);
+
+  cerr << "updateImage: " << SelectStatusT::asStr(mSelectStatus) << endl;
+
+  if (mSelectStatus != SelectStatusT::NONE)
+    drawRegion(& imgQt);
+
+  imgLbl->setGeometry(0, 0, imgQt.width(), imgQt.height()); // TODO: Does not do anything?!
+  imgLbl->setPixmap(QPixmap::fromImage(imgQt));
+}
+
+bool ImageViewerPanel::eventFilter(QObject * watched, QEvent* event) {
+  if (watched != imgLbl)
+    return false;
+
+  switch(event->type()) {
+  case QEvent::MouseButtonPress: {
+    // TODO: Might want to check the buttons here...
+    const QMouseEvent* const me = static_cast<const QMouseEvent*>(event);
+    const QPoint p = me->pos(); //...or ->globalPos();
+
+    int imgWidth = ceil(mImg.width() * mZoomFactor);
+    int imgHeight = ceil(mImg.height() * mZoomFactor);
+
+    mX = p.x() - (imgLbl->width() - imgWidth) / 2.0;
+    mY = p.y() - (imgLbl->height() - imgHeight) / 2.0;
+
+    //cerr << "mX: " << mX << ", mY: " << mY << endl;
+
+    // TODO: Crop the selection window if at boundary
+    int x = mX / mZoomFactor - FocusFinderT::sWindowWidthPx / 2;
+    int y = mY / mZoomFactor - FocusFinderT::sWindowHeightPx / 2;
+
+    //cerr << "x: " << x << ", y: " << y << ", w: " << FocusFinderT::sWindowWidthPx << ", h: " << FocusFinderT::sWindowHeightPx << endl;
+
+    // Clear HFD and FWHM graphs
+    mHfdPanel->clear();
+    mHorzFwhmPanel->clear();
+    mVertFwhmPanel->clear();
+
+    float centerX, centerY;
+    try {
+      CentroidCalcT::starCentroid(mImg, x, y, FocusFinderT::sWindowWidthPx, FocusFinderT::sWindowHeightPx, & centerX, & centerY, CoordTypeT::ABSOLUTE, false /* no debug msgs */);
+    } catch(CentroidExceptionT & exc) {
+      cerr << "Unable to determine centroid. Please select a different star." << endl;
+      mSelectStatus = SelectStatusT::INVALID;
+      this->updateImage();
+      return false;
+    }
+
+    // Make maxX, maxY new center
+    mX = centerX * mZoomFactor;
+    mY = centerY * mZoomFactor;
+
+    //cerr << "Centroid mX: " << mX << ", Centroid mY: " << mY << endl;
+
+    // Calculate the SNR
+    CImg<float> noiseImg(FocusFinderT::sWindowWidthPx, FocusFinderT::sWindowHeightPx, 1 /* 2d image */, 1 /* one channel */);
+    noiseImg.fill(0);
+    noiseImg.noise(0.5 /* sigma */, 0 /* gaussian noise */);
+
+    const int BACK = ceil(FocusFinderT::sWindowWidthPx / 2.0) - 1;
+    int startX = (int) centerX - BACK, startY = (int) centerY - BACK;
+    const CImg<float> & resImage = mImg.get_crop(startX + 1, startY + 1, startX + FocusFinderT::sWindowWidthPx, startY + FocusFinderT::sWindowWidthPx);
+
+    // // DGB START
+    // CImgDisplay disp2(resImage, "resImage");
+    // while(! disp2.is_closed()) { CImgDisplay::wait(disp2); }
+    // // DGB END
+    
+    // // DGB START
+    // CImgDisplay disp1(noiseImg, "noiseImg");
+    // while(! disp1.is_closed()) { CImgDisplay::wait(disp1); }
+    // // DGB END
+
+    // Display noise img...
+    double psnr = resImage.PSNR(noiseImg, 65535 /* max value */);
+
+    cout << "PSNR: " << psnr << endl;
+
+    const size_t maxPsnr = 80; // TODO: Always valid? What if window size is increased?
+    mSelectStatus = (psnr <= maxPsnr ? SelectStatusT::VALID : SelectStatusT::INVALID);
+
+    mBtnSelectRegion->setEnabled(SelectStatusT::VALID == mSelectStatus);
+
+    // Save data
+    if (SelectStatusT::VALID == mSelectStatus) {
+      mRegionX = x;
+      mRegionY = y;
+      mRegionW = FocusFinderT::sWindowWidthPx;
+      mRegionH = FocusFinderT::sWindowHeightPx;
+
+      FwhmT fwhmHorz(mImg, FwhmT::DirectionT::HORZ, centerX, centerY, FocusFinderT::sWindowWidthPx);
+      FwhmT fwhmVert(mImg, FwhmT::DirectionT::VERT, centerX, centerY, FocusFinderT::sWindowHeightPx);
+      HfdT hfd(mImg, FocusFinderT::sWindowWidthPx / 2.0, centerX, centerY, FocusFinderT::sWindowWidthPx);
+      
+      //cerr << "fwhmHorz: " << fwhmHorz.getValue() << ", fwhmVert: " << fwhmVert.getValue() << ", hfd: " << hfd.getValue() << endl;
+
+      // Set new values
+      mHfdPanel->setHfd(hfd);
+      mHfdPanel->replot();
+
+      mHorzFwhmPanel->setFwhm(fwhmHorz);
+      mHorzFwhmPanel->replot();
+
+      mVertFwhmPanel->setFwhm(fwhmVert);
+      mVertFwhmPanel->replot();
+    }
+
+    this->updateImage();
+    break;
+  }
+  case QEvent::Wheel: {
+    //cerr << "Wheel event!" << endl;
+    const QWheelEvent* const we = static_cast<const QWheelEvent*>(event);
+    cerr << "Delta: " << we->delta() << endl;
+
+    break;
+  }
+  default:
+    return false;
+  }
+
+  return false;
+}

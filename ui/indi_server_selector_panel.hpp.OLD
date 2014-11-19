@@ -1,0 +1,101 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#ifndef _INDI_SERVER_SELECTOR_PANEL_HPP_
+#define _INDI_SERVER_SELECTOR_PANEL_HPP_ _INDI_SERVER_SELECTOR_PANEL_HPP_
+
+#include "ui_indi_server_selector_panel.hpp"
+#include "qevent.h"
+
+#include <iostream>
+#include "../astro_focuser_app.hpp"
+
+using namespace std;
+
+class IndiServerSelectorPanel : public QWidget, private Ui_IndiServerSelectorPanel {
+private:
+  Q_OBJECT
+  bool mValid;
+  string mHostname;
+  int mPort;
+
+public:
+  IndiServerSelectorPanel(QWidget *parent = 0);
+  ~IndiServerSelectorPanel();
+
+  inline bool isInputValid() const { return mValid; }
+  inline string getHostname() const { return mHostname; }
+  inline int getPort() const { return mPort; }
+
+private:
+  bool evaluate(const QString & inHostPortQStr) {
+    string hostPortStr = inHostPortQStr.toUtf8().constData();
+
+    if (! hostPortStr.empty() && AstroFocuserAppT::decomposeServerName(hostPortStr, & mHostname, & mPort)) {
+      cerr << "Extracted hostname: " << mHostname << " and port: " << mPort << endl;
+      mLblStatus->setText("Ok!");
+      return true;
+    } else {
+      mLblStatus->setText("Invalid!");
+      return false;
+    }
+  }
+
+private slots:
+  void on_mBtnOk_clicked() {
+    cerr << "on_mBtnOk_clicked..." << endl;
+    mValid = evaluate(mHostnameEdit->text());
+    if (mValid) {
+      this->close();
+      if (parentWidget())
+	parentWidget()->close();
+    }
+  }
+
+  void on_mBtnCancel_clicked() {
+    cerr << "on_mBtnCancel_clicked..." << endl;
+    mValid = false;
+    this->close();
+    if (parentWidget())
+      parentWidget()->close();
+  }
+
+  void on_mBtnReset_clicked() {
+    cerr << "on_mBtnReset_clicked..." << endl;
+    mHostname = AstroFocuserAppT::sDefaultIndiHostname;
+    mPort = AstroFocuserAppT::sDefaultIndiPort;
+    stringstream ss;
+    ss << mHostname << ":" << mPort;
+    mHostnameEdit->setText(ss.str().c_str());
+  }
+
+  void on_mHostnameEdit_textChanged(const QString & str) {
+    cerr << "CHANGED!" << endl;
+    mValid = evaluate(str);
+    mBtnOk->setEnabled(mValid);
+  }
+
+  //    return (! inHostPortStr.empty() && AstroFocuserAppT::decomposeServerName(inHostPortStr, & hostname, & port));
+
+};
+
+#endif // _INDI_SERVER_SELECTOR_PANEL_HPP_

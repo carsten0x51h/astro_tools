@@ -1,0 +1,108 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#ifndef _DEVICE_SELECTOR_PANEL_HPP_
+#define _DEVICE_SELECTOR_PANEL_HPP_ _DEVICE_SELECTOR_PANEL_HPP_
+
+#include "ui_device_selector_panel.hpp"
+#include "qevent.h"
+
+#include <iostream>
+#include <set>
+
+#include "../indi/indi_client_tmpl.hpp"
+
+using namespace std;
+
+class DeviceSelectorPanel : public QWidget, private Ui_DeviceSelectorPanel {
+private:
+  Q_OBJECT
+
+public:
+  DeviceSelectorPanel(QWidget * parent = 0);
+  ~DeviceSelectorPanel();
+  inline void setIndiClient(IndiClientTmplT * inIndiClient) {
+    //cerr << "DeviceSelectorPanel - setIndiClient..." << inIndiClient << endl;
+    mIndiClient = inIndiClient;
+
+    // Copy already known devices to set
+    const vector<INDI::BaseDevice *> & devices = mIndiClient->getDevices();
+    for (vector<INDI::BaseDevice *>::const_iterator it = devices.begin(); it != devices.end(); ++it) {
+      INDI::BaseDevice * dev = *it;
+      mDevices.insert(dev->getDeviceName());
+    }
+    
+    // Register for device listener...
+    mIndiClient->registerNewDeviceListener(boost::bind(& DeviceSelectorPanel::newDeviceListener, this, _1));
+    emit updateDeviceListSig();
+  }
+  
+  inline const string & getSelectedDevice() const { return mSelectedDeviceName; }
+
+  void updateComboBox() {
+    //cerr << "updateComboBox()....." << endl;
+    mCbxDevices->clear();
+    for (set<string>::const_iterator it = mDevices.begin(); it != mDevices.end(); ++it) {
+      mCbxDevices->addItem(QString::fromUtf8(it->c_str()));
+    }
+  }
+
+private slots:
+  void on_mBtnOk_clicked() {
+    //cerr << "OK..." << endl;
+
+    QString deviceNameQstr = mCbxDevices->currentText();
+    mSelectedDeviceName = deviceNameQstr.toUtf8().constData();
+
+    this->close();
+    if (parentWidget())
+      parentWidget()->close();
+  }
+  void on_mBtnCancel_clicked() {
+    //cerr << "Cancel..." << endl;
+    mSelectedDeviceName = "";
+    this->close();
+    if (parentWidget())
+      parentWidget()->close();
+  }
+
+  void updateDeviceListSlot() {
+    //cerr << "updateDeviceListSlot()..." << endl;
+    this->updateComboBox();
+  }
+  
+private:
+  void newDeviceListener(INDI::BaseDevice * inDevice) {
+    //cerr << "NEW DEVICE!!! Name: " << inDevice->getDeviceName() << endl;
+    mDevices.insert(inDevice->getDeviceName());
+    emit updateDeviceListSig();
+  }
+
+  IndiClientTmplT * mIndiClient;
+  set<string> mDevices;
+  string mSelectedDeviceName;
+
+signals:
+  void updateDeviceListSig();
+};
+
+#endif // _DEVICE_SELECTOR_PANEL_HPP_

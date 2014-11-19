@@ -1,0 +1,94 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#include <Qt/QtGui>
+#include "camera_cntl_panel.hpp"
+
+CameraCntlPanel::CameraCntlPanel(QWidget *parent) : QWidget(parent), mCameraClient(0) {
+  setupUi(this);
+  
+  //connect(btnIndiServerConnect, SIGNAL(clicked()), this, SLOT(connectToIndiServer()));
+  connect(btnCameraConnect, SIGNAL(clicked()), this, SLOT(connectToCamera()));
+  
+  connect(this, SIGNAL(indiServerConnectionStatusChangedSig(bool)), this, SLOT(indiServerConnectionStatusChangedSlot(bool)));
+}
+
+CameraCntlPanel::~CameraCntlPanel() {
+}
+
+void CameraCntlPanel::connectToCamera() {
+  // TODO...
+}
+
+// See http://stackoverflow.com/questions/7786740/c-store-a-pointer-to-a-member-function-of-unknown-class
+// See http://stackoverflow.com/questions/995314/boostbind-and-class-member-function
+// See http://stackoverflow.com/questions/2304203/how-to-use-boost-bind-with-a-member-function
+void CameraCntlPanel::setCameraClient(IndiCameraClientT * inCameraClient) {
+  mCameraClient = inCameraClient;
+
+  // Register listener
+  IndiCameraClientT::IndiServerConnectionStatusListenersT::ListenerT c = boost::bind(& CameraCntlPanel::indiServerConnectionStatusChanged, this, _1);
+  mCameraClient->registerIndiServerConnectionChangeListener(c);
+
+  IndiCameraClientT::DeviceConnectionStatusListenersT::ListenerT deviceListener = boost::bind(& CameraCntlPanel::deviceConnectionStatusChanged, this, _1);
+  mCameraClient->registerDeviceConnectionStatusChangeListener(deviceListener);
+
+  IndiCameraClientT::MessageListenersT::ListenerT messageListener = boost::bind(& CameraCntlPanel::messageReceived, this, _1);
+  mCameraClient->registerMessageListener(messageListener);
+
+
+
+
+  // Fields
+  // spinSubFrameX;
+  // spinSubFrameY;
+  // spinSubFrameW;
+  // spinSubFrameH;
+  // btnSubFrameReset;
+
+  // cbxBinningX;
+  // cbxBinningY;
+
+  // lblResolutionXxY;
+  // cbAutoSave;
+  // edAutoSaveFolder;
+  // btnSelectImgAutosaveFolder;
+  // spinExposureTime;
+  // lblExposureTimeHms;
+  // lblExposureStatusText;
+  // btnTakeExposure;
+
+  // lblCurrentTemperature;
+  // spinTargetTemperature;
+  // thermoCooler;
+  // lblCoolingStatusText;
+  // btnCoolerOnOff;
+  
+
+  // edIndiServer;
+  // btnIndiServerConnect;
+  // lblIndiServerConnected;
+
+  // edCameraDevice;
+  // btnCameraConnect;
+  // lblCameraConnected;
+}

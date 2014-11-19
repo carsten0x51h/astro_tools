@@ -1,0 +1,109 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#include <Qt/QtGui>
+#include "hfd_panel.hpp"
+#include <sstream>
+
+HfdPanel::HfdPanel(QWidget *parent) : QWidget(parent), mCrossColor{ 255, 0, 0 }, mInnerRingColor{ 0, 255, 0 }, mOuterRingColor{ 0, 255, 0 } {
+  setupUi(this);
+}
+
+HfdPanel::~HfdPanel() {
+}
+
+void HfdPanel::clear() {
+  const float minPanelLength = std::min(imgLabel->width(), imgLabel->height());
+  QImage imgQt(minPanelLength, minPanelLength, QImage::Format_ARGB32);
+  imgQt.fill(QColor(0,0,0));
+  imgLabel->setGeometry(0, 0, imgQt.width(), imgQt.height());
+  imgLabel->setPixmap(QPixmap::fromImage(imgQt));
+  mHfdLbl->setText(QString::fromUtf8("<unknown>"));
+}
+
+void HfdPanel::replot() {
+  //cerr << "HFD replot imgLblWidth: " << imgLabel->width() << ", height: " <<  imgLabel->height() << endl;
+  const CImg<float> & image = mHfd.getResultImage();
+
+
+  // DGB START
+  //cerr << "image.width(): " << image.width() << ", image.height(): " << image.height() << endl;
+  //CImgDisplay disp6(image, "HFD img");
+  //while(! disp6.is_closed()) { CImgDisplay::wait(disp6); }
+  // DGB END
+
+  if (! image.width() || ! image.height()) {
+    return;
+  }
+
+  // TODO: Move the following lines to a helper class / function since we use it multiple times
+  CImg<unsigned char> rgbImg(image.width(), image.height(), 1 /*z*/, 3);
+  rgbImg.fill(0);
+
+  double maxValue = 0;
+  cimg_forXY(image, x, y) {
+    if (maxValue < image(x,y)) {
+      maxValue = image(x,y);
+    }
+  }
+  
+  cimg_forXY(image, x, y) {
+    rgbImg(x, y, 0, 0 /*r*/) = 255.0 / maxValue * image(x, y);
+    rgbImg(x, y, 0, 1 /*g*/) = 255.0 / maxValue * image(x, y);
+    rgbImg(x, y, 0, 2 /*b*/) = 255.0 / maxValue * image(x, y);
+  }
+  
+  // Scale image to panel size (square)
+  const float minPanelLength = std::min(imgLabel->width(), imgLabel->height());
+  const float factorx = minPanelLength / image.width();
+  const float factory = minPanelLength / image.height();
+
+  rgbImg.resize(minPanelLength, minPanelLength);
+
+
+  float centerx, centery;
+  mHfd.getCentroid(& centerx, & centery);
+  centerx = (centerx + 0.5) * factorx;
+  centery = (centery + 0.5) * factory;
+
+  // Mark centroid by cross
+  const unsigned int lineLength = 4;
+  rgbImg.draw_line(centerx - lineLength/2, centery, centerx + lineLength/2, centery, mCrossColor, 1/*opacity*/);
+  rgbImg.draw_line(centerx, centery - lineLength/2, centerx, centery + lineLength/2, mCrossColor, 1/*opacity*/);
+
+  // Draw inner & outer ring
+  rgbImg.draw_circle(centerx, centery, ceil((float) factorx * mHfd.getValue() / 2.0) /*radius*/, mInnerRingColor, 1/*opacity*/, 1 /*outöine pattern*/);
+  rgbImg.draw_circle(centerx, centery, factorx * mHfd.getRadius() /*radius*/, mOuterRingColor, 1/*opacity*/, 1 /*outline pattern*/);
+
+  // Copy image to QImage / QLabel...
+  // TODO: We may improve this somehow avoid copying all the pixel values...
+  QImage imgQt(rgbImg.width(), rgbImg.height(), QImage::Format_ARGB32);
+  cimg_forXY(rgbImg, x, y) { imgQt.setPixel(x, y, qRgb(rgbImg(x, y, 0), rgbImg(x, y, 1), rgbImg(x, y, 2))); }
+
+  imgLabel->setGeometry(0, 0, imgQt.width(), imgQt.height());
+  imgLabel->setPixmap(QPixmap::fromImage(imgQt));
+  
+  // Set value
+  stringstream ss;
+  ss << mHfd.getValue() << " px"; // TODO: Maybe use a QT Number format / QString method...
+  mHfdLbl->setText(QString::fromUtf8(ss.str().c_str()));
+}

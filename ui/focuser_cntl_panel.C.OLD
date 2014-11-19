@@ -1,0 +1,113 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#include <Qt/QtGui>
+#include "focuser_cntl_panel.hpp"
+
+FocuserCntlPanel::FocuserCntlPanel(QWidget *parent) : QWidget(parent), mFocuserClient(0), mAbsPosDest(0) {
+  setupUi(this);
+  mStepSignalMapper = new QSignalMapper(this);
+
+  connect (btnPlus1000, SIGNAL(clicked()), mStepSignalMapper, SLOT(map())) ;
+  connect (btnPlus100, SIGNAL(clicked()), mStepSignalMapper, SLOT(map())) ;
+  connect (btnPlus10, SIGNAL(clicked()), mStepSignalMapper, SLOT(map())) ;
+  connect (btnPlus1, SIGNAL(clicked()), mStepSignalMapper, SLOT(map())) ;
+  connect (btnMinus1000, SIGNAL(clicked()), mStepSignalMapper, SLOT(map())) ;
+  connect (btnMinus100, SIGNAL(clicked()), mStepSignalMapper, SLOT(map())) ;
+  connect (btnMinus10, SIGNAL(clicked()), mStepSignalMapper, SLOT(map())) ;
+  connect (btnMinus1, SIGNAL(clicked()), mStepSignalMapper, SLOT(map())) ;
+  
+  mStepSignalMapper->setMapping(btnPlus1000, 1000);
+  mStepSignalMapper->setMapping(btnPlus100, 100);
+  mStepSignalMapper->setMapping(btnPlus10, 10);
+  mStepSignalMapper->setMapping(btnPlus1, 1);
+  mStepSignalMapper->setMapping(btnMinus1000, -1000);
+  mStepSignalMapper->setMapping(btnMinus100, -100);
+  mStepSignalMapper->setMapping(btnMinus10, -10);
+  mStepSignalMapper->setMapping(btnMinus1, -1);
+  
+  connect(mStepSignalMapper, SIGNAL(mapped(int)), this, SLOT(onFocusPositionChangeRequest(int)));
+
+  connect(this, SIGNAL(absFocuserPosChangedSig(int)), this, SLOT(absFocuserPosChangedSlot(int)));
+  connect(this, SIGNAL(focuserTempChangedSig(double)), this, SLOT(focuserTempChangedSlot(double)));
+}
+
+FocuserCntlPanel::~FocuserCntlPanel() {
+  cerr << "FocuserCntlPanel::~FocuserCntlPanel... mFocuserClient: " << mFocuserClient << endl;
+
+  if (mFocuserClient) {
+    if (mFocuserClient->getIndiClient()) {
+      cerr << "FocuserCntlPanel::~FocuserCntlPanel - unregisterChangeListener..." << endl; 
+      mFocuserClient->getIndiClient()->unregisterNumberListener(boost::bind(& FocuserCntlPanel::numberChangeHandler, this, _1));
+    }
+    delete mFocuserClient;
+    mFocuserClient = 0;
+  }
+
+  if (mStepSignalMapper) {
+    delete mStepSignalMapper;
+    mStepSignalMapper = 0;
+  }
+
+}
+
+void FocuserCntlPanel::setCntlEnabled(bool inCntlEnabled) {
+  btnPlus1000->setEnabled(inCntlEnabled);
+  btnPlus100->setEnabled(inCntlEnabled);
+  btnPlus10->setEnabled(inCntlEnabled);
+  btnPlus1->setEnabled(inCntlEnabled);
+  btnMinus1000->setEnabled(inCntlEnabled);
+  btnMinus100->setEnabled(inCntlEnabled);
+  btnMinus10->setEnabled(inCntlEnabled);
+  btnMinus1->setEnabled(inCntlEnabled);
+}
+
+void FocuserCntlPanel::onFocusPositionChangeRequest(int inSteps) {
+  cerr << "FocuserCntlPanel::onFocusPositionChangeRequest..." << endl;
+
+  if (mFocuserClient) {    
+    mAbsPosDest += inSteps;
+
+    cout << "Update focus position by " << inSteps << " steps to " << mAbsPosDest << "..." << endl;
+    mFocuserClient->setAbsPos(mAbsPosDest, UpdatePolicyT::NON_BLOCKING);
+
+    stringstream ss;
+    ss << mAbsPosDest;
+    mLblTgtPosition->setText(ss.str().c_str());
+  }
+}
+
+void FocuserCntlPanel::numberChangeHandler(INumberVectorProperty * inVecNumber) {
+  if (! inVecNumber)
+    return;
+
+  if (! mFocuserClient)
+    return;
+
+  if (! strcmp(inVecNumber->name, IndiFocuserClientT::VecPropNameT::asStr(IndiFocuserClientT::VecPropNameT::ABS_FOCUS_POSITION))) {
+    emit absFocuserPosChangedSig(mFocuserClient->getAbsPos());
+  } else if (! strcmp(inVecNumber->name, IndiFocuserClientT::VecPropNameT::asStr(IndiFocuserClientT::VecPropNameT::FOCUS_TEMPERATURE))) {
+    emit focuserTempChangedSig(mFocuserClient->getTemperature());
+  }
+
+  return;
+}

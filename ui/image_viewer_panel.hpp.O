@@ -1,0 +1,175 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#ifndef _IMAGE_VIEWER_PANEL_HPP_
+#define _IMAGE_VIEWER_PANEL_HPP_ _IMAGE_VIEWER_PANEL_HPP_
+
+#include <iostream>
+
+#include "gen/ui_image_viewer_panel.hpp"
+#include <QMouseEvent>
+#include "qevent.h"
+
+#include <CImg.h>
+
+using namespace cimg_library;
+using namespace std;
+
+class FocusFinderT;
+class FwhmPanel;
+class HfdPanel;
+  
+class ImageViewerPanel : public QWidget, private Ui_ImageViewerPanel {
+Q_OBJECT
+public:
+  ImageViewerPanel(QWidget* inParent);
+  ~ImageViewerPanel();
+
+  void setImage(const CImg<float> & inImg);
+
+  inline bool isRegionValid() const { return (mSelectStatus == SelectStatusT::VALID); }
+
+  void getRegion(int * outX, int * outY, int * outW, int * outH) const {
+    if (! isRegionValid()) {
+      cerr << "REGION NOT VALID!" << endl;
+      exit(1);
+      //throw TODO;
+    }
+    
+    if (outX) *outX = mRegionX;
+    if (outY) *outY = mRegionY;
+    if (outW) *outW = mRegionW;
+    if (outH) *outH = mRegionH;
+  }
+
+  void getCentroid(float * outCenterX, float * outCenterY) const {
+    if (outCenterX)
+      *outCenterX = mX;
+
+    if (outCenterY)
+      *outCenterY = mY;
+  }
+
+  static const float sMinScale;
+  static const float sMaxScale;
+
+signals:
+    
+private slots:
+  void on_btnZoomOut_pressed() {
+    if (mZoomFactor > sMinScale) {
+      mZoomFactor *= 0.9;
+      mX *= 0.9;
+      mY *= 0.9;
+    }
+    this->updateImage();
+  }
+  void on_btnZoomIn_pressed() {
+    if (mZoomFactor < sMaxScale) {
+      mZoomFactor *= 1.1;
+      mX *= 1.1;
+      mY *= 1.1;
+    }
+    this->updateImage();
+  }
+
+  void on_mBlackSlider_valueChanged(int value) {
+    mBlackValue = value;
+    mBlackSpin->setValue(mBlackValue);
+    this->updateImage();
+  }
+  void on_mWhiteSlider_valueChanged(int value) {
+    mWhiteValue = value;
+    mWhiteSpin->setValue(mWhiteValue);
+    this->updateImage();
+  }
+  void on_mBlackSpin_valueChanged(int value) {
+    mBlackValue = value;
+    mBlackSlider->setValue(mBlackValue);
+    this->updateImage();
+  }
+  void on_mWhiteSpin_valueChanged(int value) {
+    mWhiteValue = value;
+    mWhiteSlider->setValue(mWhiteValue);
+    this->updateImage();
+  }
+
+  void on_mBtnCancel_pressed() {
+    cerr << "Cancel select region..." << endl;
+    this->close();
+    if (parentWidget())
+      parentWidget()->close();
+  }
+  void on_mBtnSelectRegion_pressed() {
+    // TODO...
+    cerr << "OK, select region pressed..." << endl;
+
+    
+    
+
+
+    this->close();
+    if (parentWidget())
+      parentWidget()->close();
+  }
+
+  bool eventFilter(QObject * watched, QEvent* event);
+
+private:
+  struct SelectStatusT {
+    enum TypeE {
+      NONE,
+      VALID,
+      INVALID,
+      _Count
+    };
+  
+    static const char * asStr(const TypeE & inType) {
+      switch (inType) {
+      case NONE: return "NONE";
+      case VALID: return "VALID";
+      case INVALID: return "INVALID";
+      default: return "<?>";
+      }
+    }
+  };
+
+  static float getMaxPixelValue(const CImg<float> & inImg);
+  static void cimgToQtImage(const CImg<float> & inImg, int inBlackValue, int inWhiteValue, float inZoomFactor, QImage * outImgQt);
+  void updateImage();
+  void drawRegion(QImage * outImgQt);
+
+  CImg<float> mImg;
+  float mZoomFactor;
+  int mBlackValue, mWhiteValue;
+  SelectStatusT::TypeE mSelectStatus;
+  int mX, mY;
+  int mRegionX, mRegionY, mRegionW, mRegionH;
+
+
+  FwhmPanel * mHorzFwhmPanel;
+  FwhmPanel * mVertFwhmPanel;
+  HfdPanel * mHfdPanel;
+};
+
+
+#endif // _IMAGE_VIEWER_PANEL_HPP_

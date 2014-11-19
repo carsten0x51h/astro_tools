@@ -1,0 +1,171 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#include <Qt/QtGui>
+#include "vcurve_viewer_panel.hpp"
+
+#include <limits>
+
+VCurveViewerPanel::VCurveViewerPanel(QWidget *parent) : QWidget(parent), mVCurve(0), mIsFocusPos(0), mMinFocusPos(-1), mMaxFocusPos(-1) {
+  setupUi(this);
+    
+  // Grid
+  mGrid = new QwtPlotGrid();
+  mGrid->enableXMin(true);
+  mGrid->enableYMin(true);
+  mGrid->setMajPen(QPen(Qt::black, 0, Qt::DotLine));
+  mGrid->setMinPen(QPen(Qt::gray, 0 , Qt::DotLine));
+  mGrid->attach(qwtVCurvePlot);
+
+  // VCurve graph
+  mVCurvePlot = addCurvePlot("VCurve", QColor(0,0,255), 2 /*width*/);
+  mDottedVCurvePlot = addCurvePlot("DottedVCurve", QColor(0,255,0), 5 /*width*/, QwtPlotCurve::Dots);
+
+  // Focus pos....
+  mFocusIsPosLinePlot = addCurvePlot("IsFocusPos", QColor(255,0,0), 1 /*width*/);
+  mFocusMinPosLinePlot = addCurvePlot("MinFocusPos", QColor(255,255,0), 1 /*width*/);
+  mFocusMaxPosLinePlot = addCurvePlot("MaxFocusPos", QColor(255,255,0), 1 /*width*/);
+
+  replotCurve();
+}
+
+VCurveViewerPanel::~VCurveViewerPanel() {
+  if (mGrid) {
+    delete mGrid;
+    mGrid = 0;
+  }
+
+  if (mDottedVCurvePlot) {
+    delete mDottedVCurvePlot;
+    mDottedVCurvePlot = 0;
+  }
+
+  if (mVCurvePlot) {
+    delete mVCurvePlot;
+    mVCurvePlot = 0;
+  }
+
+  if (mFocusIsPosLinePlot) {
+    delete mFocusIsPosLinePlot;
+    mFocusIsPosLinePlot = 0;
+  }
+
+  if (mFocusMinPosLinePlot) {
+    delete mFocusMinPosLinePlot;
+    mFocusMinPosLinePlot = 0;
+  }
+
+  if (mFocusMaxPosLinePlot) {
+    delete mFocusMaxPosLinePlot;
+    mFocusMaxPosLinePlot = 0;
+  }
+}
+
+QwtPlotCurve *  VCurveViewerPanel::addCurvePlot(const string & inCurveName, const QColor & inCurveColor, int inPenWidth, QwtPlotCurve::CurveStyle inStyle) {
+  QwtPlotCurve * plot = new QwtPlotCurve(inCurveName.c_str());
+
+  QPen pen;
+  pen.setColor(inCurveColor);
+  pen.setWidth(inPenWidth);
+  plot->setPen(pen);
+  plot->attach(qwtVCurvePlot); // TODO: Rename qwtVCurvePlot to mQwtVCurvePlot
+
+  plot->setStyle(inStyle);
+
+  return plot;
+}
+
+void VCurveViewerPanel::replotCurve() {
+
+  int xmin, xmax;
+  double ymin, ymax;
+
+  // TODO: Take current focus pos into acount...
+  if (mVCurve) {
+    xmin = mVCurve->getMinX();
+    xmax = mVCurve->getMaxX();
+    ymin = mVCurve->getMinY();
+    ymax = mVCurve->getMaxY();
+  } else {
+    // TODO: Default... required?!
+    xmin = 0;
+    xmax = 100000;
+    ymin = 0;
+    ymax = 50;
+  }
+
+  // Overwrite by min / max bounds
+  if (mMaxFocusPos >= 0) {
+    xmax = mMaxFocusPos;
+  }
+
+  if (mMinFocusPos >= 0) {
+    xmin = mMinFocusPos;
+  }
+
+
+  // Setup axis
+  qwtVCurvePlot->setAxisScale(QwtPlot::yLeft, 0.9 * ymin, 1.1 * ymax);
+  qwtVCurvePlot->setAxisScale(QwtPlot::xBottom, 0.9 * xmin /* -10% */, 1.1 * xmax /* +10% */);
+
+  // Focus pos...
+  mFocusIsPosLineData.clear();
+  if (mIsFocusPos >= 0) {
+    mFocusIsPosLineData.push_back( QwtDoublePoint(mIsFocusPos, 0) );
+    mFocusIsPosLineData.push_back( QwtDoublePoint(mIsFocusPos, qwtVCurvePlot->height() /*ymax*/) );
+  }
+  mFocusIsPosLinePlot->setData(mFocusIsPosLineData);
+
+  //cerr << "VCurveViewerPanel::replotCurve - mMinFocusPos: " << mMinFocusPos << ", mMaxFocusPos: " << mMaxFocusPos << endl;
+
+  if (mMinFocusPos >= 0) {
+    mFocusMinPosLineData.clear();
+    mFocusMinPosLineData.push_back( QwtDoublePoint(mMinFocusPos, 0) );
+    mFocusMinPosLineData.push_back( QwtDoublePoint(mMinFocusPos, qwtVCurvePlot->height() /*ymax*/) );
+    mFocusMinPosLinePlot->setData(mFocusMinPosLineData);
+  }
+
+  if (mMaxFocusPos >= 0) {
+    mFocusMaxPosLineData.clear();
+    mFocusMaxPosLineData.push_back( QwtDoublePoint(mMaxFocusPos, 0) );
+    mFocusMaxPosLineData.push_back( QwtDoublePoint(mMaxFocusPos, qwtVCurvePlot->height() /*ymax*/) );
+    mFocusMaxPosLinePlot->setData(mFocusMaxPosLineData);
+  }
+
+  if (mVCurve) {
+    mCurveData.clear();
+    for (VCurveT<int, double>::const_iterator it = mVCurve->begin(); it != mVCurve->end(); ++it) {
+      mCurveData.push_back( QwtDoublePoint(it->first, it->second) );
+    }
+
+    // TODO: Determine min amd max....
+    try {  
+      // Set the data
+      mDottedVCurvePlot->setData(mCurveData);
+      mVCurvePlot->setData(mCurveData);
+    } catch(VCurveExceptionT & exc) {
+      cerr << "VCurveExceptionT: " << exc.what() << endl;
+    }
+  } // end if mVCurve
+
+  qwtVCurvePlot->replot();
+}

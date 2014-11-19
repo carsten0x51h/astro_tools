@@ -1,0 +1,96 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#include <Qt/QtGui>
+#include "../qconsole/qconsole.hpp"
+#include "../qconsole/qpyconsole.hpp"
+#include "script_editor_panel.hpp"
+#include <sstream>
+
+ScriptEditorPanel::ScriptEditorPanel(QWidget *parent) : QWidget(parent), mConsole(0) {
+  setupUi(this);
+
+  // Set value
+  //mHfdLbl->setText(QString::fromUtf8(ss.str().c_str()));
+  
+  //mw.setMinimumSize(640, 480);
+
+  //Instantiate and set the focus to the QPyConsole
+  mConsole = QPyConsole::getInstance(this);
+
+  QFont font;
+  font.setFamily("Courier");
+  font.setPixelSize(20);
+  mConsole->setFont(font);
+  mConsole->setMaximumSize(QSize(16777215, 16777215));
+
+  mVerticalLayout->setStretch(1, 1);
+  mVerticalLayout->addWidget(mConsole);
+
+  //mw.setFocusProxy((QWidget*)console);
+  //mw.setCentralWidget((QWidget*)console);
+  //mw.show();
+
+}
+
+ScriptEditorPanel::~ScriptEditorPanel() {
+  if (mConsole) {
+    mConsole = 0;
+    delete mConsole;
+  }
+}
+
+  void ScriptEditorPanel::on_mBtnExecuteStopScript_pressed() {
+    // Pass the text content to the interpreter!
+    const string & script = mEditScript->toPlainText().toAscii().data();
+    cerr << "Executing script: " << script << endl;
+    
+    // Execute line by line...
+    size_t pos = 0;
+    for (size_t i=0; i < script.size(); ++i) {
+      if (script.at(i) == '\n' || i == script.size()-1) {
+	QString result;
+	string cmd = script.substr(pos, i - pos);
+	cerr << "New line: " << cmd << endl;;
+	bool execCmdRes = mConsole->execCommand(QString::fromUtf8(cmd.c_str()), true /*writeCommand */, true /* showPrompt*/, & result);
+	cerr << "execCmdRes: " << execCmdRes << ", result: " << result.toAscii().data() << endl;
+	pos = i+1;
+      }
+
+    //   script
+    }
+
+
+    // if (mScriptInterpreter) {
+    //   const string & script = mEditScript->toPlainText().toAscii().data();
+    //   if (! script.empty()) {
+    // 	bool result = mScriptInterpreter->executeScript("." /*env exec path*/, script.c_str());
+    // 	cerr << "result: " << result << endl;
+    //   } else {
+    //   // TODO: Better error handling...
+    // 	cerr << "No script!" << endl;
+    //   }
+    // } else {
+    //   // TODO: Better error handling...
+    //   cerr << "No interpreter set!" << endl;
+    // }
+  } 

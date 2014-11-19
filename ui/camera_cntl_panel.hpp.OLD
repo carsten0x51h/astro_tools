@@ -1,0 +1,78 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#ifndef _CAMERA_CNTL_PANEL_HPP_
+#define _CAMERA_CNTL_PANEL_HPP_ _CAMERA_CNTL_PANEL_HPP_
+
+#include <QSignalMapper>
+
+#include "ui_camera_cntl_panel.hpp"
+#include "qevent.h"
+
+#include "../../indi/indi_camera_client.hpp"
+
+using namespace std;
+
+class CameraCntlPanel : public QWidget, private Ui_CameraCntlPanel {
+private:
+  Q_OBJECT
+  IndiCameraClientT * mCameraClient;
+
+public:
+  CameraCntlPanel(QWidget *parent = 0);
+  ~CameraCntlPanel();
+  void setCameraClient(IndiCameraClientT * inCameraClient);
+
+  
+private slots:
+  //void connectToIndiServer();
+  void connectToCamera();
+
+
+private:
+  void indiServerConnectionStatusChanged(bool inStatus) { emit indiServerConnectionStatusChangedSig(inStatus); }
+  void deviceConnectionStatusChanged(bool inStatus) { emit deviceConnectionStatusChangedSig(inStatus); }
+  void messageReceived(const char * inIndiMsg) { emit messageReceivedSig(inIndiMsg); }
+
+signals:
+  void indiServerConnectionStatusChangedSig(bool inStatus);
+  void deviceConnectionStatusChangedSig(bool inStatus);
+  void messageReceivedSig(const char * inIndiMsg);
+
+private slots:
+  void indiServerConnectionStatusChangedSlot(bool inStatus) {
+    lblIndiServerConnected->setStyleSheet(inStatus ? "QLabel { background-color : green;}" : "QLabel { background-color : red;}");
+    btnIndiServerConnect->setText(inStatus ? "Disconnect" : "Connect");
+  }
+
+  void deviceConnectionStatusChangedSlot(bool inStatus) {
+    lblCameraConnected->setStyleSheet(inStatus ? "QLabel { background-color : green;}" : "QLabel { background-color : red;}");
+    btnCameraConnect->setText(inStatus ? "Disconnect" : "Connect");
+    cameraCntlElementPanel->setEnabled(inStatus);
+  }
+
+  void messageReceivedSlot(const char * inIndiMsg) {
+    edLogMessages->append(QString(inIndiMsg));
+  }
+};
+
+#endif // _CAMERA_CNTL_PANEL_HPP_

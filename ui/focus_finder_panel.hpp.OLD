@@ -1,0 +1,366 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+// TODO:
+//   -Schliessfach D/Sw?
+//   -Silber Schweiz?
+//   -Internet + Telefon La Palma? Mobil / Kabel?
+//   -Immboilien -> Spanischer Makler? Vor Ort?
+//   -Spanisch lernen
+//   -Anbau La Palma? Was? Wo? Orangen? Zitronen? Hühner?
+
+
+// TODO: TODO: When connected to camera, display second camera cntl window to set exposure time, binning etc. - do the same for focuser..., pass the IndiClient
+
+#ifndef _FOCUS_FINDER_PANEL_HPP_
+#define _FOCUS_FINDER_PANEL_HPP_ _FOCUS_FINDER_PANEL_HPP_
+
+#include <QDialog>
+#include <QThread>
+#include <QMessageBox>
+
+#include "fwhm_panel.hpp"
+#include "hfd_panel.hpp"
+#include "hfd_dist_panel.hpp"
+
+#include "ui_focus_finder_panel.hpp"
+#include "qevent.h"
+
+#include "focuser_cntl_panel.hpp"
+#include "device_selector_panel.hpp"
+#include "vcurve_viewer_panel.hpp"
+#include "indi_server_selector_panel.hpp"
+
+#include "../indi/indi_client_tmpl.hpp"
+#include "../indi/indi_camera_client.hpp"
+#include "../indi/indi_focuser_client.hpp"
+
+#include "../focus_finder.hpp"
+#include "../vcurve.hpp"
+
+#include "astro_focuser_app.hpp"
+
+using namespace std;
+
+
+/**
+ * Focus Finder Task class.
+ */
+class FocusFinderTaskT : public QObject {
+Q_OBJECT
+
+private:
+  FocusFinderT * mFocusFinder;
+  IndiClientTmplT * mIndiClient;
+  float mCenterX, mCenterY;
+  //FocusFinderT::FocusFinderUpdateListenerT::ListenerIterT mFocusFinderUpdateListenerIter;
+  //FocusFinderT::FocusFinderUpdateListenerT::ListenerT mFocusFinderUpdateListener;
+
+public:
+  FocusFinderTaskT(IndiClientTmplT * inIndiClient, const string & inCameraDeviceName, const string & inFocuserDeviceName, float inCenterX, float inCenterY);
+  ~FocusFinderTaskT();
+
+  void focusFinderUpdateHandler(const FocusFinderDataT * inFocusFinderData);
+  void stop();
+			   
+public slots:
+  void findFocus();
+  
+signals:
+  void finished();
+  void stopped(bool inUserStop);
+  void workFinished(bool inSuccess);
+  void focusFinderUpdateSig(FocusFinderDataT inFocusFinderData);
+};
+Q_DECLARE_METATYPE (FocusFinderDataT)
+
+
+
+/**
+ * Connecting to INDI server task runs in an QThread since waiting fo rthe connection would block the UI,
+ */
+class ConnectIndiServerTaskT : public QObject {
+Q_OBJECT
+public:
+  ConnectIndiServerTaskT(IndiClientTmplT * inIndiTestClient, int inTimeout);
+  ~ConnectIndiServerTaskT();
+
+private:
+  int mTimeout;
+  IndiClientTmplT * mIndiClient;
+
+public slots:
+  void connectIndiServer();
+  
+signals:
+  void workFinished();
+  void finished();
+  void timeOut();
+};
+
+
+
+/**
+ * Generic device connection task, runs in thread since waiting blocks UI.
+ */
+class ConnectDeviceTaskT : public QObject {
+Q_OBJECT
+public:
+  ConnectDeviceTaskT(IndiClientTmplT * inIndiTestClient, const string & inDeviceName, int inTimeout);
+  ~ConnectDeviceTaskT();
+
+protected:
+  virtual bool conectToDeviceCB() = 0;
+
+  IndiClientTmplT * mIndiClient;
+  string mDeviceName;
+  int mTimeout;
+
+public slots:
+  void connectToDevice();
+
+signals:
+  void finished();
+  void workFinished();
+  void timeOut();
+};
+
+
+template <typename CT>
+class ConnectDeviceTaskTmplT : public ConnectDeviceTaskT {
+public:
+  ConnectDeviceTaskTmplT(IndiClientTmplT * inIndiTestClient, const string & inDeviceName, int inTimeout) : ConnectDeviceTaskT(inIndiTestClient, inDeviceName, inTimeout) {}
+
+protected:
+  virtual bool conectToDeviceCB() {
+    try {
+      return mIndiClient->deviceHasProperties<CT>(mDeviceName, mTimeout); // Wait until device has all required props
+    } catch(IndiExceptionT & exc) {
+      return false;
+    }
+  }
+};
+
+
+/**
+ * FocusFinderPanelT
+ */
+class FocusFinderPanelT : public QWidget, private Ui_FocusFinderPanel {
+private:
+  Q_OBJECT
+  FwhmPanel * mHorzFwhmPanel;
+  FwhmPanel * mVertFwhmPanel;
+  HfdPanel * mHfdPanel;
+  HfdDistPanel * mHfdDistPanel;
+  VCurveViewerPanel * mVCurvePanel;
+
+  QMainWindow * mFocuerCntlContainerWnd;
+  FocuserCntlPanel * mFocuserCntlPanel;
+
+  CImg<float> mImg;
+  float mCenterX, mCenterY;
+
+  FocusFinderTaskT * mFocusFinderTask;
+  bool mWantDeviceAutoConnectFirstTime;
+  bool mFoundFocus;
+
+  void connectToIndiServer(bool inConnect);
+  void connectToCamera(bool inConnect);
+  void connectToFocuser(bool inConnect);
+
+public:
+  FocusFinderPanelT(QWidget * parent = 0);
+  ~FocusFinderPanelT();
+
+private slots:
+  void on_mBtnConnectIndiServer_clicked() {
+    bool wantConnect = false;
+
+    if (mBtnConnectIndiServer->isChecked()) {
+      QDialog indiServerSelectorDialog;
+      QVBoxLayout mainLayout;
+      indiServerSelectorDialog.setGeometry(0,0, 400, 100);
+      IndiServerSelectorPanel indiServerSelectorPanel(& indiServerSelectorDialog);
+      mainLayout.addWidget(& indiServerSelectorPanel);
+      indiServerSelectorDialog.setLayout(& mainLayout);
+      indiServerSelectorDialog.exec();
+      
+      if (indiServerSelectorPanel.isInputValid()) {
+	AstroFocuserAppT::setIndiHostname(indiServerSelectorPanel.getHostname());
+	AstroFocuserAppT::setIndiPort(indiServerSelectorPanel.getPort());
+	wantConnect = true;
+      }
+    }
+    connectToIndiServer(wantConnect);
+  }
+
+  void connectIndiServerTimeOut() { emit updateButtonStatesSig(); }
+  void indiServerConnected() { emit updateButtonStatesSig(); }
+  string displaySelectDeviceDlg() const;
+
+  /**
+   * Camera connection
+   */
+  void on_mBtnConnectCamera_clicked() {
+    if (mBtnConnectCamera->isChecked())
+      AstroFocuserAppT::setCameraName(displaySelectDeviceDlg());
+
+    connectToCamera(mBtnConnectCamera->isChecked());
+  }
+  void cameraDeviceConnected() {
+    if (! AstroFocuserAppT::getCameraName().empty()) {
+      emit updateButtonStatesSig();
+    }
+  }
+  void cameraDeviceTimeout() {
+    bool retry = FocusFinderPanelT::showRetryConnectMsgBox(AstroFocuserAppT::getCameraName());
+    
+    if (retry) {
+      emit updateButtonStatesSig();
+      connectToCamera(true /*connect*/);
+    } else {
+      AstroFocuserAppT::setCameraName("");
+      emit updateButtonStatesSig();
+    }
+  }
+
+
+  /**
+   * Focuser connection
+   */
+  void on_mBtnConnectFocuser_clicked() {
+    if (mBtnConnectFocuser->isChecked())
+      AstroFocuserAppT::setFocuserName(displaySelectDeviceDlg());
+
+    connectToFocuser(mBtnConnectFocuser->isChecked());
+  }
+  void focuserDeviceConnected() {
+    emit updateButtonStatesSig();
+  }
+  void focuserDeviceTimeout() {
+    bool retry = FocusFinderPanelT::showRetryConnectMsgBox(AstroFocuserAppT::getFocuserName());
+    
+    if (retry) {
+      emit updateButtonStatesSig();
+      connectToFocuser(true /*connect*/);
+    } else {
+      AstroFocuserAppT::setFocuserName("");
+      emit updateButtonStatesSig();
+    }
+  }
+  
+  void on_mBtnSelectStar_clicked();
+
+  void on_mBtnFindFocus_clicked();
+  void focusFinderFinished(bool inFound) {
+    mFocusFinderTask = 0; // deletion by Qt
+    mFoundFocus = inFound;
+    mFocusFinderRunning = false;
+    emit updateButtonStatesSig();
+  }
+  void focusFinderStopped(bool inUserStop) {
+    cerr << "void focusFinderStopped(bool inUserStop)..." << endl;
+    mFocusFinderRunning = false;
+    emit updateButtonStatesSig();
+  }
+  void focusFinderUpdateSlot(FocusFinderDataT inFocusFinderData);
+
+private:
+  static bool showRetryConnectMsgBox(const string & iNDeviceName) {
+    QMessageBox msgBox;
+    string msg = "Could not connect to " + iNDeviceName + ".";
+    msgBox.setText(msg.c_str());
+    msgBox.setInformativeText("Do you want to retry?");
+    msgBox.setIcon(QMessageBox::Warning);
+    QPushButton * retryButton = msgBox.addButton(tr("Retry"), QMessageBox::ActionRole);
+    msgBox.addButton(QMessageBox::Abort);
+    msgBox.setDefaultButton(retryButton);
+    msgBox.exec();
+    return (msgBox.clickedButton() == retryButton);
+  }
+
+  void stopFocusFinderThread() {
+    if (mFocusFinderTask) {
+      mFocusFinderTask->stop();
+      mFocusFinderTask = 0;
+    }
+  }
+
+  inline void resetRegion() { mCenterX = -1; mCenterY = -1; }
+  inline bool isRegionValid() const { return (mCenterX > 0 && mCenterY > 0); }
+
+  void updateButtonStates();
+  
+  void switchVectorPropertyListener(ISwitchVectorProperty * sw) {
+    //cerr << "Switch vector property changed..." << endl;
+    //cerr << "Device: " << sw->device << ", name: " << sw->name << ", state: " << sw->s << endl;
+    // // TODO: Not required so far...
+  }
+  
+  void numberVectorPropertyListener(INumberVectorProperty * inVecNumber) {
+    if (! inVecNumber)
+      return;
+    
+    if (! strcmp(inVecNumber->name, IndiFocuserClientT::VecPropNameT::asStr(IndiFocuserClientT::VecPropNameT::ABS_FOCUS_POSITION))) {
+      double absFocuserValue = 0;
+      mIndiClient->getNumberChecked(AstroFocuserAppT::getFocuserName(), IndiFocuserClientT::VecPropNameT::asStr(IndiFocuserClientT::VecPropNameT::ABS_FOCUS_POSITION), IndiFocuserClientT::PropNameT::asStr(IndiFocuserClientT::PropNameT::RELATIVE_ABSOLUTE_POSITION), & absFocuserValue);
+      // NOTE: Problem since this is called from another thread --> Qt not thread safe! --> Use signal instead.
+      FocusFinderDataT focusFinderData(absFocuserValue);
+      emit focusFinderUpdateSig(focusFinderData);
+    }
+    return;
+  }
+
+  void deviceConnectionStatusListener(const string & inDeviceName) { emit updateButtonStatesSig(); }
+  void newDeviceListener(INDI::BaseDevice * inDevice) { }
+  void newPropListener(INDI::Property * inProp) { emit updateButtonStatesSig(); }
+  int indiServerConnectionStatusHandler(bool inConnected) {
+    emit updateButtonStatesSig();
+
+    if (inConnected && mWantDeviceAutoConnectFirstTime) {
+    cerr << "OK, RESET mWantDeviceAutoConnectFirstTime to: " << mWantDeviceAutoConnectFirstTime << endl;
+
+      mWantDeviceAutoConnectFirstTime = false;
+
+      if (! AstroFocuserAppT::getCameraName().empty())
+	connectToCamera(true /* connect */);
+      
+      if (! AstroFocuserAppT::getFocuserName().empty()) {
+	cerr << "Connecting to Focuser: " << AstroFocuserAppT::getFocuserName() << endl;
+	connectToFocuser(true /* connect */);
+      }
+    }
+}
+  
+  IndiClientTmplT * mIndiClient;
+  bool mFocusFinderRunning;
+
+signals:
+  void focusFinderUpdateSig(FocusFinderDataT inFocusFinderData);
+  void updateButtonStatesSig();
+
+private slots:
+  void updateButtonStatesSlot() { updateButtonStates(); }
+  
+};
+
+#endif // _FOCUS_FINDER_PANEL_HPP_

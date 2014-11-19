@@ -1,0 +1,104 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#ifndef _FOCUSER_CNTL_PANEL_HPP_
+#define _FOCUSER_CNTL_PANEL_HPP_ _FOCUSER_CNTL_PANEL_HPP_
+
+#include <QSignalMapper>
+#include <QMainWindow>
+
+#include "ui_focuser_cntl_panel.hpp"
+#include "qevent.h"
+
+#include "../../indi/indi_focuser_client.hpp"
+
+using namespace std;
+
+class FocuserCntlPanel : public QWidget, private Ui_FocuserCntlPanel {
+private:
+  Q_OBJECT
+  IndiFocuserClientT * mFocuserClient;
+  QSignalMapper * mStepSignalMapper;
+  int mAbsPosDest;
+
+public:
+  FocuserCntlPanel(QWidget *parent = 0);
+  ~FocuserCntlPanel();
+  inline void setIndiClient(IndiClientTmplT * inIndiClient, const string & inFocuserDeviceName) {
+    cerr << "setIndiClient..." << endl;
+
+    if (mFocuserClient)
+      delete mFocuserClient;
+    
+    mFocuserClient = new IndiFocuserClientT(inIndiClient, inFocuserDeviceName);
+    mAbsPosDest = mFocuserClient->getAbsPos();
+
+    inIndiClient->unregisterNumberListener(boost::bind(& FocuserCntlPanel::numberChangeHandler, this, _1)); // TODO: Required?! What if connected twice?!
+    inIndiClient->registerNumberListener(boost::bind(& FocuserCntlPanel::numberChangeHandler, this, _1));
+  }
+  void setCntlEnabled(bool inCntlEnabled);
+  
+private slots:
+  void onFocusPositionChangeRequest(int inSteps);
+
+  void on_mBtnAbort_clicked() {
+    cerr << "ABORT!" << endl;
+    if (mFocuserClient) {
+      mFocuserClient->abortMotion(/*blocking*/);
+
+      usleep(500000 /*500ms*/); // Wait a moment until focuser settled
+
+      mAbsPosDest = mFocuserClient->getAbsPos();
+
+      stringstream ss;
+      ss << mAbsPosDest;
+      mLblTgtPosition->setText(ss.str().c_str());
+      
+      emit absFocuserPosChangedSig(mAbsPosDest);
+    }
+  }
+
+private:
+  void numberChangeHandler(INumberVectorProperty * inVecNumber);
+
+signals:
+  void absFocuserPosChangedSig(int);
+  void focuserTempChangedSig(double);
+
+private slots:
+  void absFocuserPosChangedSlot(int inAbsPos) {
+    stringstream ss;
+    ss << inAbsPos;
+    mLblIsPosition->setText(ss.str().c_str());
+    mLblTgtPosition->setText(ss.str().c_str()); // TODO: Ok?!
+  }
+
+  void focuserTempChangedSlot(double inTemp) {
+    stringstream ss;
+    ss << inTemp << "&deg;C";
+    mLblTemperature->setText(ss.str().c_str());
+  }
+};
+
+#endif // _FOCUSER_CNTL_PANEL_HPP_
+//TODO: ADD Listener and text field for INDI messages into QT window...
+//--> OR maybe better: Create own "LogWindow/Panel" which registers to INDI server -> separate component, which can then be integrated into focus-cntl... also separate focus cntl panel from app part with IND server etc...

@@ -1,0 +1,652 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#include <Qt/QtGui>
+#include "focus_finder_panel.hpp"
+#include "image_viewer_panel.hpp"
+#include "vcurve_viewer_panel.hpp"
+
+#include <CImg.h>
+#include <CCfits/CCfits>
+#include "qt_util.hpp"
+#include "io_util.hpp"
+#include "astro_focuser_app.hpp"
+
+using namespace cimg_library;
+using namespace CCfits;
+
+
+/**
+ * Focus Finder Task Impl.
+ *
+ *
+ */
+FocusFinderTaskT::FocusFinderTaskT(IndiClientTmplT * inIndiClient, const string & inCameraDeviceName, const string & inFocuserDeviceName, float inCenterX, float inCenterY) : mIndiClient(inIndiClient), mCenterX(inCenterX), mCenterY(inCenterY) {
+  mFocusFinder = new FocusFinderT(inIndiClient, inCameraDeviceName, inFocuserDeviceName);
+  mFocusFinder->registerFocusFinderUpdateListener(boost::bind(& FocusFinderTaskT::focusFinderUpdateHandler, this, _1));
+}
+FocusFinderTaskT::~FocusFinderTaskT() {
+  cerr << "FocusFinderTaskT::~FocusFinderTaskT()... mFocusFinder: " << mFocusFinder << endl;
+  if (mFocusFinder) {
+    mFocusFinder->unregisterFocusFinderUpdateListener(boost::bind(& FocusFinderTaskT::focusFinderUpdateHandler, this, _1));
+    delete mFocusFinder;
+    mFocusFinder = 0;
+  }
+}
+
+void FocusFinderTaskT::focusFinderUpdateHandler(const FocusFinderDataT * inFocusFinderData) {
+  emit focusFinderUpdateSig(*inFocusFinderData);
+}
+
+void FocusFinderTaskT::stop() {
+  mFocusFinder->stop();
+  //emit stopped(true /*user stop*/);
+}
+
+void FocusFinderTaskT::findFocus() {
+  bool success = false;
+  bool userStop = false;
+  QualityMeasureStrategyT * qmsStrategy;
+  try {
+    qmsStrategy = new QmsSumAllT();
+    success = mFocusFinder->findFocus(mCenterX, mCenterY, FocusFinderT::sWindowWidthPx, 1 /*TODO: Pass.... sec*/, FocusFinderT::sHfdOuterRadiusPx, 3000 /*TODO: Those nombers depend on focuser! numStepsToDetermineDirection*/, 3000 /*inStepsToReachRoughFocus*/, & userStop, cerr, qmsStrategy);
+
+    delete qmsStrategy;
+  } catch(IndiExceptionT & exc) {
+    cerr << "Indi exception: " << exc.what() << endl;
+    delete qmsStrategy;
+    emit stopped(false /*no user stop*/);
+  }
+
+  if (userStop)
+    emit stopped(true /*user stop*/);
+    
+  emit workFinished(success);
+  emit finished();
+  return;
+}
+
+
+
+
+
+/**
+ * Connect to INBDI server task impl.
+ *
+ *
+ */
+ConnectIndiServerTaskT::ConnectIndiServerTaskT(IndiClientTmplT * inIndiTestClient, int inTimeout) : mIndiClient(inIndiTestClient), mTimeout(inTimeout) { }
+
+ConnectIndiServerTaskT::~ConnectIndiServerTaskT() { }
+
+void ConnectIndiServerTaskT::connectIndiServer() {
+  mIndiClient->connectServer();
+  
+  size_t counter = 0;
+  while (! mIndiClient->isServerConnected()) {
+    usleep(1000 /*1 ms*/);
+    ++counter;
+    
+    if (counter > mTimeout) {
+      emit timeOut();
+      emit finished();
+      return;
+    }
+  }
+  emit workFinished();
+  emit finished();
+}
+
+
+
+/**
+ * Connect to device task impl.
+ *
+ *
+ */
+ConnectDeviceTaskT::ConnectDeviceTaskT(IndiClientTmplT * inIndiTestClient, const string & inDeviceName, int inTimeout) : mIndiClient(inIndiTestClient), mDeviceName(inDeviceName), mTimeout(inTimeout) {}
+ConnectDeviceTaskT::~ConnectDeviceTaskT() {}
+
+void ConnectDeviceTaskT::connectToDevice() {
+  size_t counter = 0;
+  while (! mIndiClient->hasDevice(mDeviceName)) {
+    usleep(1000 /*1 ms*/);
+    ++counter;
+
+    if (counter > mTimeout) {
+      emit timeOut();
+      emit finished();
+      return;
+    }
+  }
+
+  // Connect to device
+  counter = 0;
+  mIndiClient->connectDevice(mDeviceName, UpdatePolicyT::NON_BLOCKING);
+    
+  while(! mIndiClient->isDeviceConnected(mDeviceName)) {
+    usleep(1000 /*1 ms*/);
+    ++counter;
+
+    if (counter > mTimeout) {
+      emit timeOut();
+      emit finished();
+      return;
+    }
+  }
+
+  // Check if all properties are satisfied (for camera....) -> Call tmpl function.
+  if (! conectToDeviceCB()) {
+    emit timeOut();
+    emit finished();
+    return;
+  }
+
+  emit workFinished();
+  emit finished();
+}
+
+
+
+
+/**
+ * Focus Finder Panel Impl.
+ *
+ *
+ */
+FocusFinderPanelT::FocusFinderPanelT(QWidget * parent) : QWidget(parent), mIndiClient(0), mCenterX(-1), mCenterY(-1), mFocusFinderRunning(false), mFocusFinderTask(0), mFocuserCntlPanel(0), mFocuerCntlContainerWnd(0), mWantDeviceAutoConnectFirstTime(false), mFoundFocus(false) {
+  setupUi(this);
+
+  QSizePolicy sizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+  sizePolicy.setHorizontalStretch(0);
+  sizePolicy.setVerticalStretch(0);
+
+  mHfdPanel = new HfdPanel(this);
+  sizePolicy.setHeightForWidth(mHfdPanel->sizePolicy().hasHeightForWidth());
+  mHfdPanel->setSizePolicy(sizePolicy);
+  mHfdPanel->setSizeIncrement(QSize(0, 0));
+  mHfdPanel->replot();
+  gridLayout->addWidget(mHfdPanel, 0 /*row*/, 0 /*col*/, 1 /*row span*/, 1 /*col span*/);
+
+  mHfdDistPanel = new HfdDistPanel(this);
+  sizePolicy.setHeightForWidth(mHfdDistPanel->sizePolicy().hasHeightForWidth());
+  mHfdDistPanel->setSizePolicy(sizePolicy);
+  mHfdDistPanel->setSizeIncrement(QSize(0, 0));
+  mHfdDistPanel->replot();
+  gridLayout->addWidget(mHfdDistPanel, 0 /*row*/, 1 /*col*/, 1 /*row span*/, 1 /*col span*/);
+
+
+  mHorzFwhmPanel = new FwhmPanel(this);
+  sizePolicy.setHeightForWidth(mHorzFwhmPanel->sizePolicy().hasHeightForWidth());
+  mHorzFwhmPanel->setSizePolicy(sizePolicy);
+  mHorzFwhmPanel->setSizeIncrement(QSize(0, 0));
+  mHorzFwhmPanel->replot();
+  gridLayout->addWidget(mHorzFwhmPanel, 1, 0, 1, 1);
+
+  mVertFwhmPanel = new FwhmPanel(this);
+  sizePolicy.setHeightForWidth(mVertFwhmPanel->sizePolicy().hasHeightForWidth());
+  mVertFwhmPanel->setSizePolicy(sizePolicy);
+  mVertFwhmPanel->setSizeIncrement(QSize(0, 0));
+  mVertFwhmPanel->replot();
+  gridLayout->addWidget(mVertFwhmPanel, 1, 1, 1, 1);
+
+  // TODO: 4th: histogram?!?!
+
+
+  // Add VCurve widget
+  QSizePolicy vCurveSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  vCurveSizePolicy.setHorizontalStretch(1);
+  vCurveSizePolicy.setVerticalStretch(1);
+
+  mVCurvePanel = new VCurveViewerPanel(this);
+  vCurveSizePolicy.setHeightForWidth(mVCurvePanel->sizePolicy().hasHeightForWidth());
+  mVCurvePanel->setSizePolicy(vCurveSizePolicy);
+  mVCurvePanel->setSizeIncrement(QSize(0, 0));
+  gridLayoutMeasure->addWidget(mVCurvePanel, 0, 0, 1, 1);
+
+
+  // Signal/Slot stuff...
+  qRegisterMetaType<FocusFinderDataT>("FocusFinderDataT");
+
+  QObject::connect(this, SIGNAL(updateButtonStatesSig()), this, SLOT(updateButtonStatesSlot()) );
+  QObject::connect(this, SIGNAL(focusFinderUpdateSig(FocusFinderDataT)), this, SLOT(focusFinderUpdateSlot(FocusFinderDataT)) );
+
+  if (AstroFocuserAppT::getAutoConnect()) {
+    connectToIndiServer(true /* connect */);
+    mWantDeviceAutoConnectFirstTime = true;
+    cerr << "SET mWantDeviceAutoConnectFirstTime to: " << mWantDeviceAutoConnectFirstTime << endl;
+
+  }
+
+}
+
+FocusFinderPanelT::~FocusFinderPanelT() {
+  this->stopFocusFinderThread();
+
+  if (mHorzFwhmPanel) {
+    delete mHorzFwhmPanel;
+    mHorzFwhmPanel = 0;
+  }
+  if (mVertFwhmPanel) {
+    delete mVertFwhmPanel;
+    mVertFwhmPanel = 0;
+  }
+  if (mHfdPanel) {
+    delete mHfdPanel;
+    mHfdPanel = 0;
+  }
+  if (mHfdDistPanel) {
+    delete mHfdDistPanel;
+    mHfdDistPanel = 0;
+  }
+  if (mVCurvePanel) {
+    delete mVCurvePanel;
+    mVCurvePanel = 0;
+  }
+  if (mFocuserCntlPanel) {
+    delete mFocuserCntlPanel;
+    mFocuserCntlPanel = 0;
+  }
+  if (mFocuerCntlContainerWnd) {
+    delete mFocuerCntlContainerWnd;
+    mFocuerCntlContainerWnd = 0;
+  }
+}
+
+void FocusFinderPanelT::on_mBtnSelectStar_clicked() {
+  //cerr << "Select star..." << endl;
+  
+  if (mBtnSelectStar->isChecked()) {
+    mBtnSelectStar->setEnabled(false);
+
+    // Take a full picture
+    IndiCameraClientT cameraClient(mIndiClient, AstroFocuserAppT::getCameraName());
+    unsigned int maxW, maxH;
+    cameraClient.getMaxResolution(& maxW, & maxH);
+    cameraClient.takePicture(& mImg, 1 /*horz bin*/, 1 /*vert bin*/, 0 /*x*/, 0 /*y*/, maxW /*w*/, maxH /*h*/, FrameTypeT::LIGHT, 2 /*s*/, false /*no compr.*/);
+
+    // Show picture
+    // TODO: Subclass "FrameSelectionPanel..."
+    QDialog mainWindow;
+    QVBoxLayout mainLayout;
+    mainWindow.setGeometry(0,0, 1200, 800);
+    ImageViewerPanel imageViewerPanel(& mainWindow);
+    imageViewerPanel.setImage(mImg);
+
+    mainLayout.addWidget(& imageViewerPanel);
+    mainWindow.setLayout(& mainLayout);
+    mainWindow.exec();
+
+    // Get result
+    if (! imageViewerPanel.isRegionValid()) {
+      //cerr << "Ohoho, no valid region selected..." << endl;
+      mHfdPanel->clear();
+      mHorzFwhmPanel->clear();
+      mVertFwhmPanel->clear();
+      this->resetRegion();
+      emit updateButtonStatesSig();
+      return;
+    }
+
+    int x, y, w, h;
+    imageViewerPanel.getRegion(& x, & y, & w, & h);
+    imageViewerPanel.getCentroid(& mCenterX, & mCenterY);
+    //cerr << "Ok, valid region selected... x: " << x << ", y: " << y << ", w: " << w << ", h: " << h << ", centerX: " << mCenterX << ", centerY: " << mCenterY << endl;
+
+    HfdT hfd(mImg, FocusFinderT::sHfdOuterRadiusPx /*radius px*/, mCenterX, mCenterY, w);
+    mHfdPanel->setHfd(hfd);
+    mHfdPanel->replot();
+
+    FwhmT fwhmHorz(mImg, FwhmT::DirectionT::HORZ, mCenterX, mCenterY, w);
+    mHorzFwhmPanel->setFwhm(fwhmHorz);
+    mHorzFwhmPanel->replot();
+
+    FwhmT fwhmVert(mImg, FwhmT::DirectionT::VERT, mCenterX, mCenterY, h);
+    mVertFwhmPanel->setFwhm(fwhmVert);
+    mVertFwhmPanel->replot();
+  } else {
+    this->resetRegion();
+  }
+  emit updateButtonStatesSig();
+}
+
+void FocusFinderPanelT::on_mBtnFindFocus_clicked() {
+  mBtnFindFocus->setEnabled(false);
+
+  if (mFocusFinderRunning) {
+    if (mFocusFinderTask) {
+      mFocusFinderTask->stop();
+      mFocusFinderTask = 0; // Obj. will be deleted by deleteLater() handler
+    }
+  } else {
+    mVCurvePanel->setVCurve(0 /* no VCurve */, -1 /*initial focus pos*/, true /* auto update */);
+    mVCurvePanel->removeFocusBounds();
+
+    mFocusFinderRunning = true;
+
+    QThread * thread = new QThread();
+
+    mFocusFinderTask = new FocusFinderTaskT(mIndiClient, AstroFocuserAppT::getCameraName(), AstroFocuserAppT::getFocuserName(), mCenterX, mCenterY);
+    mFocusFinderTask->moveToThread(thread);
+    QObject::connect( thread, SIGNAL(started()), mFocusFinderTask, SLOT(findFocus()) );
+
+    // http://mayaposch.wordpress.com/2011/11/01/how-to-really-truly-use-qthreads-the-full-explanation/
+    QObject::connect( mFocusFinderTask, SIGNAL(focusFinderUpdateSig(FocusFinderDataT)), this, SLOT(focusFinderUpdateSlot(FocusFinderDataT)) );
+    QObject::connect( mFocusFinderTask, SIGNAL(workFinished(bool)), this, SLOT(focusFinderFinished(bool)) );
+    QObject::connect( mFocusFinderTask, SIGNAL(stopped(bool)), this, SLOT(focusFinderStopped(bool)) );
+    connect(mFocusFinderTask, SIGNAL(finished()), thread, SLOT(quit()));
+    connect(mFocusFinderTask, SIGNAL(finished()), mFocusFinderTask, SLOT(deleteLater()));
+    connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
+
+    thread->start();
+  }
+  emit updateButtonStatesSig();
+}
+
+void FocusFinderPanelT::connectToIndiServer(bool inConnect) {
+  static const int timeout = 10000;
+  mBtnConnectIndiServer->setEnabled(false); // Disable button
+  
+  if (inConnect) {
+    //Solution: Delete IndiClientT if server disconnected, create new IndiClientT whenever connection to server is desired!
+    if (mIndiClient) {
+      delete mIndiClient;
+      mIndiClient = 0;
+    }
+
+    if (! mIndiClient) {
+      cerr << "FocusFinderPanelT::connectToIndiServer... creating IndiClient - hostname: " << AstroFocuserAppT::getIndiHostname() << ", port: " <<AstroFocuserAppT::getIndiPort() << endl;
+
+      // TODO / FIXME: mIndiClient should probably not being held by this ui class since we want to access it via SWIG...?!
+      mIndiClient = new IndiClientTmplT(AstroFocuserAppT::getIndiHostname(), AstroFocuserAppT::getIndiPort());
+
+      mIndiClient->registerIndiServerConnectionStatusListener(boost::bind(& FocusFinderPanelT::indiServerConnectionStatusHandler, this, _1));
+      mIndiClient->registerNewDeviceListener(boost::bind(& FocusFinderPanelT::newDeviceListener, this, _1));
+      mIndiClient->registerNewPropListener(boost::bind(& FocusFinderPanelT::newPropListener, this, _1));
+      mIndiClient->registerDeviceConnectionStatusListener(boost::bind(& FocusFinderPanelT::deviceConnectionStatusListener, this, _1));
+      mIndiClient->registerNumberListener(boost::bind(& FocusFinderPanelT::numberVectorPropertyListener, this, _1));
+
+      // TODO: Do we only want this listener to be called in case of cvertain vector type?!?!?!
+      // IndiClientTmplT::SwitchVectorPropertyListenersT::ListenerT switchVectorPropertyListener = boost::bind(& FocusFinderPanelT::switchVectorPropertyListener, this, _1);
+      // mIndiClient->registerChangeListener(switchVectorPropertyListener);
+    }
+
+    QThread * thread = new QThread();
+    ConnectIndiServerTaskT * task = new ConnectIndiServerTaskT(mIndiClient, timeout /* 3 sec*/);
+      
+    task->moveToThread(thread);
+
+    QObject::connect( thread, SIGNAL(started()), task, SLOT(connectIndiServer()) );
+    QObject::connect( task, SIGNAL(workFinished()), this, SLOT(indiServerConnected()) );
+    QObject::connect( task, SIGNAL(timeOut()), this, SLOT(connectIndiServerTimeOut()) );
+    connect(task, SIGNAL(finished()), thread, SLOT(quit()));
+    connect(task, SIGNAL(finished()), task, SLOT(deleteLater()));
+    connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
+
+    thread->start();
+  } else {
+    // FIXME / TODO: Ask user if he / she wants to disconnect device or leave it "online" for others...
+    //mIndiClient->disconnectDevice(sDeviceName);
+    mIndiClient->disconnectServer();
+  }
+    emit updateButtonStatesSig();
+}
+
+void FocusFinderPanelT::connectToCamera(bool inConnect) {
+  static const int timeout = 10000;
+
+  if (! mIndiClient) {
+    emit updateButtonStatesSig();
+    return;
+  }
+    
+  mBtnConnectCamera->setEnabled(false); // Disable button
+
+  if (inConnect) {
+    if (AstroFocuserAppT::getCameraName().empty()) {
+      // Ok, no device selected, cancel
+      emit updateButtonStatesSig();
+      return;
+    }
+
+    QThread * thread = new QThread();
+    ConnectDeviceTaskTmplT<CameraTraitsT> * task = new ConnectDeviceTaskTmplT<CameraTraitsT>(mIndiClient, AstroFocuserAppT::getCameraName(), timeout /* 10 sec*/);
+      
+    task->moveToThread(thread);
+
+    QObject::connect( thread, SIGNAL(started()), task, SLOT(connectToDevice()) );
+    QObject::connect( task, SIGNAL(workFinished()), this, SLOT(cameraDeviceConnected()) );
+    QObject::connect( task, SIGNAL(timeOut()), this, SLOT(cameraDeviceTimeout()) );
+    connect(task, SIGNAL(finished()), thread, SLOT(quit()));
+    connect(task, SIGNAL(finished()), task, SLOT(deleteLater()));
+    connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
+
+    thread->start();
+  } else {
+    mIndiClient->disconnectDevice(AstroFocuserAppT::getCameraName());
+    emit updateButtonStatesSig();
+  }
+}
+
+void FocusFinderPanelT::connectToFocuser(bool inConnect) {
+  static const int timeout = 10000;
+    
+  if (! mIndiClient) {
+    emit updateButtonStatesSig();
+    return;
+  }
+
+  mBtnConnectFocuser->setEnabled(false); // Disable button
+
+  if (inConnect) {
+    if (AstroFocuserAppT::getFocuserName().empty()) {
+      // Ok, no device selected, cancel
+      emit updateButtonStatesSig();
+      return;
+    }
+
+    QThread * thread = new QThread();
+    ConnectDeviceTaskTmplT<FocuserTraitsT> * task = new ConnectDeviceTaskTmplT<FocuserTraitsT>(mIndiClient, AstroFocuserAppT::getFocuserName(), timeout /* 10 sec*/);
+      
+    task->moveToThread(thread);
+
+    QObject::connect( thread, SIGNAL(started()), task, SLOT(connectToDevice()) );
+    QObject::connect( task, SIGNAL(workFinished()), this, SLOT(focuserDeviceConnected()) );
+    QObject::connect( task, SIGNAL(timeOut()), this, SLOT(focuserDeviceTimeout()) );
+    connect(task, SIGNAL(finished()), thread, SLOT(quit()));
+    connect(task, SIGNAL(finished()), task, SLOT(deleteLater()));
+    connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
+
+    thread->start();
+  } else {
+    mIndiClient->disconnectDevice(AstroFocuserAppT::getFocuserName());
+    emit updateButtonStatesSig();
+  }
+}
+
+string FocusFinderPanelT::displaySelectDeviceDlg() const {
+  // Display device selection dialog
+  QDialog deviceSelectorDialog;
+  QVBoxLayout mainLayout;
+  deviceSelectorDialog.setGeometry(0,0, 300, 145);
+  DeviceSelectorPanel deviceSelectorPanel(& deviceSelectorDialog);
+  deviceSelectorPanel.setIndiClient(mIndiClient);
+    
+  mainLayout.addWidget(& deviceSelectorPanel);
+  deviceSelectorDialog.setLayout(& mainLayout);
+  deviceSelectorDialog.exec();
+    
+  return deviceSelectorPanel.getSelectedDevice();
+}
+
+void FocusFinderPanelT::focusFinderUpdateSlot(FocusFinderDataT inFocusFinderData) {
+  // If measured, update
+  if (inFocusFinderData.mFwhmHorz.valid()) {
+    mHorzFwhmPanel->clear();
+    mHorzFwhmPanel->setFwhm(inFocusFinderData.mFwhmHorz);
+    mHorzFwhmPanel->replot();
+  }
+  
+  if (inFocusFinderData.mFwhmVert.valid()) {
+    mVertFwhmPanel->clear();
+    mVertFwhmPanel->setFwhm(inFocusFinderData.mFwhmVert);
+    mVertFwhmPanel->replot();
+  }
+
+  if (inFocusFinderData.mHfd.valid()) {
+    mHfdPanel->clear();
+    mHfdPanel->setHfd(inFocusFinderData.mHfd);
+    mHfdPanel->replot();
+    
+    mHfdDistPanel->clear();
+    mHfdDistPanel->setHfd(inFocusFinderData.mHfd);
+    mHfdDistPanel->replot();
+  }
+
+  // Also upfate VCurve... we may use other values instead or plot FWHMs and HFDs
+  if (inFocusFinderData.mAbsMinFocusPos >= 0)
+    mVCurvePanel->setFocusMinBound(inFocusFinderData.mAbsMinFocusPos);
+
+  if (inFocusFinderData.mAbsMaxFocusPos >= 0)
+    mVCurvePanel->setFocusMaxBound(inFocusFinderData.mAbsMaxFocusPos);
+
+  mVCurvePanel->setVCurve(& inFocusFinderData.mVCurve, inFocusFinderData.mAbsFocusPosition, true /* auto update */); // TODO: separate function setFocusPos() instead?
+
+  // Update status text...
+  mLblStatus->setText(QString::fromUtf8(inFocusFinderData.mStatusText.c_str()));
+}
+
+void FocusFinderPanelT::updateButtonStates() {
+  bool isServerConnected = (mIndiClient ? mIndiClient->isServerConnected() : false);
+  bool isCameraConnected = (mIndiClient ? (! AstroFocuserAppT::getCameraName().empty() ? mIndiClient->isDeviceConnected(AstroFocuserAppT::getCameraName()) : false) : false);
+  bool isFocuserConnected = (mIndiClient ? (! AstroFocuserAppT::getFocuserName().empty() ? mIndiClient->isDeviceConnected(AstroFocuserAppT::getFocuserName()) : false) : false);
+  bool isRegionSelected = this->isRegionValid();
+  bool foundFocus = mFoundFocus;
+  //cerr << "isServerConnected: " << isServerConnected << ", isCameraConnected: " << isCameraConnected << ", isFocuserConnected: " << isFocuserConnected << ", isRegionSelected: " << isRegionSelected << ", mFocusProcessRunning: " << mFocusProcessRunning << endl;
+
+  if (! isServerConnected) {
+    if (mFocusFinderTask) {
+      if (mFocusFinderRunning) {
+	mFocusFinderTask->stop();
+	mFocusFinderRunning = false;
+      }
+      mFocusFinderTask = 0;
+    }
+
+    mBtnConnectIndiServer->setChecked(false);
+    mBtnConnectIndiServer->setEnabled(true);
+
+    mBtnConnectCamera->setChecked(false);
+    mBtnConnectCamera->setEnabled(false);
+
+    mBtnConnectFocuser->setChecked(false);
+    mBtnConnectFocuser->setEnabled(false);
+
+    mBtnSelectStar->setChecked(false);
+    mBtnSelectStar->setEnabled(false);
+      
+    mBtnFindFocus->setEnabled(false);
+
+    QIcon icon;
+    icon.addFile(QString::fromUtf8(":/res/find_focus.ico"), QSize());
+    mBtnFindFocus->setIcon(icon);
+    mBtnFindFocus->setIconSize(QSize(32, 32));
+
+    if (mFocuserCntlPanel) {
+      delete mFocuserCntlPanel;
+      mFocuserCntlPanel = 0;
+    }
+    if (mFocuerCntlContainerWnd) {
+      delete mFocuerCntlContainerWnd;
+      mFocuerCntlContainerWnd = 0;
+    }
+
+  } else {
+    mBtnConnectIndiServer->setChecked(true);
+    mBtnConnectIndiServer->setEnabled(true);
+
+    mBtnConnectCamera->setChecked(isCameraConnected);
+    mBtnConnectCamera->setEnabled(true);
+
+    mBtnConnectFocuser->setChecked(isFocuserConnected);
+    mBtnConnectFocuser->setEnabled(true);	
+
+    if (isFocuserConnected) {
+      // TODO / FIXME: We need a concept - how should we handle different independent "windows"? Who / what should own them? Should we use QDockWindow as container?....
+      // Focus Cntl Panel
+      // TODO: Check if mFocuserCntlPanel already set --> otherwise, memory leak!
+      if (! mFocuerCntlContainerWnd)
+	mFocuerCntlContainerWnd = new QMainWindow(this);
+      
+      if (! mFocuserCntlPanel) {
+	mFocuserCntlPanel = new FocuserCntlPanel(mFocuerCntlContainerWnd);
+	mFocuserCntlPanel->setIndiClient(mIndiClient, AstroFocuserAppT::getFocuserName());
+	mFocuerCntlContainerWnd->setGeometry(0, 0, 300, 300);
+	mFocuerCntlContainerWnd->show();
+
+	fitWindow(*mFocuerCntlContainerWnd, mFocuserCntlPanel); // Add the focuser panel
+	mFocuserCntlPanel->setVisible(true);
+	cerr << "SHOW mFocuserCntlPanel..." << endl;
+      }
+
+    } else {
+      if (mFocuserCntlPanel) {
+	delete mFocuserCntlPanel;
+	mFocuserCntlPanel = 0;
+      }
+      if (mFocuerCntlContainerWnd) {
+	delete mFocuerCntlContainerWnd;
+	mFocuerCntlContainerWnd = 0;
+      }
+    }
+
+    mBtnSelectStar->setChecked(isCameraConnected && isRegionSelected);
+    mBtnSelectStar->setEnabled(isCameraConnected);
+      
+    if (mFocusFinderTask && ! (isCameraConnected && isFocuserConnected && isRegionSelected)) {
+      if (mFocusFinderRunning)
+	mFocusFinderTask->stop();
+      mFocusFinderTask = 0;
+    }
+
+    // Disable focus cntl movement buttons while focus finder is running, enable if not running.
+    if (mFocuserCntlPanel)
+      mFocuserCntlPanel->setCntlEnabled(! mFocusFinderRunning);
+
+    QIcon icon;
+    if (mFocusFinderRunning) {
+      icon.addFile(QString::fromUtf8(":/res/find_focus_stop.ico"), QSize());
+      mBtnFindFocus->setEnabled(isCameraConnected && isFocuserConnected && isRegionSelected); //  && mFocusFinderTask
+    } else {
+      // Ok, found focus?!
+      if (foundFocus) {
+	cerr << "OK, FOUND FOCUS!!!" << endl;
+	icon.addFile(QString::fromUtf8(":/res/find_focus_success.ico"), QSize());
+      } else {
+	icon.addFile(QString::fromUtf8(":/res/find_focus.ico"), QSize());
+      }
+      mBtnFindFocus->setEnabled(isCameraConnected && isFocuserConnected && isRegionSelected);
+    }
+    mBtnFindFocus->setIcon(icon);
+    mBtnFindFocus->setIconSize(QSize(32, 32));
+  }
+}

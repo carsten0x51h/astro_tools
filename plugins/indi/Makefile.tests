@@ -1,0 +1,35 @@
+#TODO: Move to normal Makefile...
+BUILD_PATH=../../build
+VPATH = ../../:.:tests
+
+LOAD_INDI_MODULES = /usr/bin/indi_simulator_ccd /usr/bin/indi_simulator_focus /usr/bin/indi_simulator_wheel /usr/bin/indi_moonlite_focus
+
+CXX = g++
+CXXFLAGS = -O0 -g -std=c++11 -DBOOST_LOG_DYN_LINK
+INCPATH = -I tests/.. -I../../ -I. -I/usr/include/libindi
+
+SOURCE = ../../io_util.C indi_utils.C indi_client.C indi_device.C indi_client_manager.C indi_device_manager.C indi_camera.C indi_focuser.C tests/boost_test_common.C tests/utils_test.C tests/indi_client_test.C tests/indi_device_test.C tests/indi_client_manager_test.C tests/indi_camera_test.C tests/indi_focuser_test.C tests/indi_device_manager_test.C tests/boost_logging_test.C
+
+
+LIBS = -lboost_unit_test_framework -lpthread -lindiclient -lindi -lz -lboost_serialization -lboost_thread -lboost_system -lboost_log -lboost_log_setup -L/usr/lib/x86_64-linux-gnu -lCCfits -lX11
+
+OBJECTS = $(patsubst %.C,%.o,$(SOURCE))
+
+
+.SUFFIXES: .o .C
+
+.C.o:
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o "$@" "$<"
+
+run_test_suites: link_unit_tests
+	-kill -9 `cat indiserver.pid`
+	rm -rf indiserver.pid
+	indiserver $(LOAD_INDI_MODULES) & echo "$$!" > "indiserver.pid"
+	./$(BUILD_PATH)/test_suites
+	kill -9 `cat indiserver.pid`
+
+link_unit_tests: $(OBJECTS)
+	g++  -o $(BUILD_PATH)/test_suites  $(OBJECTS) $(LIBS)
+
+clean:
+	rm -rf *.o indi/*.o tests/*.o

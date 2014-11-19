@@ -1,0 +1,142 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#include <Qt/QtGui>
+#include <vector>
+#include <algorithm>
+#include <sstream>
+
+#include "fwhm_panel.hpp"
+
+FwhmPanel::FwhmPanel(QWidget *parent) : QWidget(parent) {
+  setupUi(this);
+
+  // Grid
+  mGrid = new QwtPlotGrid();
+  mGrid->enableXMin(true);
+  mGrid->enableYMin(true);
+  mGrid->setMajPen(QPen(Qt::black, 0, Qt::DotLine));
+  mGrid->setMinPen(QPen(Qt::gray, 0 , Qt::DotLine));
+  mGrid->attach(mFwhmQwtPlot);
+
+  // Fwhm gauss curve
+  mFwhmGaussCurvePlot = new QwtPlotCurve("FwhmGaussCurve");
+
+  QPen pen;
+  pen.setColor(QColor(0,255,0));
+  pen.setWidth(1);
+  mFwhmGaussCurvePlot->setPen(pen);
+  mFwhmGaussCurvePlot->attach(mFwhmQwtPlot);
+  mFwhmGaussCurvePlot->setStyle(QwtPlotCurve::Lines);
+
+  // Fitting data dots
+  mFwhmFitDataDotsCurvePlot  = new QwtPlotCurve("FwhmFitDataDots");
+
+  QPen fitDataDotsPen;
+  fitDataDotsPen.setColor(QColor(0,255,0));
+  fitDataDotsPen.setWidth(3);
+  mFwhmFitDataDotsCurvePlot->setPen(fitDataDotsPen);
+  mFwhmFitDataDotsCurvePlot->attach(mFwhmQwtPlot);
+  mFwhmFitDataDotsCurvePlot->setStyle(QwtPlotCurve::Dots);
+
+  // Data dots (img)
+  mFwhmDataDotsCurvePlot = new QwtPlotCurve("FwhmDataDots");
+
+  QPen dataDotsPen;
+  dataDotsPen.setColor(QColor(255,0,0));
+  dataDotsPen.setWidth(3);
+  mFwhmDataDotsCurvePlot->setPen(dataDotsPen);
+  mFwhmDataDotsCurvePlot->attach(mFwhmQwtPlot);
+  mFwhmDataDotsCurvePlot->setStyle(QwtPlotCurve::Dots);
+}
+
+FwhmPanel::~FwhmPanel() {
+}
+
+// void FwhmPanel::drawDataPoints(CImg<unsigned char> * rgbImg, const vector<float> & vec, unsigned int radius, unsigned char * color) {
+//   size_t x = 0;
+//   for(vector<float>::const_iterator it = vec.begin(); it != vec.end(); ++it, ++x) {
+//     float maxElem = 1.2 * (*max_element(vec.begin(), vec.end()));
+//     float xImg = (float) imgLabel->width() * (float) x / (float) vec.size();
+//     float yImg = (float) imgLabel->height() * (1.0 - ((*it) / (float) maxElem));
+//     rgbImg->draw_circle(xImg, yImg, radius /*radius*/, color, 1 /*opacity*/, 0 /*pattern*/);
+//   }
+// }
+
+void FwhmPanel::clear() {
+  // const float minPanelLength = std::min(imgLabel->width(), imgLabel->height());
+  // QImage imgQt(minPanelLength, minPanelLength, QImage::Format_ARGB32);
+  // imgQt.fill(QColor(0,0,0));
+  // imgLabel->setGeometry(0, 0, imgQt.width(), imgQt.height());
+  // imgLabel->setPixmap(QPixmap::fromImage(imgQt));
+  mFwhmLbl->setText(QString::fromUtf8("<unknown>"));
+}
+
+void FwhmPanel::replot() {
+  mFwhmFitData.clear();
+  mFwhmData.clear();
+
+  const vector<float> & fitVec = mFwhm.getFitValues();
+  const vector<float> & imgVec = mFwhm.getImgValues();
+
+  mFwhmQwtPlot->setAxisScale(QwtPlot::yLeft, 0 /* min sum */, 1 /* norm to 1 always */);
+  mFwhmQwtPlot->setAxisScale(QwtPlot::xBottom, 0, fitVec.size());
+
+  // Gauss function
+  if (fitVec.size()) {
+    float maxElem = *max_element(fitVec.begin(), fitVec.end());
+    float x = 0;
+    for (vector<float>::const_iterator it = fitVec.begin(); it != fitVec.end(); ++it, ++x) {
+      float y =  mFwhm.calcGaussianValue(x) / (float) maxElem;
+      mFwhmFitData.push_back(QwtDoublePoint(x, y));
+    }
+  }
+  mFwhmGaussCurvePlot->setData(mFwhmFitData);
+  mFwhmFitDataDotsCurvePlot->setData(mFwhmFitData);
+
+  // Img data dots
+  if (imgVec.size()) {
+    float maxElem = *max_element(imgVec.begin(), imgVec.end());
+    float x = 0;
+    for (vector<float>::const_iterator it = imgVec.begin(); it != imgVec.end(); ++it, ++x) {
+      float y =  *it / (float) maxElem;
+      mFwhmData.push_back(QwtDoublePoint(x, y));
+    }
+  }
+  mFwhmDataDotsCurvePlot->setData(mFwhmData);
+
+
+
+  mFwhmQwtPlot->replot();
+
+
+
+  //drawDataPoints(& rgbImg, imgVec, 2, mImgPointColor);
+  //drawDataPoints(& rgbImg, fitVec, 2, mFitPointColor);
+
+
+  // Set value
+  stringstream ss;
+  double fwhmArcsec = FwhmT::pxToArcsec(mFwhm.getValue(), 1000.0 /* F mm*/, 5.4 /*pixelSize um*/, /*binningXY*/ 1); // TODO: Pass argument somehow...
+  ss << fwhmArcsec << " \""; // TODO: Maybe use a QT Number format / QString method...
+  mFwhmLbl->setText(QString::fromUtf8(ss.str().c_str()));
+}

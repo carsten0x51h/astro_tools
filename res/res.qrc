@@ -1,0 +1,22 @@
+<RCC>
+  <qresource prefix="res">
+    <file>find_focus_success.ico</file>
+    <file>device.jpeg</file>
+    <file>connect_focuser_wait.ico</file>
+    <file>connect_camera_wait.ico</file>
+    <file>connect_indi_server_connected.ico</file>
+    <file>connect_indi_server.ico</file>
+    <file>find_focus_stop.ico</file>
+    <file>find_focus.ico</file>
+    <file>select_star.ico</file>
+    <file>connect_focuser_success.ico</file>
+    <file>select_star_wait.ico</file>
+    <file>select_star_success.ico</file>
+    <file>connect_camera_success.ico</file>
+    <file>find_focus.ico</file>
+    <file>connect_indi_server_wait.ico</file>
+    <file>connect_focuser.ico</file>
+    <file>connect_camera.ico</file>
+    <file>scope.JPG</file>
+  </qresource>
+</RCC>

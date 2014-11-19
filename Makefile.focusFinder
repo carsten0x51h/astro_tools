@@ -1,0 +1,93 @@
+VPATH=.:ui:ui/gen
+BASE_DIR = .
+BUILD_DIR = $(BASE_DIR)/build
+CXX = g++
+CXXFLAGS = -std=c++11 -g -O0
+INCPATH = -I/usr/share/qt4/mkspecs/linux-g++ -I. -I/usr/include/qt4/Qt -I/usr/include/qt4/QtCore -I/usr/include/qt4/QtGui -I/usr/include/qt4 -Iui -Iui/gen -I/usr/include/qwt-qt4 -I/home/schmica/Apps/boost_1_51_0 -I/usr/include/libindi -I/usr/include/python2.7
+#-std=c++0x
+LFLAGS  = -lgsl -lgslcblas -lm -lX11 -lpthread -lCCfits -lqwt-qt4 -L/usr/lib/i386-linux-gnu -lQtGui -lQtCore -lpython2.7 -rdynamic
+
+UI_HEADER = $(patsubst ui/%.hpp,ui_%.hpp,$(wildcard ui/*.hpp))
+UI_MOCS = $(patsubst ui/%.hpp,moc_%.C,$(wildcard ui/*.hpp))
+UI_SOURCE = $(wildcard ui/*.C) $(wildcard ui/gen/*.C)
+
+ui_%.hpp: %.ui
+	uic-qt4 $< -o ui/gen/$(@F)
+
+moc_%.C: %.hpp
+	moc-qt4 $< -o ui/gen/$(@F)
+
+ui: $(UI_HEADER) $(UI_MOCS) focus_finder_gui
+
+
+.SUFFIXES: .o .C
+
+.C.o:
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o "$@" "$<"
+
+#
+# QConsole
+#
+qconsole_widget:
+	moc-qt4 qconsole/qconsole.hpp -o qconsole/gen/moc_qconsole.C
+
+#
+# Focus finder
+#
+FOCUS_FINDER_FILES = fwhm.C fitgsl.C ui/fwhm_panel.C ui/hfd_panel.C ui/gen/moc_hfd_panel.C ui/hfd_dist_panel.C ui/gen/moc_hfd_dist_panel.C ui/focus_finder_panel.C ui/gen/moc_focus_finder_panel.C ui/device_selector_panel.C ui/gen/moc_device_selector_panel.C qt_util.C io_util.C focus_finder_gui.C  ui/image_viewer_panel.C ui/gen/moc_image_viewer_panel.C ui/vcurve_viewer_panel.C ui/gen/moc_vcurve_viewer_panel.C ui/gen/focus_finder_gui_qrc.C ui/focuser_cntl_panel.C ui/gen/moc_focuser_cntl_panel.C focus_finder.C ui/gen/moc_fwhm_panel.C ui/gen/moc_about_dialog.C ui/indi_server_selector_panel.C ui/gen/moc_indi_server_selector_panel.C astro_tools_app.C ui/gen/moc_main_window.C ui/script_editor_panel.C ui/gen/moc_script_editor_panel.C qconsole/qconsole.C qconsole/qpyconsole.C qconsole/gen/moc_qconsole.C
+
+FOCUS_FINDER_OBJECTS=$(patsubst %.C,%.o,$(FOCUS_FINDER_FILES))
+.SUFFIXES: .o .C
+
+focus_finder_res:
+	rcc res/res.qrc -o ui/gen/focus_finder_gui_qrc.C
+
+focus_finder_gui: qconsole_widget focus_finder_res $(FOCUS_FINDER_OBJECTS)
+	$(CXX) $(FOCUS_FINDER_OBJECTS) -o $(BUILD_DIR)/astro_tools $(LFLAGS) -lindiclient -lindi -lz -ldl -L/home/schmica/Apps/boost_1_51_0/stage/lib -lboost_program_options
+
+clean:
+	rm -rf *.o ui/*.o ui/gen/* qconsole/*.o $(BUILD_DIR)/*
+
+
+#
+# Run INDI server
+#
+run_server_sim:
+	/usr/bin/indiserver -vv /usr/bin/indi_simulator_focus /usr/bin/indi_simulator_ccd
+
+run_server_real:
+	sudo /usr/bin/indiserver -vv -m 200 /usr/bin/indi_moonlite_focus /home/devnull/workspace/atik_ccd_src/src/indi_atik_ccd
+
+
+#
+# Run focus finder
+#
+run_focus_finder_sim:
+	LD_LIBRARY_PATH=/home/schmica/Apps/boost_1_51_0/stage/lib build/focus_finder_gui --autoconnect --camera "CCD Simulator" --focuser "Focuser Simulator"
+
+run_focus_finder_sim_dbg:
+	LD_LIBRARY_PATH=/home/schmica/Apps/boost_1_51_0/stage/lib gdb -ex=r --args ./build/focus_finder_gui --autoconnect --camera "CCD Simulator" --focuser "Focuser Simulator"
+
+
+run_focus_finder:
+	LD_LIBRARY_PATH=/home/schmica/Apps/boost_1_51_0/stage/lib build/focus_finder_gui --autoconnect --camera "ATIK CCD Atik 383L+" --focuser "MoonLite"
+
+run_focus_finder_dbg:
+	LD_LIBRARY_PATH=/home/schmica/Apps/boost_1_51_0/stage/lib gdb -ex=r --args ./build/focus_finder_gui --autoconnect --camera "ATIK CCD Atik 383L+" --focuser "MoonLite"
+
+
+#
+# swig
+# -lindimain -lindidriver -lindi
+#	
+py_if:
+	swig -c++ -python -module libastrotoolspythonwrap astrotools.i
+	g++ -c -fPIC -I/usr/include/python2.7 -I/usr/include/libindi -I . astrotools_wrap.cxx
+	g++ astrotools_wrap.o -shared -o _libastrotoolspythonwrap.so
+
+#Import module: import _libastrotoolspythonwrap
+py:
+	python2.7
+
+#py_test:
+#	g++ -rdynamic -I/usr/include/python2.7 io_util.C python_test.C /usr/lib/libindiclient.a -lindi -lz -lpthread -lindiclient -lpython2.7 -lCCfits -lX11

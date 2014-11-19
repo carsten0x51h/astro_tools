@@ -1,0 +1,59 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#ifndef _HFD_PANEL_HPP_
+#define _HFD_PANEL_HPP_
+
+#include <Qt/qfiledialog.h>
+
+#include "ui_hfd_panel.hpp"
+#include "qevent.h"
+
+#include <iostream>
+#include <CImg.h>
+#include "../at_hfd.hpp"
+
+
+using namespace std;
+using namespace cimg_library;
+
+class HfdPanel : public QWidget, private Ui_HfdPanel {
+private:
+  Q_OBJECT
+  HfdT mHfd;
+  unsigned char mCrossColor[3];
+  unsigned char mInnerRingColor[3];
+  unsigned char mOuterRingColor[3];
+
+public:
+  HfdPanel(QWidget *parent = 0);
+  ~HfdPanel();
+  inline void setHfd(const HfdT & hfd) { mHfd = hfd; } // Make a copy
+  inline const HfdT & getHfd() const { return mHfd; }
+  inline void setCentroidColor(unsigned char * inColor) { memcpy(mCrossColor, inColor, 3); }
+  inline void setInnerRingColor(unsigned char * inColor) { memcpy(mInnerRingColor, inColor, 3); }
+  inline void setOuterRingColor(unsigned char * inColor) { memcpy(mOuterRingColor, inColor, 3); }
+  void clear();
+  void replot();
+};
+
+#endif // _HFD_PANEL_HPP_

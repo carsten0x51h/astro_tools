@@ -1,0 +1,42 @@
+VPATH=.:ui:ui/gen
+BUILD_DIR=$(BASE_DIR)/../build
+
+UI_HEADER=$(patsubst ui/%.hpp,ui_%.hpp,$(wildcard ui/*.hpp))
+UI_MOCS=$(patsubst ui/%.hpp,moc_%.C,$(wildcard ui/*.hpp))
+
+UI_SOURCE=$(wildcard ui/*.C) $(wildcard ui/gen/*.C)
+APP_SOURCE=$(wildcard *.C)
+
+DEFINES       = -DQT_WEBKIT -DQT_NO_DEBUG -DQT_GUI_LIB -DQT_CORE_LIB -DQT_SHARED
+CXX           = g++
+CXXFLAGS     = -pipe -O0 -g -Wall -W -D_REENTRANT $(DEFINES) -std=c++0x
+#CXXFLAGS      = -pipe -O4 -Wall -W -D_REENTRANT $(DEFINES) -std=c++0x
+LINK          = g++
+LFLAGS        = -Wl,-O1 $(LFLAGS_ADD)
+INCPATH       = -I/usr/share/qt4/mkspecs/linux-g++ -I. -I/usr/include/qt4/Qt -I/usr/include/qt4/QtCore -I/usr/include/qt4/QtGui -I/usr/include/qt4 -Iui -Iui/gen -I/usr/include/qwt-qt4 -I/home/schmica/Apps/boost_1_51_0 -I$(BASE_DIR)/widgets -I$(BASE_DIR) -I$(BASE_DIR)/core $(INCPATH_ADD)
+LIBS           = -L$(BUILD_DIR) $(LIBS_ADD)
+
+SOURCES=$(UI_SOURCE) $(APP_SOURCE)
+OBJECTS=$(patsubst %.C,%.o,$(SOURCES))
+
+ui_%.hpp: %.ui
+	uic-qt4 $< -o ui/gen/$(@F)
+
+moc_%.C: %.hpp
+	moc-qt4 $< -o ui/gen/$(@F)
+
+.SUFFIXES: .o .C
+
+.C.o:
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o "$@" "$<"
+
+all:
+	make ui && make link
+
+ui: $(UI_HEADER) $(UI_MOCS)
+
+link: $(OBJECTS)
+	$(LINK) -o $(BUILD_DIR)/$(TARGET) $(LFLAGS) $(OBJECTS) $(LIBS)
+
+clean:
+	rm -rf *.o ui/*.o ui/gen/* $(BUILD_DIR)/$(TARGET)

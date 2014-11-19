@@ -1,0 +1,146 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#include <Qt/QtGui>
+#include "hfd_dist_panel.hpp"
+#include <sstream>
+
+HfdDistPanel::HfdDistPanel(QWidget *parent) : QWidget(parent) {
+  setupUi(this);
+
+  // Grid
+  mGrid = new QwtPlotGrid();
+  mGrid->enableXMin(true);
+  mGrid->enableYMin(true);
+  mGrid->setMajPen(QPen(Qt::black, 0, Qt::DotLine));
+  mGrid->setMinPen(QPen(Qt::gray, 0 , Qt::DotLine));
+  mGrid->attach(mHfdDistQwtPlot);
+
+  // Hfd dist curve
+  mHfdDistCurvePlot = new QwtPlotCurve("HfdDist");
+
+  QPen pen;
+  pen.setColor(QColor(255,0,0));
+  pen.setWidth(2);
+  mHfdDistCurvePlot->setPen(pen);
+  mHfdDistCurvePlot->attach(mHfdDistQwtPlot);
+  mHfdDistCurvePlot->setStyle(QwtPlotCurve::Lines);
+
+  // Hfd dist dot curve
+  mHfdDistDotsCurvePlot = new QwtPlotCurve("HfdDistDots");
+
+  QPen dotPen;
+  dotPen.setColor(QColor(0,0,255));
+  dotPen.setWidth(5);
+  mHfdDistDotsCurvePlot->setPen(dotPen);
+  mHfdDistDotsCurvePlot->attach(mHfdDistQwtPlot);
+  mHfdDistDotsCurvePlot->setStyle(QwtPlotCurve::Dots);
+
+  // Half flux line
+  mHfdHalfFluxLinePlot = new QwtPlotCurve("HfdHalfFluxLine");
+
+  QPen halfFluxLinePen;
+  halfFluxLinePen.setColor(QColor(255,255,0));
+  halfFluxLinePen.setWidth(1);
+  mHfdHalfFluxLinePlot->setPen(halfFluxLinePen);
+  mHfdHalfFluxLinePlot->attach(mHfdDistQwtPlot);
+  mHfdHalfFluxLinePlot->setStyle(QwtPlotCurve::Lines);
+
+  // Half flux radius line
+  mHfdHalfFluxRadiusLinePlot = new QwtPlotCurve("HfdHalfFluxRadiusLine");
+
+  QPen halfFluxRadiusLinePen;
+  halfFluxRadiusLinePen.setColor(QColor(255,255,0));
+  halfFluxRadiusLinePen.setWidth(1);
+  mHfdHalfFluxRadiusLinePlot->setPen(halfFluxRadiusLinePen);
+  mHfdHalfFluxRadiusLinePlot->attach(mHfdDistQwtPlot);
+  mHfdHalfFluxRadiusLinePlot->setStyle(QwtPlotCurve::Lines);
+}
+
+HfdDistPanel::~HfdDistPanel() {
+  if (mHfdDistCurvePlot) {
+    delete mHfdDistCurvePlot;
+    mHfdDistCurvePlot = 0;
+  }
+
+  if (mHfdDistDotsCurvePlot) {
+    delete mHfdDistDotsCurvePlot;
+    mHfdDistDotsCurvePlot = 0;
+  }
+  
+  if (mHfdHalfFluxLinePlot) {
+    delete mHfdHalfFluxLinePlot;
+    mHfdHalfFluxLinePlot = 0;
+  }
+
+  if (mHfdHalfFluxRadiusLinePlot) {
+    delete mHfdHalfFluxRadiusLinePlot;
+    mHfdHalfFluxRadiusLinePlot = 0;
+  }
+}
+
+void HfdDistPanel::clear() {
+  // TODO...
+  // mHfdDistData.clear();
+  // mHfdDistQwtPlot->clear();
+  // mHfdDistQwtPlot->replot();
+  mLbl->setText(QString::fromUtf8("<unknown>"));
+}
+
+void HfdDistPanel::replot() {
+  const map<size_t, double> & hfdDist = mHfd.getHfdDist();
+  mHfdDistData.clear();
+
+  if (hfdDist.size()) {
+    size_t maxRadius = hfdDist.rbegin()->first;
+    double maxSum = hfdDist.rbegin()->second;
+
+    mHfdDistQwtPlot->setAxisScale(QwtPlot::yLeft, 0 /* min sum */, 1 /* norm flux to 1 always */);
+    mHfdDistQwtPlot->setAxisScale(QwtPlot::xBottom, 0 /* min radius */, maxRadius);
+
+    mHfdDistData.push_back(QwtDoublePoint(0, 0));
+    for (map<size_t, double>::const_iterator distIt = hfdDist.begin(); distIt != hfdDist.end(); ++distIt) {
+      mHfdDistData.push_back( QwtDoublePoint(distIt->first, distIt->second / (float) maxSum) );
+    }
+    mHfdDistCurvePlot->setData(mHfdDistData);
+    mHfdDistDotsCurvePlot->setData(mHfdDistData);
+    
+    // Draw half flux line
+    mHfdHalfFluxLineData.clear();
+    mHfdHalfFluxLineData.push_back(QwtDoublePoint(0.0, 0.5 /* half flux (normalized) */));
+    mHfdHalfFluxLineData.push_back(QwtDoublePoint(maxRadius, 0.5 /* half flux (normalized) */));
+    mHfdHalfFluxLinePlot->setData(mHfdHalfFluxLineData);
+
+    // Draw half flux radius line
+    mHfdHalfFluxRadiusLineData.clear();
+    mHfdHalfFluxRadiusLineData.push_back(QwtDoublePoint(mHfd.getHalfFluxRadiusLinInterp(), 0.0));
+    mHfdHalfFluxRadiusLineData.push_back(QwtDoublePoint(mHfd.getHalfFluxRadiusLinInterp(), 1.0));
+    mHfdHalfFluxRadiusLinePlot->setData(mHfdHalfFluxRadiusLineData);
+  }
+
+  mHfdDistQwtPlot->replot();
+
+  // Set value - TODO...
+  stringstream ss;
+  ss << " px";
+  mLbl->setText(QString::fromUtf8(ss.str().c_str()));
+}

@@ -1,0 +1,90 @@
+VPATH=.:ui:ui/gen
+BASE_DIR = .
+BUILD_DIR = $(BASE_DIR)/build
+CXX = g++
+CXXFLAGS = -std=c++11 -g -O0 -DBOOST_LOG_DYN_LINK
+
+INCPATH_COMMON = -I/usr/include/libindi -I/usr/include/python2.7
+INCPATH_GUI = -I/usr/share/qt4/mkspecs/linux-g++ -I. -I/usr/include/qt4 -I/usr/include/qt4/Qt -I/usr/include/qt4/QtCore -I/usr/include/qt4/QtGui -Iui -Iui/gen -I/usr/include/qwt-qt4
+INCPATH_ALL = $(INCPATH_COMMON) $(INCPATH_GUI)
+
+LFLAGS_COMMON  = -lgsl -lgslcblas -lm -lpthread -lCCfits -lX11 -L/usr/lib/i386-linux-gnu -lpython2.7 -rdynamic
+LFLAGS_CONSOLE = $(LFLAGS_COMMON)
+LFLAGS_GUI = $(LFLAGS_COMMON) -lqwt-qt4 -lQtGui -lQtCore
+
+.C.o:
+	$(CXX) -c $(CXXFLAGS) $(INCPATH_ALL) -o "$@" "$<"
+
+#
+# Qt stuff
+#
+UI_HEADER = $(patsubst ui/%.hpp,ui_%.hpp,$(wildcard ui/*.hpp))
+UI_MOCS = $(patsubst ui/%.hpp,ui/gen/moc_%.C,$(wildcard ui/*.hpp))
+UI_SOURCE = $(wildcard ui/*.C) $(wildcard ui/gen/*.C)
+
+ui_%.hpp: %.ui
+	uic-qt4 $< -o ui/gen/$(@F)
+
+ui/gen/moc_%.C: %.hpp
+	moc-qt4 $< -o ui/gen/$(@F)
+	$(CXX) -c $(CXXFLAGS) $(INCPATH_ALL) -o $(patsubst ui/gen/%.C,ui/gen/%.o,ui/gen/$(@F)) ui/gen/$(@F)
+
+
+#
+# Astro tools
+#
+ASTRO_TOOLS_COMMON_FILES=io_util.C util.C at_plugin_mgr.C astro_tools_app.C tmpl_inst.C
+
+ASTRO_TOOLS_CONSOLE_FILES=$(ASTRO_TOOLS_COMMON_FILES) astro_tools_console_app.C
+ASTRO_TOOLS_GUI_FILES=$(ASTRO_TOOLS_COMMON_FILES) $(UI_SOURCE) astro_tools_gui_app.C
+
+ASTRO_TOOLS_CONSOLE_OBJECTS=$(patsubst %.C,%.o,$(ASTRO_TOOLS_CONSOLE_FILES))
+ASTRO_TOOLS_GUI_OBJECTS=$(patsubst %.C,%.o,$(ASTRO_TOOLS_GUI_FILES))
+
+ASTRO_TOOLS_COMMON_LIBS=-Wl,-whole-archive -lindiclient -Wl,-no-whole-archive -lindi -lz -ldl -lboost_regex -lboost_system -lboost_filesystem -lboost_log -lboost_thread -lboost_log_setup -lpthread -lboost_program_options
+ASTRO_TOOLS_CONSOLE_LIBS=$(ASTRO_TOOLS_COMMON_LIBS)
+ASTRO_TOOLS_GUI_LIBS=$(ASTRO_TOOLS_COMMON_LIBS)
+
+
+.SUFFIXES: .o .C
+
+astro_tools: astro_tools_console astro_tools_gui
+
+astro_tools_console: $(ASTRO_TOOLS_CONSOLE_OBJECTS)
+	$(CXX) $(CXXFLAGS) $(ASTRO_TOOLS_CONSOLE_OBJECTS) -o $(BUILD_DIR)/astro_tools $(LFLAGS_CONSOLE) $(ASTRO_TOOLS_CONSOLE_LIBS) /usr/lib/libindiclient.a
+
+ui: $(UI_HEADER) $(UI_MOCS)
+
+astro_tools_gui_int: $(ASTRO_TOOLS_GUI_OBJECTS)
+	$(CXX) $(CXXFLAGS) $(ASTRO_TOOLS_GUI_OBJECTS) -o $(BUILD_DIR)/astro_tools_gui $(LFLAGS_GUI) $(ASTRO_TOOLS_GUI_LIBS)
+
+#
+# This is a hack... due to a weird moc dependency. Certain C files are
+# generated _after_ the variables are filled and hence the new files are
+# missing. Probably there is a mor elegant solution but somehow gmake
+# sucks at the moment....
+# Maybe see here for a solution: http://makepp.sourceforge.net/1.19/makepp_cookbook.html#Using%20Qt%27s%20moc%20preprocessor
+astro_tools_gui:
+	make -f Makefile.astroTools ui
+	make -f Makefile.astroTools astro_tools_gui_int
+
+clean:
+	rm -rf *.o  ui/*.o ui/gen/* $(BUILD_DIR)/astro_tools $(BUILD_DIR)/astro_tools_gui
+	find ./ -name '*~' | xargs rm
+
+
+#
+# swig
+# -lindimain -lindidriver -lindi
+#	
+py_if:
+	swig -c++ -python -module libastrotoolspythonwrap astrotools.i
+	g++ -c -fPIC -I/usr/include/python2.7 -I/usr/include/libindi -I . astrotools_wrap.cxx
+	g++ astrotools_wrap.o -shared -o _libastrotoolspythonwrap.so
+
+#Import module: import _libastrotoolspythonwrap
+py:
+	python2.7
+
+#py_test:
+#	g++ -rdynamic -I/usr/include/python2.7 io_util.C python_test.C /usr/lib/libindiclient.a -lindi -lz -lpthread -lindiclient -lpython2.7 -lCCfits -lX11

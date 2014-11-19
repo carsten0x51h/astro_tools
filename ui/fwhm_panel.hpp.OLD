@@ -1,0 +1,55 @@
+/*****************************************************************************
+ *
+ *  AstroTools
+ *
+ *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
+ *
+ *  This program is free software ; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation ; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program ; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ ****************************************************************************/
+
+#ifndef _FWHM_PANEL_HPP_
+#define _FWHM_PANEL_HPP_
+
+#include <qwt_plot.h>
+#include <qwt_plot_curve.h>
+#include <qwt_plot_grid.h>
+#include <qdir.h>
+#include "qevent.h"
+#include "ui_fwhm_panel.hpp"
+
+#include "../at_fwhm.hpp"
+#include <iostream>
+
+using namespace std;
+
+class FwhmPanel : public QWidget, private Ui_FwhmPanel {
+private:
+  Q_OBJECT
+  FwhmT mFwhm;
+  QwtPlotGrid * mGrid;
+  QwtPlotCurve * mFwhmGaussCurvePlot, * mFwhmDataDotsCurvePlot, * mFwhmFitDataDotsCurvePlot;
+  QwtArray<QwtDoublePoint> mFwhmFitData, mFwhmData;
+
+public:
+  FwhmPanel(QWidget *parent = 0);
+  ~FwhmPanel();
+
+  inline void setFwhm(const FwhmT & inFwhm) { mFwhm = inFwhm; }
+  void clear();
+  void replot();
+};
+
+#endif // _FWHM_PANEL_HPP_
