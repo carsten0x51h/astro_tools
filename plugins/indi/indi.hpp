@@ -34,7 +34,4 @@ namespace AT {
   static IndiPluginT sInstance;
 };
 
-// TODO: As macro?? Define in at_plugin.hpp?
-extern "C" {
-  void * instance() { return & AT::sInstance; }
-}
+EXPORT_INSTANCE();

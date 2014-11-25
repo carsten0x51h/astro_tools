@@ -28,6 +28,11 @@
 
 using namespace std;
 
+#define EXPORT_INSTANCE()				\
+  extern "C" {						\
+    void * instance() { return & AT::sInstance; }	\
+  }							\
+
 namespace AT {
 
   class PluginT {
@@ -40,7 +45,6 @@ namespace AT {
   private:
     string mName;
   };
-
 };
 
 #endif // _AT_PLUGIN_HPP_
