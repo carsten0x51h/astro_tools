@@ -100,7 +100,7 @@
 */
 
 #include <iosfwd>
-#include "focus_finder.hpp"
+#include "focus_finder_common.hpp"
 
 #include "indi/indi_focuser.hpp"
 #include "indi/indi_camera.hpp"

@@ -25,12 +25,12 @@
 
 #include "astro_tools_app.hpp"
 #include "at_logging.hpp"
+#include "at_validator.hpp"
+
 #include "focus_finder.hpp"
 
 #include "centroid.hpp"
-
-#include "at_validator.hpp"
-#include "indi/indi_validator.hpp"
+#include "focus_finder_linear_interpolation_impl.hpp"
 
 namespace AT {
   DEF_Exception(FocusFinderPlugin);
@@ -39,23 +39,18 @@ namespace AT {
   DEF_Exception(ImageDimension);
   DEF_Exception(WindowOutOfBounds);
 
-  /**
-   * Focus finder interface.
-   */
-  class FocusFinderT {
-  public:
-    virtual void findFocus() = 0;
-  };
-
-
   class FocusFinderActionT {
   public:
+    // TODO: Save new pointers in container and finally delete all?!
     static FocusFinderT * createFocusFinder(const string & inStrategyName) {
-      if (! strcmp(inStrategyName.c_str(), "linear_interpolation")) return new FocusFinderLinearInterpolationImplT();
+      FocusFinderT * focusFinder = 0;
+      if (! strcmp(inStrategyName.c_str(), "linear_interpolation")) focusFinder = new FocusFinderLinearInterpolationImplT();
       /*TODO: Add further cases...*/
-
-      const string exStr = "'" + inStrategyName + "' is not a known strategy.";
-      throw UnknownFocusFinderImplExceptionT(exStr.c_str());
+      else {
+	const string exStr = "'" + inStrategyName + "' is not a known strategy.";
+	throw UnknownFocusFinderImplExceptionT(exStr.c_str());
+      }
+      return focusFinder;
     }
 
     static void destroyFocusFinder(FocusFinderT * inFocusFinder) {

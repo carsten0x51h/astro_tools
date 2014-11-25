@@ -25,6 +25,7 @@
 #define _FOCUS_FINDER_HPP_ _FOCUS_FINDER_HPP_
 
 #include "at_plugin.hpp"
+#include "at_exception.hpp"
 
 using namespace std;
 

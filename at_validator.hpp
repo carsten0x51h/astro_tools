@@ -21,6 +21,7 @@
  ****************************************************************************/
 
 #include <boost/algorithm/string/case_conv.hpp>
+#include "util.hpp"
 
 #ifndef _AT_VALIDATOR_HPP_
 #define _AT_VALIDATOR_HPP_ _AT_VALIDATOR_HPP_
@@ -76,5 +77,24 @@ namespace boost {
     }
   }
 };
+
+/**
+ * NOTE: This validate belongs to HostnameAndPortT which is currently
+ *       not part of any namespace - it may go to namespace AT later.
+ */
+void validate(boost::any & v, const vector<string> & values, HostnameAndPortT * target_type, int) {
+  using namespace boost::program_options;
+
+  static regex r("(\\w+)(:)([0-9]+)");
+  validators::check_first_occurrence(v);
+  const string & s = validators::get_single_string(values);
+    
+  smatch match;
+  if (regex_match(s, match, r)) {
+    v = any(HostnameAndPortT(lexical_cast<string>(match[1]), lexical_cast<int>(match[3])));
+  } else {
+    throw validation_error(validation_error::invalid_option_value);
+  }
+}
 
 #endif // _AT_VALIDATOR_HPP_
