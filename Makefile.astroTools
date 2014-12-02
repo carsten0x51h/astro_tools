@@ -88,3 +88,7 @@ py:
 
 #py_test:
 #	g++ -rdynamic -I/usr/include/python2.7 io_util.C python_test.C /usr/lib/libindiclient.a -lindi -lz -lpthread -lindiclient -lpython2.7 -lCCfits -lX11
+
+# shortcut - remove later...
+find_focus:
+	./build/astro_tools focus_find -vvv --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=20,20

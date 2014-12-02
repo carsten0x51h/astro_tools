@@ -265,8 +265,6 @@ public:
 
   /**
    * Focus absolute position
-   *
-   * TODO / Note: For MoonLite focuser the PropsT::... is RELATIVE_ABSOLUTE_POSITION --> use map...
    */
   inline int getAbsPos() const { return this->getNumberVal<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION, PropsT::FOCUS_ABSOLUTE_POSITION); }
   inline void setAbsPos(unsigned int inAbsPos, int inTimeoutMs = sDefaultTimeoutMs) {
@@ -290,7 +288,11 @@ public:
     // TODO: Is this the correct prop. to check for busy state?!
     // TODO: How to handle error state?!
     INumberVectorProperty * nVecAbs = this->getNumberVec<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION);
+
+    // TODO: Implement something like below...
+    //if (this->hasVecProp<FocuserTraitsT>(VecPropsT::REL_FOCUS_POSITION)) {
     INumberVectorProperty * nVecRel = this->getNumberVec<FocuserTraitsT>(VecPropsT::REL_FOCUS_POSITION);
+    //}
     return (nVecAbs->s == IPS_BUSY || nVecRel->s == IPS_BUSY);
   }
 
@@ -349,7 +351,16 @@ public:
    */
   void moveFocusBy(unsigned int inSteps, FocusDirectionT::TypeE inDirection, int inTimeoutMs = sDefaultTimeoutMs) {
     this->setFocusDirection(inDirection, inTimeoutMs);
-    this->setRelPos(inSteps, inTimeoutMs);
+
+    // NOTE: relative positions only seem to be supported by MoonLite focuser, not ny simulator...
+    //this->setRelPos(inSteps, inTimeoutMs);
+
+    // TODO: Does this work for Focuser Simulator AND for MoonLite??? - TODO: TEST 
+    // TODO: Test for negative value? Cut at 0?
+    int currentAbsPos = this->getAbsPos();
+    int newAbsPos = (inDirection == FocusDirectionT::INWARDS ? currentAbsPos - inSteps : currentAbsPos + inSteps);
+    this->setAbsPos(newAbsPos, inTimeoutMs);
+
     WAIT_MAX_FOR(! this->isMovementInProgess(), inTimeoutMs, "Hit timeout setting while moving focus to new position.");
   }
 

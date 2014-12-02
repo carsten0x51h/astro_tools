@@ -167,7 +167,9 @@ public:
   FwhmT() : mXCom(0), mYCom(0) { }
 
   // TODO: Add further constructors... vector<double> ... just row of data...
-  FwhmT(const CImg<float> & image, const DirectionT::TypeE & inDirection, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
+  FwhmT(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
+  void set(const CImg<float> & image, const DirectionT::TypeE & inDirection, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
+
   inline bool valid() const { return (mImgValues.size() > 0 && mFitValues.size() > 0); }
 
   static inline double sigmaToFwhm(double sigma) { return FwhmT::SIGMA_TO_FWHM * sigma; }
@@ -181,6 +183,7 @@ public:
   inline float calcGaussianValue(float x) const { return calcGaussValue(mGaussParms, x); }
 
   float getStandardDeviation() const;
+
 
   // TODO: overload << operator...
 };

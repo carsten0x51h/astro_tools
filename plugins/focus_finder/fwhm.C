@@ -32,7 +32,12 @@ const size_t FwhmT::MAX_PTS = 1000; // Max number of data points
   See http://de.wikipedia.org/wiki/Mittlere_quadratische_Abweichung
 */
 
-FwhmT::FwhmT(const CImg<float> & image, const DirectionT::TypeE & inDirection, float inCenterX, float inCenterY, size_t inSizePx) {
+FwhmT::FwhmT(const CImg<float> & image, const DirectionT::TypeE & inDirection, float inCenterX, float inCenterY, /*TODO: use PositionT */size_t inSizePx) {
+  this->set(image, inDirection, inCenterX, inCenterY, inSizePx);
+}
+
+
+void FwhmT::set(const CImg<float> & image, const DirectionT::TypeE & inDirection, float inCenterX, float inCenterY, size_t inSizePx) {
   //cout << "FwhmT - direction: " << DirectionT::asStr(inDirection) << endl;
   
   // TODO: Can we avoid image copy??!
@@ -104,12 +109,12 @@ FwhmT::FwhmT(const CImg<float> & image, const DirectionT::TypeE & inDirection, f
       return;
     }
     }
-
+    
     // TODO: Calculate the SNR?!?!?!!! Values from Fwhm do not seem to be suitable to recognize what kind of region is selected ... ^^ strange!
-
+    
     // Fit horz. & vert. values
     fitValues(mImgValues, & mFitValues, & mGaussParms);
-  }
+}
 
 
 // TODO / FIXME: Seems to give wrong values!!

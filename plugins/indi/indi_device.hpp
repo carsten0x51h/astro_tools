@@ -341,7 +341,6 @@ public:
   }
   static double getInitialDevicePropertyPopulationDelaySec() { return sInitialDevicePropertyPopulationDelaySec; }
 
-
   IndiDeviceT(IndiClientT * inIndiClient, BaseDevice * inBaseDevice, DeviceTypeT::TypeE inType = DeviceTypeT::CUSTOM) : mIndiClient(inIndiClient), mBaseDevice(inBaseDevice), mType(inType) {
     mBaseDevice->setMediator(this);
 
@@ -362,6 +361,21 @@ public:
 
   void connect(int inTimeoutMs = sDefaultTimeoutMs, bool inVerifyDeviceType = true);
   void disconnect(int inTimeoutMs = sDefaultTimeoutMs);
+
+  // TODO: Verify of this function works
+  // TODO: Implement hasVecProp(string...)
+  // TODO: also add for PropT
+  template<typename TraitsT>
+  bool hasVecProp(typename TraitsT::VecPropsT::TypeE inVecProp) {
+    PropNameMapT vecPropNameMap, propNameMap;
+    IndiDeviceT::loadPropMaps(this->genPropMapFileName(), & vecPropNameMap, & propNameMap);
+    const string vecPropTypeName(IndiDeviceT::lookupPropName(vecPropNameMap, typename TraitsT::VecPropsT::asStr(inVecProp)));
+    cerr << "vecPropTypeName: " << vecPropTypeName << endl;
+    return false; // TODO...
+    //if (! strcmp(vecPropTypeName.c_str(), indiProp->getName())) {
+    //  hasVecProp = true;
+  }
+
 
   // TODO: Pointers passed as const?!
   static inline string getUniqueDeviceId(IndiClientT * inIndiClient, BaseDevice * inBaseDevice) {

@@ -26,13 +26,13 @@
 int main(int argc, char * argv[]) {
   static int returnCode = 0;
   
-  try {
+  //  try {
     AT::AstroToolsConsoleAppT::init(argc, argv);
     AT::AstroToolsConsoleAppT::execute(argc, argv);
     AT::AstroToolsConsoleAppT::destroy();
-  } catch(std::exception & exc) {
-    LOG(fatal) << "Catched exception in main: " << exc.what() << endl;
-  }
+  // } catch(std::exception & exc) {
+  //   LOG(fatal) << "Catched exception in main: " << exc.what() << endl;
+  // }
 
   return returnCode;
 }

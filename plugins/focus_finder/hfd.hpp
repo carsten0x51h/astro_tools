@@ -77,6 +77,9 @@
 #include <CImg.h>
 #include "centroid.hpp"
 
+
+  //TODO: Move radius to last position as parameter, pass / calc default?! Pass in constructor at all?!, use / calc good default instead, allow setting it explicitely by set function... and allow access by get function... can default be assigned statically at all?! Or does it depend on image width?! --> No, not for stars!!!
+
 class HfdT {
 private:
   CImg<float> mResImage;
@@ -94,6 +97,10 @@ private:
 public:
   HfdT() : mHfdValue(0), mXCom(0), mYCom(0) {}
   HfdT(const CImg<float> & image, unsigned int radius, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0) : mHfdValue(0), mXCom(0), mYCom(0) {
+    this->set(image, radius, inCenterX, inCenterY, inSizePx);
+  }
+
+  void set(const CImg<float> & image, unsigned int radius, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0) {
     // TODO / FIXME: Check the radius - ok?!
     float minImgDim = std::min(image.width(), image.height());
     mRadius = (2.0 * radius < minImgDim ? radius : floor(minImgDim / 2.0));

@@ -23,130 +23,92 @@
 #include "focus_finder_linear_interpolation_impl.hpp"
 
 namespace AT {
+  const size_t FocusFinderLinearInterpolationImplT::sWindowSize = 31; // px
 
+  // TODO: Maybe rename those FocusFinder classes to ...Minimizer - because FocusFinder is too generic - it is the whole thing...
+  // but this class only tries to find the minimum HFD and/or Fwhm. In addition we could pass a minimizer policy... which tells the 
+  // minimizer which star values should be taken into account.
   void FocusFinderLinearInterpolationImplT::findFocus() {
-    cerr << "findFocus() - Linear interpolation focus finder..." << endl;
+    LOG(trace) << "FocusFinderLinearInterpolationImplT::findFocus() - Entering..." << endl;
+
+    FocusDirectionT::TypeE direction = determineInitialDirection();
+    LOG(info) << "Direction of improvement: " << FocusDirectionT::asStr(direction) << endl;
+
+
+    LOG(trace) << "FocusFinderLinearInterpolationImplT::findFocus() - Leaving..." << endl;
   }
 
-// const size_t FocusFinderT::sWindowWidthPx = 15;
-// const size_t FocusFinderT::sWindowHeightPx = 15;
-// const size_t FocusFinderT::sHfdOuterRadiusPx = 5;
 
+  void FocusFinderLinearInterpolationImplT::takePictureCalcStarData(StarDataT * outStarData, CImg<float> * outImg) {
+    AT_ASSERT(FocusFinderLinearInterpolation, outStarData, "outStarData expected to be set!");
 
-// const size_t FocusFinderT::sHfdOuterRadiusPx = 15;
+    CImg<float> img;
+    
+    // Calc frameSize from inStarCenterPos
+    FrameT imgFrame = centerPosToFrame(mStarCenterPos, FocusFinderLinearInterpolationImplT::sWindowSize);
 
-// FocusFinderT::FocusFinderT(IndiClientTmplT * inIndiClient, const string & inCameraDeviceName, const string & inFocuserDeviceName) : mIndiClient(inIndiClient), mCameraDeviceName(inCameraDeviceName), mFocuserDeviceName(inFocuserDeviceName), mStop(false) {
+    // Take a picture, throws if not connected or problem with device
+    mCameraDevice->takePicture(& img, mExposureTimeSec, imgFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
 
-//   if (! mIndiClient)
-//     throw FocusFinderExceptionT("No indi client set.");
+    // TODO: Where to put?! --> Should not be passed by default... should either be calculated by HfdT, and / or HfdT should have a good default...
+    const size_t sHfdOuterRadiusPx = 15;
+    
+    // Calc star values, throws if star could not be determined
+    outStarData->getFwhmHorz().set(img, FwhmT::DirectionT::HORZ);
+    outStarData->getFwhmVert().set(img, FwhmT::DirectionT::VERT);
+    outStarData->getHfd().set(img, sHfdOuterRadiusPx);
+    
+    if (outImg)
+      *outImg = img; // Copy image if desired
+  }
   
-//   // Number change listener
-//   mIndiClient->registerNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
-// }
 
-// FocusFinderT::~FocusFinderT() {
-//   cerr << "FocusFinderT::~FocusFinderT()... mIndiClient: " << mIndiClient << endl;
-//   if (mIndiClient)
-//     mIndiClient->unregisterNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
-// }
+  FocusDirectionT::TypeE
+  FocusFinderLinearInterpolationImplT::determineInitialDirection() {
+    // TODO: Further logging....
+    LOG(trace) << "Determining initial focuser direction...";
+	
+    // Take picture, calc star values and send update
+    StarDataT starData;
+    takePictureCalcStarData(& starData);
+    //mFocusFinderUpdateListeners(FocusFinderDataT(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/)); // TODO
 
-// void FocusFinderT::numberChangeHandler(INumberVectorProperty * inVecNumber) {
-//   if (! inVecNumber)
-//     return;
+    // Move mNumStepsToDetermineDirection inwards
+    mFocuserDevice->moveFocusBy(mNumStepsToDetermineDirection, FocusDirectionT::INWARDS);
 
-//   if (! strcmp(inVecNumber->name, IndiFocuserClientT::VecPropNameT::asStr(IndiFocuserClientT::VecPropNameT::ABS_FOCUS_POSITION))) {
-//     double absFocuserValue = 0;
-//     mIndiClient->getNumberChecked(mFocuserDeviceName, IndiFocuserClientT::VecPropNameT::asStr(IndiFocuserClientT::VecPropNameT::ABS_FOCUS_POSITION), IndiFocuserClientT::PropNameT::asStr(IndiFocuserClientT::PropNameT::RELATIVE_ABSOLUTE_POSITION), & absFocuserValue);
+    // Take another picture, calc star values and send update
+    StarDataT starDataNew;
+    takePictureCalcStarData(& starDataNew);
+    //mFocusFinderUpdateListeners(FocusFinderDataT(mFocuserDevice->getAbsPos(), starDataNew /*, TODO: mVCurve*/)); // TODO
 
-//     FocusFinderDataT ffd(absFocuserValue, FwhmT(), FwhmT(), HfdT(), mVCurve); // TODO: Ok?! Not so nice?!
-//     mFocusFinderUpdateListeners(& ffd);
-//   }
+    // Move focus back -> mNumStepsToDetermineDirection outwards
+    mFocuserDevice->moveFocusBy(mNumStepsToDetermineDirection, FocusDirectionT::OUTWARDS);
 
-//   return;
-// }
+    // Calc direction of improvement
+    bool fwhmHorzCmp = starData.getFwhmHorz().getValue() < starDataNew.getFwhmHorz().getValue();
+    bool fwhmVertCmp = starData.getFwhmVert().getValue() < starDataNew.getFwhmVert().getValue();
+    bool hfdCmp = starData.getHfd().getValue() < starDataNew.getHfd().getValue();
 
-// // TODO: Required?!
-// // void FocusFinderT::recenter(ostream & os, IndiCameraClientT & inCameraClient, IndiFocuserClientT & inFocuserClient, CImg<float> * outImg, int * outStartX, int * outStartY, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection) {
-// //   cerr << "FocusFinderT::recenter..." << endl;
+    FocusDirectionT::TypeE directionToImproveFocus;
 
-// //   float centerX, centerY;
-// //   try {
-// //     CentroidCalcT::starCentroid(*outImg, 0 /*x*/, 0 /*y*/, FocusFinderT::sWindowWidthPx, FocusFinderT::sWindowHeightPx, & centerX, & centerY, CoordTypeT::ABSOLUTE, false /* no debug msgs */);
-// //   } catch(CentroidExceptionT & exc) {
-// //     cerr << "Unable to determine centroid. Leaving it as is." << endl;
-// //     return;
-// //   }
+    if (fwhmHorzCmp && fwhmVertCmp && hfdCmp) {
+      directionToImproveFocus = FocusDirectionT::INWARDS;
+    } else if (! fwhmHorzCmp && ! fwhmVertCmp && ! hfdCmp) {
+      directionToImproveFocus = FocusDirectionT::OUTWARDS;
+    } else {
+      stringstream ssEx;
+      ssEx << "Could not determine initial focuser direction of improvement - "
+	   << "star data are inconsistent. Maybe increase numStepsToDetermineDirection." << endl
+	   << "StarData1: " << starData << endl << "StartData2: " << starDataNew << endl;
 
-// //   const int BACK = ceil(FocusFinderT::sWindowWidthPx / 2.0) - 1;
-// //   int deltaX = (int) centerX - BACK;
-// //   int deltaY = (int) centerY - BACK;
+      throw FocusFinderLinearInterpolationExceptionT(ssEx.str().c_str());
+    }
+
+    LOG(info) << "Direction which improves focus is " << FocusDirectionT::asStr(directionToImproveFocus) << endl;
+    LOG(debug) << "StarData1: " << starData << endl << "StartData2: " << starDataNew << endl;
     
-// //   if (deltaX || deltaY) {
-// //     os << ">>>> RE-CENTERING by (dx, dy)=(" << deltaX << ", " << deltaY << ") -> startX: " << *outStartX << ", startY: " << *outStartY << ", w: " << FocusFinderT::sWindowWidthPx << ", h: " << FocusFinderT::sWindowHeightPx << ", taking new image..." << endl;
-// //     *outStartX = *outStartX - deltaX;
-// //     *outStartY = *outStartY - deltaY;
-// //     inCameraClient.takePicture(outImg, 1 /*horz bin*/, 1 /*vert bin*/, *outStartX /*x*/, *outStartY /*y*/, FocusFinderT::sWindowWidthPx /*w*/, FocusFinderT::sWindowHeightPx /*h*/, FrameTypeT::LIGHT, inExposureTime /*s*/, false /*no compr.*/);
-// //   }
-// // }
-
-// /**
-//  * -Determine initilal dL (initial direction)
-//  * -Take picture
-//  * -Save FWHM & HFD
-//  * -Moving focus up N steps
-//  * -Take picture
-//  * -Compare new FWHM & HFD against saved values
-//  * -If focus improved, "up" is the right direction
-//  * -If focus gets worse, "down" is the right direction
-//  * -Move foucs "down" N steps
-//  */
-// bool
-// FocusFinderT::determineInitialDirection(ostream & os, IndiCameraClientT & inCameraClient, IndiFocuserClientT & inFocuserClient, CImg<float> * outImg, int inStartX, int inStartY, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection, IndiFocuserClientT::FocusDirectionT::TypeE * outDirectionToImproveFocus)
-// {
-//   //LOG("Correlating focus direction with focus quality...");
-
-//   IndiFocuserClientT::FocusDirectionT::TypeE directionToImproveFocus;
-
-//   inCameraClient.takePicture(outImg, 1 /*horz bin*/, 1 /*vert bin*/, inStartX /*x*/, inStartY /*y*/, FocusFinderT::sWindowWidthPx /*w*/, FocusFinderT::sWindowHeightPx /*h*/, FrameTypeT::LIGHT, inExposureTime /*s*/, false /*no compr.*/);
-    
-//   FwhmT fwhmHorz1(*outImg, FwhmT::DirectionT::HORZ);
-//   FwhmT fwhmVert1(*outImg, FwhmT::DirectionT::VERT);
-//   HfdT hfd1(*outImg, inOuterHfdRadius /*radius px*/);
-
-//   // Send update...
-//   FocusFinderDataT ffd(inFocuserClient.getAbsPos(), fwhmHorz1, fwhmVert1, hfd1, mVCurve);
-//   mFocusFinderUpdateListeners(& ffd);
-
-//   inFocuserClient.moveFocusBy(numStepsToDetermineDirection, IndiFocuserClientT::FocusDirectionT::INWARDS);
-
-//   inCameraClient.takePicture(outImg, 1 /*horz bin*/, 1 /*vert bin*/, inStartX /*x*/, inStartY /*y*/, FocusFinderT::sWindowWidthPx /*w*/, FocusFinderT::sWindowHeightPx /*h*/, FrameTypeT::LIGHT, inExposureTime /*s*/, false /*no compr.*/);
-
-//   //recenter(os, inCameraClient, inFocuserClient, outImg, & inStartX, & inStartY, inExposureTime, inOuterHfdRadius, numStepsToDetermineDirection);
-
-
-//   FwhmT fwhmHorz2(*outImg, FwhmT::DirectionT::HORZ);
-//   FwhmT fwhmVert2(*outImg, FwhmT::DirectionT::VERT);
-//   HfdT hfd2(*outImg, inOuterHfdRadius /*radius px*/);
-
-//   // Send update...
-//   FocusFinderDataT ffd2(inFocuserClient.getAbsPos(), fwhmHorz2, fwhmVert2, hfd2, mVCurve);
-//   mFocusFinderUpdateListeners(& ffd2);
-    
-//   //directionToImproveFocus = (hfd2.getValue() < hfd1.getValue() ? IndiFocuserClientT::FocusDirectionT::INWARDS : IndiFocuserClientT::FocusDirectionT::OUTWARDS);
-//   directionToImproveFocus = (fwhmHorz2.getValue() < fwhmHorz1.getValue() && fwhmVert2.getValue() < fwhmVert1.getValue() ? IndiFocuserClientT::FocusDirectionT::INWARDS : IndiFocuserClientT::FocusDirectionT::OUTWARDS);
-
-//   inFocuserClient.moveFocusBy(numStepsToDetermineDirection, IndiFocuserClientT::FocusDirectionT::OUTWARDS);
-
-//   os << "DONE. Direction which improves focus is " << IndiFocuserClientT::FocusDirectionT::asStr(directionToImproveFocus)
-//      << ", FWHM1=(horz:" << fwhmHorz1.getValue() << ", vert:" << fwhmVert1.getValue() << "), HFD1=" << hfd1.getValue()
-//      << ", FWHM2=(horz:" << fwhmHorz2.getValue() << ", vert:" << fwhmVert2.getValue() << "), HFD2=" << hfd2.getValue() << endl;
-
-//   if (outDirectionToImproveFocus)
-//     *outDirectionToImproveFocus = directionToImproveFocus;
-
-//   return true;
-// }
-
+    return directionToImproveFocus;
+  }
 
 
 // /**
@@ -484,3 +446,66 @@ namespace AT {
 // }
 
 }; // end AT namespace
+
+
+
+// const size_t FocusFinderT::sWindowWidthPx = 15;
+// const size_t FocusFinderT::sWindowHeightPx = 15;
+// const size_t FocusFinderT::sHfdOuterRadiusPx = 5;
+
+
+// const size_t FocusFinderT::sHfdOuterRadiusPx = 15;
+
+// FocusFinderT::FocusFinderT(IndiClientTmplT * inIndiClient, const string & inCameraDeviceName, const string & inFocuserDeviceName) : mIndiClient(inIndiClient), mCameraDeviceName(inCameraDeviceName), mFocuserDeviceName(inFocuserDeviceName), mStop(false) {
+
+//   if (! mIndiClient)
+//     throw FocusFinderExceptionT("No indi client set.");
+  
+//   // Number change listener
+//   mIndiClient->registerNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
+// }
+
+// FocusFinderT::~FocusFinderT() {
+//   cerr << "FocusFinderT::~FocusFinderT()... mIndiClient: " << mIndiClient << endl;
+//   if (mIndiClient)
+//     mIndiClient->unregisterNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
+// }
+
+// void FocusFinderT::numberChangeHandler(INumberVectorProperty * inVecNumber) {
+//   if (! inVecNumber)
+//     return;
+
+//   if (! strcmp(inVecNumber->name, IndiFocuserClientT::VecPropNameT::asStr(IndiFocuserClientT::VecPropNameT::ABS_FOCUS_POSITION))) {
+//     double absFocuserValue = 0;
+//     mIndiClient->getNumberChecked(mFocuserDeviceName, IndiFocuserClientT::VecPropNameT::asStr(IndiFocuserClientT::VecPropNameT::ABS_FOCUS_POSITION), IndiFocuserClientT::PropNameT::asStr(IndiFocuserClientT::PropNameT::RELATIVE_ABSOLUTE_POSITION), & absFocuserValue);
+
+//     FocusFinderDataT ffd(absFocuserValue, FwhmT(), FwhmT(), HfdT(), mVCurve); // TODO: Ok?! Not so nice?!
+//     mFocusFinderUpdateListeners(& ffd);
+//   }
+
+//   return;
+// }
+
+// // TODO: Required?!
+// // void FocusFinderT::recenter(ostream & os, IndiCameraClientT & inCameraClient, IndiFocuserClientT & inFocuserClient, CImg<float> * outImg, int * outStartX, int * outStartY, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection) {
+// //   cerr << "FocusFinderT::recenter..." << endl;
+
+// //   float centerX, centerY;
+// //   try {
+// //     CentroidCalcT::starCentroid(*outImg, 0 /*x*/, 0 /*y*/, FocusFinderT::sWindowWidthPx, FocusFinderT::sWindowHeightPx, & centerX, & centerY, CoordTypeT::ABSOLUTE, false /* no debug msgs */);
+// //   } catch(CentroidExceptionT & exc) {
+// //     cerr << "Unable to determine centroid. Leaving it as is." << endl;
+// //     return;
+// //   }
+
+// //   const int BACK = ceil(FocusFinderT::sWindowWidthPx / 2.0) - 1;
+// //   int deltaX = (int) centerX - BACK;
+// //   int deltaY = (int) centerY - BACK;
+    
+// //   if (deltaX || deltaY) {
+// //     os << ">>>> RE-CENTERING by (dx, dy)=(" << deltaX << ", " << deltaY << ") -> startX: " << *outStartX << ", startY: " << *outStartY << ", w: " << FocusFinderT::sWindowWidthPx << ", h: " << FocusFinderT::sWindowHeightPx << ", taking new image..." << endl;
+// //     *outStartX = *outStartX - deltaX;
+// //     *outStartY = *outStartY - deltaY;
+// //     inCameraClient.takePicture(outImg, 1 /*horz bin*/, 1 /*vert bin*/, *outStartX /*x*/, *outStartY /*y*/, FocusFinderT::sWindowWidthPx /*w*/, FocusFinderT::sWindowHeightPx /*h*/, FrameTypeT::LIGHT, inExposureTime /*s*/, false /*no compr.*/);
+// //   }
+// // }

@@ -36,7 +36,7 @@
 
 #include "at_exception.hpp"
 
-// TODO: Put everything to AT namespace?!?!?!?!
+// TODO: Put everything to AT namespace?!?!?!?! -> at_util::
 
 using namespace std;
 using namespace boost;
@@ -171,9 +171,13 @@ static bool intersect(const DimensionT & inDimension, const FrameT & inFrame, Fr
   return true;
 }
 
-static bool isWindowInBounds(DimensionT inImgSize, PositionT inCentroid, unsigned int inWindowSize) {
+static FrameT centerPosToFrame(PositionT inCentroid, unsigned int inWindowSize) {
   const unsigned int halfWindowSize = inWindowSize / 2; // TODO: use >> 1 operator instead?! What if windowSize is even?
-  FrameT inputFrame(inCentroid.get<0>() - halfWindowSize /*x*/, inCentroid.get<1>() - halfWindowSize /*y*/, inWindowSize /*w*/, inWindowSize /*h*/);
+  return FrameT(inCentroid.get<0>() - halfWindowSize /*x*/, inCentroid.get<1>() - halfWindowSize /*y*/, inWindowSize /*w*/, inWindowSize /*h*/);
+}
+
+static bool isWindowInBounds(DimensionT inImgSize, PositionT inCentroid, unsigned int inWindowSize) {
+  FrameT inputFrame = centerPosToFrame(inCentroid, inWindowSize);
   FrameT resultFrame;
   bool hasIntersection = intersect(inImgSize, inputFrame, & resultFrame);
   return (inputFrame == resultFrame && hasIntersection);

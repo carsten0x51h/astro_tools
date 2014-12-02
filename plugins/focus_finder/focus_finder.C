@@ -42,9 +42,12 @@ namespace AT {
   class FocusFinderActionT {
   public:
     // TODO: Save new pointers in container and finally delete all?!
-    static FocusFinderT * createFocusFinder(const string & inStrategyName) {
+    static FocusFinderT *
+    createFocusFinder(const string & inStrategyName, IndiCameraT * inIndiCamera, IndiFocuserT * inIndiFocuser, const PositionT & inStarCenterPos, float inExposureTimeSec, BinningT inBinning) {
       FocusFinderT * focusFinder = 0;
-      if (! strcmp(inStrategyName.c_str(), "linear_interpolation")) focusFinder = new FocusFinderLinearInterpolationImplT();
+      if (! strcmp(inStrategyName.c_str(), "linear_interpolation"))
+	focusFinder = new FocusFinderLinearInterpolationImplT(inIndiCamera, inIndiFocuser, inStarCenterPos, inExposureTimeSec, inBinning);
+					
       /*TODO: Add further cases...*/
       else {
 	const string exStr = "'" + inStrategyName + "' is not a known strategy.";
@@ -64,15 +67,93 @@ namespace AT {
       // Check cmdline args - depends
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("indi_server") > 0, "Expecting indi_server option being set.");
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("strategy") > 0, "Expecting strategy option being set.");
-      
-      const HostnameAndPortT & hostnameAndPort = cmdLineMap["indi_server"].as<HostnameAndPortT>();
-      const string focusFinderStrategy = cmdLineMap["strategy"].as<string>();
-      
-      LOG(info) << "Indi server: " << hostnameAndPort << ", Strategy: " << focusFinderStrategy << endl;
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("camera_device") > 0, "Expecting camera_device option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("focuser_device") > 0, "Expecting focuser_device option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("focuser_device_port") > 0, "Expecting focuser_device_port option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("binning") > 0, "Expecting binning option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("star_select") > 0, "Expecting star_select option being set.");
 
-      FocusFinderT * focusFinder = FocusFinderActionT::createFocusFinder(focusFinderStrategy); // NOTE: throws if unknown strategy
-      focusFinder->findFocus();
-      FocusFinderActionT::destroyFocusFinder(focusFinder);
+      const HostnameAndPortT & hostnameAndPort = cmdLineMap["indi_server"].as<HostnameAndPortT>();
+      const string & focusFinderStrategy = cmdLineMap["strategy"].as<string>();
+      const string & cameraDeviceName = cmdLineMap["camera_device"].as<string>();
+      const string & focuserDeviceName = cmdLineMap["focuser_device"].as<string>();
+      const string & focuserDevicePort = cmdLineMap["focuser_device_port"].as<string>();
+      float exposureTimeSec = cmdLineMap["exposure_time"].as<float>();
+      const BinningT & binning = cmdLineMap["binning"].as<BinningT>();
+      const string & starSelect = cmdLineMap["star_select"].as<string>();
+
+      LOG(info) << "Indi server: " << hostnameAndPort << ", Strategy: " << focusFinderStrategy
+		<< ", cameraDeviceName: " << cameraDeviceName << ", focuserDeviceName: " << focuserDeviceName
+		<< ", focuserDevicePort: " << focuserDevicePort << ", exposureTimeSec: " << exposureTimeSec
+		<< ", binning: " << binning << ", starSelect: " << starSelect << endl;
+
+      IndiClientT indiClient(hostnameAndPort.getHostname(), hostnameAndPort.getPort(), true /* autoconnect*/);
+
+      if (indiClient.isConnected()) {
+
+	// Get camera device
+	IndiCameraT * cameraDevice = indiClient.getCamera(cameraDeviceName);
+	
+	if (! cameraDevice) {
+	  stringstream ss;
+	  ss << "Invalid device handle for device '" << cameraDeviceName << "' returned.";
+	  throw FocusFinderPluginExceptionT(ss.str().c_str());
+	}
+
+	// Get focuser device
+	IndiFocuserT * focuserDevice = indiClient.getFocuser(focuserDeviceName);
+
+	if (! focuserDevice) {
+	  stringstream ss;
+	  ss << "Invalid device handle for device '" << focuserDeviceName << "' returned.";
+	  throw FocusFinderPluginExceptionT(ss.str().c_str());
+	}
+
+	focuserDevice->setDevicePort(focuserDevicePort);
+
+	// Connect devices, throws if problem occurs during connect
+	cameraDevice->connect();
+	focuserDevice->connect();
+
+	// Crosscheck if really connected (not expected)
+	AT_ASSERT(FocusFinderPlugin, cameraDevice->isConnected() && focuserDevice->isConnected(), "Expected camera and focuser to be connected.");
+
+
+	// Star selection
+	PositionT starCenterPos;
+
+	if (! strcmp(starSelect.c_str(), "auto")) {
+	  // TODO: Implement, set starCenterPos...
+	  AT_ASSERT(FocusFinderPlugin, false, "Mode 'auto' not yet implemented");
+	} else if (! strcmp(starSelect.c_str(), "display")) {
+	  // TODO: Implement, set starCenterPos...
+	  AT_ASSERT(FocusFinderPlugin, false, "Mode 'display' not yet implemented");
+	} else {
+	  // Check if valid position
+	  boost::any v;
+	  vector<string> values;
+	  values.push_back(starSelect);
+	  validate(v, values, & starCenterPos, 0);
+	  starCenterPos = any_cast<PositionT>(v); // throws boost::bad_any_cast
+	}
+
+	LOG(info) << "Star center pos: " << starCenterPos << endl;
+
+	// NOTE: throws if unknown strategy
+	FocusFinderT * focusFinder = FocusFinderActionT::createFocusFinder(focusFinderStrategy,
+									   cameraDevice,
+									   focuserDevice,
+									   starCenterPos,
+									   exposureTimeSec,
+									   binning);
+	focusFinder->findFocus();
+	FocusFinderActionT::destroyFocusFinder(focusFinder);
+
+      } else {
+	stringstream ss;
+	ss << "Could not connect to INDI client: '" << indiClient << "'." << endl;
+	throw FocusFinderPluginExceptionT(ss.str().c_str());
+      }
     }
   };
 
@@ -225,7 +306,7 @@ namespace AT {
     DEFINE_OPTION(optCameraDeviceName, "camera_device", po::value<string>()->required(), "INDI camera device name.");
     DEFINE_OPTION(optExposureTime, "exposure_time", po::value<float>()->required(), "Camera exposure time in seconds.");
     DEFINE_OPTION(optBinning, "binning", po::value<BinningT>()->default_value(BinningT(1, 1)), "Camera binning (X x Y).");
-    DEFINE_OPTION(optStarSelect, "star_select", po::value<string>()->default_value("display"), "Star select [auto|display|(x,y,w,h)]");
+    DEFINE_OPTION(optStarSelect, "star_select", po::value<string>()->default_value("display"), "Star select [auto|display|(x,y)]");
 
     // Focuser
     DEFINE_OPTION(optFocuserDeviceName, "focuser_device", po::value<string>()->required(), "INDI focuser device name.");

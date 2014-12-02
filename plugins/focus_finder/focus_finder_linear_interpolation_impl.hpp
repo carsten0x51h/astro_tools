@@ -102,15 +102,13 @@
 #include <iosfwd>
 #include "focus_finder_common.hpp"
 
-#include "indi/indi_focuser.hpp"
 #include "indi/indi_camera.hpp"
+#include "indi/indi_focuser.hpp"
 
-#include "fwhm.hpp"
-#include "hfd.hpp"
 #include "vcurve.hpp"
 
 // #define FOCUS_FINDER_STOP()			\
-//   if (mStop) {					\
+//   if (mStop) {				\
 //     if (outUserStop)				\
 //       *outUserStop = true;			\
 //     return false;				\
@@ -118,11 +116,60 @@
 
 namespace AT {
 
+  DEF_Exception(FocusFinderLinearInterpolation);
+
   /**
    * Linear interpolation focus finder.
    */
   class FocusFinderLinearInterpolationImplT : public FocusFinderT {
+  private:
+    IndiCameraT * mCameraDevice;
+    IndiFocuserT * mFocuserDevice;
+    float mExposureTimeSec;
+    BinningT mBinning;
+    PositionT mStarCenterPos;
+    unsigned int mOuterHfdRadiusPx; // TODO: ok?! Init ok?!
+    unsigned int mNumStepsToDetermineDirection; // TODO: ok?! Init ok?!
+
+    void takePictureCalcStarData(StarDataT * outStarData, CImg<float> * outImg = 0);
+
+    /**
+     * -Determine initilal dL (initial direction)
+     * -Take picture
+     * -Save FWHM & HFD
+     * -Moving focus up N steps
+     * -Take picture
+     * -Compare new FWHM & HFD against saved values
+     * -If focus improved, "up" is the right direction
+     * -If focus gets worse, "down" is the right direction
+     * -Move foucs "down" N steps
+     */
+    FocusDirectionT::TypeE determineInitialDirection();
+
+
   public:
+    static const size_t sWindowSize;
+
+    FocusFinderLinearInterpolationImplT(IndiCameraT * inCameraDevice,
+					IndiFocuserT * inFocuserDevice,
+					const PositionT & inStarCenterPos,
+					float inExposureTimeSec,
+					BinningT inBinning = BinningT(1, 1)) :
+      mCameraDevice(inCameraDevice),
+      mFocuserDevice(inFocuserDevice),
+      mStarCenterPos(inStarCenterPos),
+      mExposureTimeSec(inExposureTimeSec),
+      mBinning(inBinning),
+      mNumStepsToDetermineDirection(1000 /*TODO*/),
+      mOuterHfdRadiusPx(15 /*TODO*/) {
+      //mIndiClient->registerNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
+    }
+    ~FocusFinderLinearInterpolationImplT() {
+//     mIndiClient->unregisterNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
+    }
+
+
+
     virtual void findFocus();
 
   };
