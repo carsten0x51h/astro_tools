@@ -366,14 +366,29 @@ public:
   // TODO: Implement hasVecProp(string...)
   // TODO: also add for PropT
   template<typename TraitsT>
-  bool hasVecProp(typename TraitsT::VecPropsT::TypeE inVecProp) {
+  bool hasVecProp(typename TraitsT::VecPropsT::TypeE inVecProp) const {
+    return this->hasVecProp(TraitsT::VecPropsT::asStr(inVecProp));
+  }
+
+  bool hasVecProp(const string & inVecPropName) const {
+    bool hasVecProp = false;
     PropNameMapT vecPropNameMap, propNameMap;
     IndiDeviceT::loadPropMaps(this->genPropMapFileName(), & vecPropNameMap, & propNameMap);
-    const string vecPropTypeName(IndiDeviceT::lookupPropName(vecPropNameMap, typename TraitsT::VecPropsT::asStr(inVecProp)));
+    const string vecPropTypeName(IndiDeviceT::lookupPropName(vecPropNameMap, inVecPropName));
     cerr << "vecPropTypeName: " << vecPropTypeName << endl;
-    return false; // TODO...
-    //if (! strcmp(vecPropTypeName.c_str(), indiProp->getName())) {
-    //  hasVecProp = true;
+
+    const IndiPropVecT * indiPropVec = getIndiProperties();
+    for (typename IndiPropVecT::const_iterator it = indiPropVec->begin(); it != indiPropVec->end(); ++it) {
+      Property * indiProp = *it;
+      AT_ASSERT(IndiDevice, indiProp, "Expect indiProp to be valid.");
+      
+      // Check if vec prop exists in traits...
+      if (! strcmp(vecPropTypeName.c_str(), indiProp->getName())) {
+	hasVecProp = true;
+	break;
+      }
+    } // end for - all indi props
+    return hasVecProp;
   }
 
 

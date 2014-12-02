@@ -287,13 +287,11 @@ public:
   inline bool isMovementInProgess() const {
     // TODO: Is this the correct prop. to check for busy state?!
     // TODO: How to handle error state?!
-    INumberVectorProperty * nVecAbs = this->getNumberVec<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION);
+    bool absBusy = (this->getNumberVec<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION)->s == IPS_BUSY);
+    bool relBusy = (this->hasVecProp<FocuserTraitsT>(VecPropsT::REL_FOCUS_POSITION) &&
+		    this->getNumberVec<FocuserTraitsT>(VecPropsT::REL_FOCUS_POSITION)->s == IPS_BUSY);
 
-    // TODO: Implement something like below...
-    //if (this->hasVecProp<FocuserTraitsT>(VecPropsT::REL_FOCUS_POSITION)) {
-    INumberVectorProperty * nVecRel = this->getNumberVec<FocuserTraitsT>(VecPropsT::REL_FOCUS_POSITION);
-    //}
-    return (nVecAbs->s == IPS_BUSY || nVecRel->s == IPS_BUSY);
+    return (absBusy || relBusy);
   }
 
   inline void abortMotion(int inTimeoutMs = sDefaultTimeoutMs) {
