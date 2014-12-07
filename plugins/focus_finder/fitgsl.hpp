@@ -54,7 +54,7 @@ typedef struct _fitgsl_data{
 } fitgsl_data;
 
 /* Fits the specified data to the function, storing the coefficients in 'results' */
-int fitgsl_lm(const fitgsl_data *dat, float *results);
+int fitgsl_lm(const fitgsl_data *dat, float *results, double epsabs, double epsrel);
 
 /* Allocates a 'data' structure with n points */
 fitgsl_data *fitgsl_alloc_data(int n);

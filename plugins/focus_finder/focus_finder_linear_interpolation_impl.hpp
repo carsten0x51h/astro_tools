@@ -160,7 +160,7 @@ namespace AT {
       mStarCenterPos(inStarCenterPos),
       mExposureTimeSec(inExposureTimeSec),
       mBinning(inBinning),
-      mNumStepsToDetermineDirection(1000 /*TODO*/),
+      mNumStepsToDetermineDirection(8000 /*TODO*/),
       mOuterHfdRadiusPx(15 /*TODO*/) {
       //mIndiClient->registerNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
     }

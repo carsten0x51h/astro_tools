@@ -91,4 +91,4 @@ py:
 
 # shortcut - remove later...
 find_focus:
-	./build/astro_tools focus_find -vvv --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=20,20
+	./build/astro_tools focus_find -vvv --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=405,155

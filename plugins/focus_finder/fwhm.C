@@ -32,6 +32,14 @@ const size_t FwhmT::MAX_PTS = 1000; // Max number of data points
   See http://de.wikipedia.org/wiki/Mittlere_quadratische_Abweichung
 */
 
+ostream & operator<<(ostream & os, const GaussParmsT & inGaussParms) {
+  return inGaussParms.print(os);
+}
+
+ostream & operator<<(ostream & os, const FwhmT & inFwhm) {
+  return inFwhm.print(os);
+}
+
 FwhmT::FwhmT(const CImg<float> & image, const DirectionT::TypeE & inDirection, float inCenterX, float inCenterY, /*TODO: use PositionT */size_t inSizePx) {
   this->set(image, inDirection, inCenterX, inCenterY, inSizePx);
 }
@@ -39,6 +47,8 @@ FwhmT::FwhmT(const CImg<float> & image, const DirectionT::TypeE & inDirection, f
 
 void FwhmT::set(const CImg<float> & image, const DirectionT::TypeE & inDirection, float inCenterX, float inCenterY, size_t inSizePx) {
   //cout << "FwhmT - direction: " << DirectionT::asStr(inDirection) << endl;
+
+  mDirection = inDirection;
   
   // TODO: Can we avoid image copy??!
   CImg<float> resImage;

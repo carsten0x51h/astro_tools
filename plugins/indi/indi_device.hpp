@@ -375,7 +375,6 @@ public:
     PropNameMapT vecPropNameMap, propNameMap;
     IndiDeviceT::loadPropMaps(this->genPropMapFileName(), & vecPropNameMap, & propNameMap);
     const string vecPropTypeName(IndiDeviceT::lookupPropName(vecPropNameMap, inVecPropName));
-    cerr << "vecPropTypeName: " << vecPropTypeName << endl;
 
     const IndiPropVecT * indiPropVec = getIndiProperties();
     for (typename IndiPropVecT::const_iterator it = indiPropVec->begin(); it != indiPropVec->end(); ++it) {

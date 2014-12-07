@@ -68,10 +68,12 @@ struct GaussParmsT {
   size_t numFitPts;
 
   GaussParmsT() : b(0), p(0), c(0), w(0), area(0), numFitPts(0) { }
-  ostream & print(ostream & os) {
+  ostream & print(ostream & os) const {
     os << "b: " << b << ", p: " << p << ", c: " << c << ", w: " << w << ", area: " << area << ", numFitPts: " << numFitPts << endl;
     return os;
   }
+
+  friend ostream & operator<<(ostream & os, const GaussParmsT & inGaussParms);
 };
 
 // TODO: Pull out DirectionT from Fwhm?! instead pass vector of values...?!value itself is independent frm image, horz and vert!!!!!!!
@@ -108,6 +110,7 @@ private:
   float mXCom, mYCom;
   vector<float> mImgValues, mFitValues;
   GaussParmsT mGaussParms;
+  DirectionT::TypeE mDirection; // TODO: Not sure if this is good design...
   
   static const double SIGMA_TO_FWHM;
   static const size_t MAX_PTS;
@@ -134,9 +137,13 @@ private:
       dat->pt[i].x = i;
       dat->pt[i].y = imgValues[i];
     }
-	
+
+    // TODO: make configurable?!
+    static const double epsabs = 1e-2; /*e.g. 1e-4*/
+    static const double epsrel = 1e-2;
+
     // Do the LM fit
-    int err = fitgsl_lm(dat, A);
+    int err = fitgsl_lm(dat, A, epsabs, epsrel);
 
     if (err) {
       stringstream ss;
@@ -176,6 +183,9 @@ public:
   static inline double fwhmToSigma(double sigma) { return sigma / FwhmT::SIGMA_TO_FWHM; }
 
   inline float getValue() const { return sigmaToFwhm(mGaussParms.w); }
+  inline DirectionT::TypeE getDirection() const { return mDirection; }
+
+  // TODO: Return PositionT instead...
   inline void getCentroid(float * x, float * y) const { *x = mXCom; *y = mYCom; }
 
   inline const vector<float> & getImgValues() const { return mImgValues; }
@@ -184,8 +194,19 @@ public:
 
   float getStandardDeviation() const;
 
+  ostream & print(ostream & os) const {
+    os << "Fwhm(" << DirectionT::asStr(mDirection) << ")=" << getValue() << "\"";
+    // TODO: Only print if details requested...
+    //       << ", GaussParms: " << mGaussParms;
+    // os << ", Img values: ";
+    // for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it) { os << *it << "; "; }
+    // os << ", Fit values: ";
+    // for (vector<float>::const_iterator it = mFitValues.begin(); it != mFitValues.end(); ++it) { os << *it << "; "; }
 
-  // TODO: overload << operator...
+    return os;
+  }
+
+  friend ostream & operator<<(ostream & os, const FwhmT & inFwhm);
 };
 
 void validate(boost::any & v, const vector<string> & values, FwhmT::DirectionT::TypeE * target_type, int);

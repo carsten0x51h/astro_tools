@@ -103,7 +103,7 @@ void make_guess(const fitgsl_data * dat, gsl_vector * guess) {
   LOG(trace) << "make_guess - guess b: " << y_mean << ", p: " << y_max << ", c: " << c << ", w: " << w << endl;
 }
 
-int fitgsl_lm(const fitgsl_data *dat, float *results) {
+int fitgsl_lm(const fitgsl_data *dat, float *results, double epsabs, double epsrel) {
   int	i, status;	
   fitgsl_fnparams p;
 
@@ -170,7 +170,7 @@ int fitgsl_lm(const fitgsl_data *dat, float *results) {
     if (status != 0) {
       break;
     }
-    status = gsl_multifit_test_delta(solver->dx, solver->x, 1e-4, 1e-4);
+    status = gsl_multifit_test_delta(solver->dx, solver->x, epsabs /* epsabs */, epsrel /* epsrel */);
     
   } while (status == GSL_CONTINUE && i < 500);
   

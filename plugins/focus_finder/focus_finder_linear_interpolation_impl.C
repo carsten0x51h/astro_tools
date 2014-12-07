@@ -51,7 +51,7 @@ namespace AT {
     mCameraDevice->takePicture(& img, mExposureTimeSec, imgFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
 
     // TODO: Where to put?! --> Should not be passed by default... should either be calculated by HfdT, and / or HfdT should have a good default...
-    const size_t sHfdOuterRadiusPx = 15;
+    const size_t sHfdOuterRadiusPx = 10;
     
     // Calc star values, throws if star could not be determined
     outStarData->getFwhmHorz().set(img, FwhmT::DirectionT::HORZ);
@@ -98,8 +98,8 @@ namespace AT {
     } else {
       stringstream ssEx;
       ssEx << "Could not determine initial focuser direction of improvement - "
-	   << "star data are inconsistent. Maybe increase numStepsToDetermineDirection." << endl
-	   << "StarData1: " << starData << endl << "StartData2: " << starDataNew << endl;
+	   << "star data are inconsistent. Maybe select another star or increase numStepsToDetermineDirection." << endl
+	   << "StarData1: " << starData << "StarData2: " << starDataNew << endl;
 
       throw FocusFinderLinearInterpolationExceptionT(ssEx.str().c_str());
     }
