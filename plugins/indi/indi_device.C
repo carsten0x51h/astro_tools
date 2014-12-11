@@ -79,7 +79,7 @@ void IndiDeviceT::connect(int inTimeoutMs, bool inVerifyDeviceType) {
 
   LOG(debug) << "Waiting for props..." << endl;
   waitForInitialDevicePropertyPopulation();
-  LOG(info) << "Ok, got " << mBaseDevice->getProperties()->size() << " properties..." << endl;  
+  LOG(info) << "Ok, got " << dec << mBaseDevice->getProperties()->size() << " properties..." << endl;  
 
   if (inVerifyDeviceType) {
     DeviceTypeT::TypeE propDeviceType = getDeviceTypeFromProps();

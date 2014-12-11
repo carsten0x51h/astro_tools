@@ -105,7 +105,7 @@
 #include "indi/indi_camera.hpp"
 #include "indi/indi_focuser.hpp"
 
-#include "vcurve.hpp"
+//#include "vcurve.hpp"
 
 // #define FOCUS_FINDER_STOP()			\
 //   if (mStop) {				\
@@ -130,7 +130,8 @@ namespace AT {
     PositionT mStarCenterPos;
     unsigned int mOuterHfdRadiusPx; // TODO: ok?! Init ok?!
     unsigned int mNumStepsToDetermineDirection; // TODO: ok?! Init ok?!
-
+    unsigned int mStepsToReachRoughFocus;
+    
     void takePictureCalcStarData(StarDataT * outStarData, CImg<float> * outImg = 0);
 
     /**
@@ -146,6 +147,29 @@ namespace AT {
      */
     FocusDirectionT::TypeE determineInitialDirection();
 
+    /**
+     * -Find rough focus (in: FWMH & HFD at least to be reached, out: success/failure, FWMH & HFD obtained)
+     * -1. Take picture
+     * -2. Save FWHM & HFD
+     * -3. Move M steps into prev. direction
+     * -4. Take picture
+     * -5. Repeat at 1. until new FWHM & HFD are worse than saved
+     * -6. Move focus in oppsosite direction by M steps
+     */
+    void findRoughFocus(FocusDirectionT::TypeE inDirectionToImproveFocus);
+
+
+    /**
+     * -Determine Fmin/(Fmax)
+     *  -1. Take picture
+     *  -2. Determine FWHM & HFD
+     *  -3. _Reduce_/(_Increase_) focus pos. by K steps, accumulate K
+     *  -4. Take picture
+     *  -5. Repeat 1. as long as new FWHM & HFD are < FWHM/HFD BOUNDARY
+     *  -6. Save "Fmin" ("Fmax") focus position (and corresponding HWHM/HFD)
+     *  -7. Move focus back to "center" position (increase (decrease) focus by Sum(K))
+     */
+    int findExtrema(FocusDirectionT::TypeE inDirectionToImproveFocus, MinMaxFocusPosT::TypeE inMinMaxFocusPos);
 
   public:
     static const size_t sWindowSize;
@@ -161,6 +185,7 @@ namespace AT {
       mExposureTimeSec(inExposureTimeSec),
       mBinning(inBinning),
       mNumStepsToDetermineDirection(8000 /*TODO*/),
+      mStepsToReachRoughFocus(3000),
       mOuterHfdRadiusPx(15 /*TODO*/) {
       //mIndiClient->registerNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
     }
@@ -169,31 +194,21 @@ namespace AT {
     }
 
 
+    inline unsigned int getStepsToReachFocus() const { return mStepsToReachRoughFocus; }
+    inline void setStepsToReachFocus(unsigned int inStepsToReachRoughFocus) { mStepsToReachRoughFocus = inStepsToReachRoughFocus; }
+
 
     virtual void findFocus();
 
+
+    DEFINE_PROP_LISTENER(FocusFinderUpdate, const FocusFinderDataT *);
+
   };
 
 
 
 
 
-
-
-  class QualityMeasureStrategyT {
-  public:
-    virtual double calculate(const FwhmT * inFwhmHorz, const FwhmT * inFwhmVert, const HfdT * inHfd) const = 0;
-  };
-  
-  class QmsSumAllT :  public QualityMeasureStrategyT {
-  public:
-    virtual double calculate(const FwhmT * inFwhmHorz, const FwhmT * inFwhmVert, const HfdT * inHfd) const {
-      // TODO: Check if all params valid...
-      double res = inFwhmHorz->getValue() + inFwhmVert->getValue() + inHfd->getValue();
-      cerr << "QmsSumAllT ... calculate... res: " << res << endl;
-      return res;
-    }
-  };
 
 
 
@@ -211,23 +226,7 @@ namespace AT {
   //   FocusFinderDataT(int inAbsFocusPosition, const FwhmT & inFwhmHorz, const FwhmT & inFwhmVert, const HfdT & inHfd, const VCurveT<int, double> & inVCurve) : mAbsFocusPosition(inAbsFocusPosition), mFwhmHorz(inFwhmHorz), mFwhmVert(inFwhmVert), mHfd(inHfd), mVCurve(inVCurve), mAbsMinFocusPos(-1), mAbsMaxFocusPos(-1), mStatusText("") { }
   // };
   
-  
-  // struct MinMaxFocusPosT {
-  //   enum TypeE {
-  //     MIN_FOCUS_POS,
-  //     MAX_FOCUS_POS,
-  //     _Count
-  //   };
     
-  //   static const char * asStr(const TypeE & inType) {
-  //     switch (inType) {
-  //     case MIN_FOCUS_POS: return "MIN_FOCUS_POS";
-  //     case MAX_FOCUS_POS: return "MAX_FOCUS_POS";
-  //     default: return "<?>";
-  //     }
-  //   }
-  // }; // end struct
-  
   
   // #define LOG(m)				\
   //   os << m << flush;			\

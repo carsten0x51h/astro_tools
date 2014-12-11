@@ -372,10 +372,7 @@ public:
 
   bool hasVecProp(const string & inVecPropName) const {
     bool hasVecProp = false;
-    PropNameMapT vecPropNameMap, propNameMap;
-    IndiDeviceT::loadPropMaps(this->genPropMapFileName(), & vecPropNameMap, & propNameMap);
-    const string vecPropTypeName(IndiDeviceT::lookupPropName(vecPropNameMap, inVecPropName));
-
+    const string vecPropTypeName(this->lookupVecPropName(inVecPropName));
     const IndiPropVecT * indiPropVec = getIndiProperties();
     for (typename IndiPropVecT::const_iterator it = indiPropVec->begin(); it != indiPropVec->end(); ++it) {
       Property * indiProp = *it;
@@ -582,9 +579,9 @@ public:
 	continue;
 
       bool hasVecProp = false;
-      LOG(debug) << "Looking up vecPropTypeName: " << VecPropsT::asStr(vecPropType) << "..." << flush;
+      LOG(trace) << "Looking up vecPropTypeName: " << VecPropsT::asStr(vecPropType) << "..." << flush;
       const string vecPropTypeName (IndiDeviceT::lookupPropName(vecPropNameMap, VecPropsT::asStr(vecPropType)));
-      LOG(debug) << "Result: " << vecPropTypeName << endl;
+      LOG(trace) << "Result: " << vecPropTypeName << endl;
 
       // Collect all prop names and check if vec props exist in traits...
       for (typename IndiPropVecT::const_iterator it = inIndiPropVec->begin(); it != inIndiPropVec->end(); ++it) {
@@ -629,7 +626,7 @@ public:
       const char * propTypeName = IndiDeviceT::lookupPropName(propNameMap, PropsT::asStr(propType)).c_str();
       for (set<string>::const_iterator it = indiPropNames.begin(); it != indiPropNames.end(); ++it) {
 	if (! strcmp(propTypeName, it->c_str())) {
-	  LOG(debug) << "Expecting: " << propTypeName <<  " --> ok, has prop: " << it->c_str() << endl;
+	  LOG(trace) << "Expecting: " << propTypeName <<  " --> ok, has prop: " << it->c_str() << endl;
 	  hasProp = true;
 	  break;
 	}
@@ -641,9 +638,6 @@ public:
     } // end for
     
 
-
-
-    // TODO: logging...
     if (! missingVecProps.empty() || ! missingProps.empty()) {
       LOG(info) << inUniqueDeviceId << "' does not satisfy '" << DeviceTypeT::asStr(TraitsT::sDeviceType) << "' traits..." << endl;
     }

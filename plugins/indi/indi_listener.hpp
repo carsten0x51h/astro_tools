@@ -37,6 +37,10 @@ using namespace boost;
   void unregister##__name__##Listener(const T & inCallBack) {		\
     inCallBack.disconnect();						\
   }									\
+protected:								\
+  void call##__name__##Listener(__type__ inData) {			\
+    m##__name__##Listeners(inData);					\
+  }									\
 private:								\
  __name__##ListenersT m##__name__##Listeners;				\
  

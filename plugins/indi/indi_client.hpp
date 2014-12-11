@@ -262,7 +262,7 @@ protected:
    */
   virtual void newDevice(INDI::BaseDevice * inBaseDevice);
   virtual void newProperty(INDI::Property * pp) {
-    LOG(debug) << "INDI CLIENT - New property received: " << pp->getDeviceName() << endl;
+    LOG(trace) << "INDI CLIENT - New property received: " << pp->getDeviceName() << endl;
     mNewPropListeners(pp);
   }
 
