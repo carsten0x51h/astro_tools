@@ -297,9 +297,9 @@ private:
       ia >> make_nvp(sVecPropNameMapNvp, *outVecPropNameMap);
       ia >> make_nvp(sPropNameMapNvp, *outPropNameMap);
 
-      LOG(info) << "Loaded prop map from file '" << inFilename << "'..." << endl;
+      LOG(debug) << "Loaded prop map from file '" << inFilename << "'..." << endl;
     } else {
-      LOG(info) << "No prop map with filename '" << inFilename << "'..." << endl;
+      LOG(debug) << "No prop map with filename '" << inFilename << "'..." << endl;
     }
   }
   void loadPropMaps() { IndiDeviceT::loadPropMaps(this->genPropMapFileName(), & mVecPropNameMap, & mPropNameMap); }
@@ -312,7 +312,7 @@ private:
     boost::archive::xml_oarchive oa(ofs);
     oa << make_nvp(sVecPropNameMapNvp, inVecPropNameMap);
     oa << make_nvp(sPropNameMapNvp, inPropNameMap);
-    LOG(info) << "Saved prop map to file '" << inFilename << "'..." << endl;
+    LOG(debug) << "Saved prop map to file '" << inFilename << "'..." << endl;
   }
   void savePropMaps() { IndiDeviceT::savePropMaps(this->genPropMapFileName(), mVecPropNameMap, mPropNameMap); }
 
@@ -639,22 +639,22 @@ public:
     
 
     if (! missingVecProps.empty() || ! missingProps.empty()) {
-      LOG(info) << inUniqueDeviceId << "' does not satisfy '" << DeviceTypeT::asStr(TraitsT::sDeviceType) << "' traits..." << endl;
+      LOG(debug) << inUniqueDeviceId << "' does not satisfy '" << DeviceTypeT::asStr(TraitsT::sDeviceType) << "' traits..." << endl;
     }
     if (! missingVecProps.empty()) {
-      LOG(info) << missingVecProps.size() << " missing vec prop" << (missingVecProps.size() > 1 ? "s:" : ":") << endl;
+      LOG(debug) << missingVecProps.size() << " missing vec prop" << (missingVecProps.size() > 1 ? "s:" : ":") << endl;
       for (typename vector<typename VecPropsT::TypeE>::const_iterator it = missingVecProps.begin(); it != missingVecProps.end(); ++it) {
-	LOG(info) << "   " << VecPropsT::asStr(*it) << endl;
+	LOG(debug) << "   " << VecPropsT::asStr(*it) << endl;
       }
-      LOG(info) << endl;
+      LOG(debug) << endl;
     }
 
     if (! missingProps.empty()) {
-       LOG(info) << missingProps.size() << " missing prop" << (missingProps.size() > 1 ? "s:" : ":") << endl;
+       LOG(debug) << missingProps.size() << " missing prop" << (missingProps.size() > 1 ? "s:" : ":") << endl;
       for (typename set<typename PropsT::TypeE>::const_iterator it = missingProps.begin(); it != missingProps.end(); ++it) {
-	LOG(info) << "   " << PropsT::asStr(*it) << endl;
+	LOG(debug) << "   " << PropsT::asStr(*it) << endl;
       }
-      LOG(info) << endl;
+      LOG(debug) << endl;
     }
 
      

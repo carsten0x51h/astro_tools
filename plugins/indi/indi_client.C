@@ -106,7 +106,7 @@ IndiFilterWheelT * IndiClientT::getFilterWheel(const string & inDeviceName) {
 
 void IndiClientT::newDevice(INDI::BaseDevice * inBaseDevice) {
   AT_ASSERT(IndiClient, inBaseDevice, "Expecting inBaseDevice to be valid pointer.");
-  LOG(info) << "INDI CLIENT - New device received: " << inBaseDevice->getDeviceName() << endl;
+  LOG(debug) << "INDI CLIENT - New device received: " << inBaseDevice->getDeviceName() << endl;
   mNewDeviceListeners(inBaseDevice);
 }
 
@@ -124,12 +124,12 @@ void IndiClientT::connect() {
     }
   }
   
-  LOG(info) << "Waiting for devices..." << flush;
+  LOG(debug) << "Waiting for devices..." << flush;
   waitForInitialDevicePopulation();
   
   // typedef vector<INDI::BaseDevice *> BaseDeviceVecT;
   // const BaseDeviceVecT & baseDevices = this->BaseClient::getDevices();
-  // LOG(info) << "DONE. Have " << baseDevices.size() << " device" << (baseDevices.size() > 1 ? "s..." : "...") << endl;
+  // LOG(debug) << "DONE. Have " << baseDevices.size() << " device" << (baseDevices.size() > 1 ? "s..." : "...") << endl;
   
   // AT_ASSERT(IndiClient, ! mDeviceMap.size(), "Expect mDeviceMap being empty.");
   // for (BaseDeviceVecT::const_iterator it = baseDevices.begin(); it != baseDevices.end(); ++it) {

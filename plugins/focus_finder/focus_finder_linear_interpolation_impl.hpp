@@ -100,6 +100,8 @@
 */
 
 #include <iosfwd>
+#include <vector>
+
 #include "focus_finder_common.hpp"
 
 #include "indi/indi_camera.hpp"
@@ -117,6 +119,9 @@
 namespace AT {
 
   DEF_Exception(FocusFinderLinearInterpolation);
+
+  typedef VCurveTmplT<int, double> VCurveT;
+  typedef vector<VCurveT> VCurveVecT;
 
   /**
    * Linear interpolation focus finder.
@@ -145,7 +150,8 @@ namespace AT {
      * -If focus gets worse, "down" is the right direction
      * -Move foucs "down" N steps
      */
-    FocusDirectionT::TypeE determineInitialDirection();
+    FocusDirectionT::TypeE determineInitialDirectionOfImprovement();
+
 
     /**
      * -Find rough focus (in: FWMH & HFD at least to be reached, out: success/failure, FWMH & HFD obtained)
@@ -171,6 +177,25 @@ namespace AT {
      */
     int findExtrema(FocusDirectionT::TypeE inDirectionToImproveFocus, MinMaxFocusPosT::TypeE inMinMaxFocusPos);
 
+
+    /**
+     * -Record V-Curve (in: Fmin, Fmax, J? (TODO: Or determine dynamically? J=f(HFD and/or FWHM)? ))
+     *  -1. Move focus to Fmin (decrease by Fmin)
+     *  -2. Take picture
+     *  -3. Save FWHM & HFD and current focus position (and sub image?)
+     *  -4. If Fmax reached, continue at 7.
+     *  -5. Else:Increase focus by J steps
+     *  -6. Continue at 2.
+     *  -7. Bring focus back to start pos. (Decrease focus by f_rightFmax)
+     */
+    void recordVCurve(int inAbsStartPos, int inAnsEndPos, size_t inGranularitySteps, VCurveT * outVCurve, bool inMoveBackToOldPos = true);
+
+
+    /**
+     * -Calculate optimal focus position
+     */
+    double calcOptimalAbsFocusPos(const VCurveVecT & inVCurves);
+
   public:
     static const size_t sWindowSize;
 
@@ -184,7 +209,7 @@ namespace AT {
       mStarCenterPos(inStarCenterPos),
       mExposureTimeSec(inExposureTimeSec),
       mBinning(inBinning),
-      mNumStepsToDetermineDirection(8000 /*TODO*/),
+      mNumStepsToDetermineDirection(3000 /*TODO*/),
       mStepsToReachRoughFocus(3000),
       mOuterHfdRadiusPx(15 /*TODO*/) {
       //mIndiClient->registerNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));

@@ -119,7 +119,7 @@ private:
     return fitgsl_fx(gaussParms.b, gaussParms.p, gaussParms.c, gaussParms.w, x);
   }
 
-  static void fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussParmsT * gaussParms) {
+  static void fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussParmsT * gaussParms, double inEpsAbs = 1e-2, double inEpsRel = 1e-2) {
     outFitValues->resize(imgValues.size());
     vector<float> & fitValues = (*outFitValues);
     float A[4]; // Contains the coefficients of the fitted line
@@ -138,12 +138,8 @@ private:
       dat->pt[i].y = imgValues[i];
     }
 
-    // TODO: make configurable?!
-    static const double epsabs = 1e-2; /*e.g. 1e-4*/
-    static const double epsrel = 1e-2;
-
     // Do the LM fit
-    int err = fitgsl_lm(dat, A, epsabs, epsrel);
+    int err = fitgsl_lm(dat, A, inEpsAbs, inEpsRel);
 
     if (err) {
       stringstream ss;
@@ -174,8 +170,8 @@ public:
   FwhmT() : mXCom(0), mYCom(0) { }
 
   // TODO: Add further constructors... vector<double> ... just row of data...
-  FwhmT(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
-  void set(const CImg<float> & image, const DirectionT::TypeE & inDirection, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
+  FwhmT(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, double inEpsAbs = 1e-2, double inEpsRel = 1e-2, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
+  void set(const CImg<float> & image, const DirectionT::TypeE & inDirection, double inEpsAbs = 1e-2, double inEpsRel = 1e-2, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
 
   inline bool valid() const { return (mImgValues.size() > 0 && mFitValues.size() > 0); }
 

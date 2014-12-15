@@ -31,8 +31,8 @@ namespace AT {
   void FocusFinderLinearInterpolationImplT::findFocus() {
     LOG(trace) << dec << "FocusFinderLinearInterpolationImplT::findFocus() - Entering..." << endl;
     
-    FocusDirectionT::TypeE direction = this->determineInitialDirection();
-    LOG(info) << dec << "Direction of improvement: " << FocusDirectionT::asStr(direction) << "..." << endl;
+    FocusDirectionT::TypeE direction = this->determineInitialDirectionOfImprovement();
+    LOG(debug) << dec << "Direction of improvement: " << FocusDirectionT::asStr(direction) << "..." << endl;
 
     this->findRoughFocus(direction);
     LOG(info) << dec << "Found rough focus at abs pos: " << mFocuserDevice->getAbsPos() << "..." << endl;
@@ -41,43 +41,127 @@ namespace AT {
     int Fmax = this->findExtrema(direction, MinMaxFocusPosT::MAX_FOCUS_POS);
     LOG(info) << dec << "Determined focus boundaries [min, max]=[" << Fmin << ", " << Fmax << "]..." << endl;
 
+    // Crosscheck that Fmax > Fmin
+    if (Fmax <= Fmin) {
+      stringstream ssExc;
+      ssExc << "Fmax=" << Fmax << " must be greater than Fmin=" << Fmin << "." << endl;
+      const string tmpStr = ssExc.str();
+      throw FocusFinderLinearInterpolationExceptionT(tmpStr.c_str());
+    }
 
-    LOG(trace) << dec << "FocusFinderLinearInterpolationImplT::findFocus() - Leaving..." << endl;
+    // TODO: Put to another function?!
+    // From Fmin and Fmax calculate start and end position
+    double centerPos = Fmin + fabs(Fmax - Fmin) / 2;
+    double halfLength = fabs(Fmax - centerPos);
+    const size_t perc = 70; // TODO: Make configurable?!
+    double percLength = halfLength * 0.01 * (double) perc;
+
+    int absStartPos = centerPos - percLength;
+    int absEndPos = centerPos + percLength;
+
+    LOG(debug) << dec << "centerPos: " << centerPos << ", halfLength: " << halfLength << ", perc: " << perc << "%, percLength: " << percLength << endl;
+    LOG(info) << dec << "Calculated start/end positions [start, end]=[" << absStartPos << ", " << absEndPos << "]" << endl;
+
+    // Record VCurves
+    size_t numVCurves = 2; // TODO: Make as member? Make configurable?!
+    size_t vCurveGranularitySteps = 500; // TODO: Pass / Calculate?!
+
+    VCurveVecT vcurves(numVCurves); // Contains empty VCurves
+    
+    LOG(info) << dec << "Recording " << numVCurves << " VCurves with "
+	      << (fabs(absEndPos - absStartPos) / vCurveGranularitySteps) << " points each..." << endl;
+
+    for (VCurveVecT::iterator it = vcurves.begin(); it != vcurves.end(); ++it) {
+      LOG(info) << dec << " > Recording VCurve " << std::distance(vcurves.begin(), it) << "..." << endl;
+
+      VCurveT & curVCurve = *it;
+      this->recordVCurve(absStartPos, absEndPos, vCurveGranularitySteps, & curVCurve, false /*do not move back to old pos*/);
+
+      LOG(info) << dec << "-> VCurve " << std::distance(vcurves.begin(), it) << " recorded: " << curVCurve << endl;
+    }
+
+    // Calculate optimal focus position
+    double optFocusPos = calcOptimalAbsFocusPos(vcurves);
+    LOG(info) << "Optimal focus pos: " << optFocusPos << endl;
+
+
+    // TODO: Move to optimal focus position!
+    // TODO!!!
   }
 
+  double
+  FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos(const VCurveVecT & inVCurves) {
+    AT_ASSERT(FocusFinderLinearInterpolation, inVCurves.size(), "VCurve vector is empty!");
 
-  void FocusFinderLinearInterpolationImplT::takePictureCalcStarData(StarDataT * outStarData, CImg<float> * outImg) {
-    AT_ASSERT(FocusFinderLinearInterpolation, outStarData, "outStarData expected to be set!");
+    VCurveT masterVCurve;
+    for (VCurveVecT::const_iterator itCurve = inVCurves.begin(); itCurve != inVCurves.end(); ++itCurve) {
+      masterVCurve = masterVCurve + *itCurve; // TODO: Use +=...
+    }
     
+    // Calculate average
+    masterVCurve = masterVCurve / (double) inVCurves.size(); // TODO: Use /=
+
+    LOG(info) << "Master VCurve: " << masterVCurve << endl;
+
+    return -1; // TODO
+}
+
+  void
+  FocusFinderLinearInterpolationImplT::takePictureCalcStarData(StarDataT * outStarData, CImg<float> * outImg) {
+    AT_ASSERT(FocusFinderLinearInterpolation, outStarData, "outStarData expected to be set!");
+
+    const size_t sHfdOuterRadiusPx = 5; // TODO: Where to put?! --> Should not be passed by default... should either be calculated by HfdT, and / or HfdT should have a good default...
+    const size_t maxRetryCnt = 5; // TODO: Pass as parameter?!
+
     CImg<float> img;
     
     // Calc frameSize from inStarCenterPos
     FrameT imgFrame = centerPosToFrame(mStarCenterPos, FocusFinderLinearInterpolationImplT::sWindowSize);
 
-    // Take a picture, throws if not connected or problem with device
-    mCameraDevice->takePicture(& img, mExposureTimeSec, imgFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
-
-    // TODO: Where to put?! --> Should not be passed by default... should either be calculated by HfdT, and / or HfdT should have a good default...
-    const size_t sHfdOuterRadiusPx = 10;
-    
     // Calc star values, throws if star could not be determined
-    outStarData->getFwhmHorz().set(img, FwhmT::DirectionT::HORZ);
-    outStarData->getFwhmVert().set(img, FwhmT::DirectionT::VERT);
-    outStarData->getHfd().set(img, sHfdOuterRadiusPx);
-    
+    size_t retryCnt = 0;
+    while(retryCnt < maxRetryCnt) {
+      try {
+	// Take a picture, throws if not connected or problem with device
+	mCameraDevice->takePicture(& img, mExposureTimeSec, imgFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
+
+	outStarData->getFwhmHorz().set(img, FwhmT::DirectionT::HORZ);
+	outStarData->getFwhmVert().set(img, FwhmT::DirectionT::VERT);
+	outStarData->getHfd().set(img, sHfdOuterRadiusPx);
+	break; // success
+
+      } catch (FwhmCurveFittingExceptionT & exc) {
+	// Fitting did not work as expected...
+	LOG(warning) << "Fitting did not work as expected...retry " << (retryCnt+1) << " / " << maxRetryCnt << endl;
+	++retryCnt;
+      }
+    }
+
+    if (maxRetryCnt <= retryCnt) {
+      throw FwhmCurveFittingExceptionT("Could not fit curve even after retrying.");
+    }
+
     if (outImg)
       *outImg = img; // Copy image if desired
+
+    // TODO: Enable by switch?! Put to another function?
+    // DEBUG - DISPLAY IMG
+    // CImgDisplay disp1(img, "image");
+    // while(! disp1.is_closed()) { CImgDisplay::wait(disp1); }
+    // DEBUG END
   }
-  
+
 
   FocusDirectionT::TypeE
-  FocusFinderLinearInterpolationImplT::determineInitialDirection() {
+  FocusFinderLinearInterpolationImplT::determineInitialDirectionOfImprovement() {
     LOG(trace) << "Determining initial focuser direction...";
 	
+    // TODO: Check current absolute position to decide which direction we should initially move!
+
     // Take picture, calc star values and send update
     StarDataT starData;
     takePictureCalcStarData(& starData);
-    LOG(trace) << dec << "Took first picture - resulting star data: " << starData << endl;
+    LOG(trace) << dec << "Took first picture - resulting star data: " << starData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
 
     // Send update to listeners
     FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
@@ -85,12 +169,14 @@ namespace AT {
 
     // Move mNumStepsToDetermineDirection inwards
     mFocuserDevice->moveFocusBy(mNumStepsToDetermineDirection, FocusDirectionT::INWARDS);
-    LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::INWARDS) << " by " << mNumStepsToDetermineDirection << " steps. " << endl;
+    LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::INWARDS) << " by "
+	       << mNumStepsToDetermineDirection << " steps, pos: " << mFocuserDevice->getAbsPos() << endl;
 
     // Take another picture, calc star values and send update
     StarDataT starDataNew;
     takePictureCalcStarData(& starDataNew);
-    LOG(trace) << dec << "Took second picture - resulting star data: " << starDataNew << endl;
+    LOG(trace) << dec << "Took second picture - resulting star data: " << starDataNew
+	       << ", pos: " << mFocuserDevice->getAbsPos() << endl;
 
     // Send update to listeners
     FocusFinderDataT focusFinderDataNew(mFocuserDevice->getAbsPos(), starDataNew /*, TODO: mVCurve*/);
@@ -99,34 +185,15 @@ namespace AT {
     // Move focus back -> mNumStepsToDetermineDirection outwards
     mFocuserDevice->moveFocusBy(mNumStepsToDetermineDirection, FocusDirectionT::OUTWARDS);
     LOG(trace) << dec << "Moved focus back " << FocusDirectionT::asStr(FocusDirectionT::OUTWARDS)
-	       << " by " << mNumStepsToDetermineDirection << " steps. " << endl;
+	       << " by " << mNumStepsToDetermineDirection << " steps. "
+	       << ", pos: " << mFocuserDevice->getAbsPos() << endl;
 
-    // Calc direction of improvement
-    bool fwhmHorzCmp = starData.getFwhmHorz().getValue() < starDataNew.getFwhmHorz().getValue();
-    bool fwhmVertCmp = starData.getFwhmVert().getValue() < starDataNew.getFwhmVert().getValue();
-    bool hfdCmp = starData.getHfd().getValue() < starDataNew.getHfd().getValue();
-
-    LOG(trace) << dec << "Compare data - fwhmHorzCmp: " << fwhmHorzCmp << ", fwhmVertCmp: " << fwhmVertCmp << ", hfdCmp: " << hfdCmp << endl;
-
-
-    FocusDirectionT::TypeE directionToImproveFocus;
-
-    if (fwhmHorzCmp && fwhmVertCmp && hfdCmp) {
-      directionToImproveFocus = FocusDirectionT::INWARDS;
-    } else if (! fwhmHorzCmp && ! fwhmVertCmp && ! hfdCmp) {
-      directionToImproveFocus = FocusDirectionT::OUTWARDS;
-    } else {
-      stringstream ssEx;
-      ssEx << "Could not determine initial focuser direction of improvement - "
-	   << "star data are inconsistent. Maybe select another star or increase numStepsToDetermineDirection." << endl
-	   << "StarData1: " << starData << "StarData2: " << starDataNew << endl;
-
-      throw FocusFinderLinearInterpolationExceptionT(ssEx.str().c_str());
-    }
+    // TODO: fitness means here: the greater the worse... the smaller the better... this is counter intuitive!
+    FocusDirectionT::TypeE directionToImproveFocus = (starData.getFitness() > starDataNew.getFitness() ? FocusDirectionT::INWARDS : FocusDirectionT::OUTWARDS);
 
     LOG(info) << dec << "Direction which improves focus is: " << FocusDirectionT::asStr(directionToImproveFocus) << endl;
-    LOG(debug) << dec << "StarData1: " << starData << endl << "StartData2: " << starDataNew << endl;
-    
+    LOG(debug) << dec << "StarData1: " << starData << endl << "StartData2: " << starDataNew  << ", pos: " << mFocuserDevice->getAbsPos() << endl;
+
     return directionToImproveFocus;
   }
 
@@ -146,21 +213,20 @@ namespace AT {
   void
   FocusFinderLinearInterpolationImplT::findRoughFocus(FocusDirectionT::TypeE inDirectionToImproveFocus) {
 
-    LOG(trace) << "Finding rough focus...";
+    LOG(info) << "Looking for rough focus in direction " << FocusDirectionT::asStr(inDirectionToImproveFocus) << "..." << endl;
     
     const size_t maxIterCnt = 20; // TODO: configure? What is a good value? Depends on mStepsToReachRoughFocus...?
     
     // Take picture
     StarDataT starDataNew, starDataPrev;
     takePictureCalcStarData(& starDataNew);
-    LOG(trace) << dec << "Took picture - resulting star data: " << starDataNew << endl;
+    LOG(trace) << dec << "Took picture - resulting star data: " << starDataNew << ", pos: " << mFocuserDevice->getAbsPos() << endl;
     
     // Send update to listeners
     FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starDataNew /*, TODO: mVCurve*/);
     this->callFocusFinderUpdateListener(& focusFinderData);
     
     size_t iterCounter = 0;
-    //StarDataT starDataCur;
     
     do {
       starDataPrev = starDataNew;
@@ -170,18 +236,18 @@ namespace AT {
       // Move focus
       mFocuserDevice->moveFocusBy(mStepsToReachRoughFocus, inDirectionToImproveFocus);
       LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(inDirectionToImproveFocus)
-		 << " by " << mNumStepsToDetermineDirection << " steps. " << endl;
+		 << " by " << mStepsToReachRoughFocus << " steps, pos: " << mFocuserDevice->getAbsPos() << endl;
       
       // Take picture
       takePictureCalcStarData(& starDataNew);
-      LOG(trace) << dec << "Took picture - resulting star data new: " << starDataNew << endl;
+      LOG(trace) << dec << "Took picture - resulting star data new: " << starDataNew << ", pos: " << mFocuserDevice->getAbsPos() << endl;
       
       // Send update to listeners
       FocusFinderDataT focusFinderDataNew(mFocuserDevice->getAbsPos(), starDataNew /*, TODO: mVCurve*/);
       this->callFocusFinderUpdateListener(& focusFinderDataNew);
       
       // Print results to better compare it....
-      LOG(debug) << dec << "Iteration: " << iterCounter
+      LOG(debug) << dec << "Iteration: " << iterCounter << ", pos: " << mFocuserDevice->getAbsPos()
 		 << ", HFD_prev=" << starDataPrev.getHfd().getValue() << ", HFD_new=" << starDataNew.getHfd().getValue() << endl
 		 << ", Fwhm_horz_prev=" << starDataPrev.getFwhmHorz().getValue() << ", Fwhm_horz_new=" << starDataNew.getFwhmHorz().getValue() << endl
 		 << ", Fwhm_vert_prev=" << starDataPrev.getFwhmVert().getValue() << ", Fwhm_vert_new=" << starDataNew.getFwhmVert().getValue() << endl;
@@ -193,18 +259,19 @@ namespace AT {
       
     } while (iterCounter < maxIterCnt && starDataNew.getFitness() < starDataPrev.getFitness()); // end while
     
-    
     // Did we find a rough focus within max amount of iterations?
     if (iterCounter < maxIterCnt) {
       // Rough focus found - move focus back
       FocusDirectionT::TypeE backDirection = FocusDirectionT::invert(inDirectionToImproveFocus);
       mFocuserDevice->moveFocusBy(mStepsToReachRoughFocus, backDirection);
-      LOG(debug) << dec << "Moved focus back " << FocusDirectionT::asStr(backDirection) << " by " << mStepsToReachRoughFocus << " steps. " << endl;
+      LOG(trace) << dec << "Moved focus back " << FocusDirectionT::asStr(backDirection) << " by "
+		 << mStepsToReachRoughFocus << " steps. Pos: " << mFocuserDevice->getAbsPos() << endl;
       
       // Take picture
       StarDataT starDataFinal;
       takePictureCalcStarData(& starDataFinal);
-      LOG(trace) << dec << "Took picture - resulting star data (final): " << starDataFinal << endl;
+      LOG(trace) << dec << "Took picture - resulting star data (final): " << starDataFinal
+		 << ", pos: " << mFocuserDevice->getAbsPos() << endl;
       
       // Send update to listeners
       FocusFinderDataT focusFinderDataFinal(mFocuserDevice->getAbsPos(), starDataFinal /*, TODO: mVCurve*/);
@@ -232,11 +299,10 @@ namespace AT {
     const unsigned int maxFitnessValue = 25;
 
     FocusDirectionT::TypeE direction = (inMinMaxFocusPos == MinMaxFocusPosT::MIN_FOCUS_POS ? FocusDirectionT::INWARDS : FocusDirectionT::OUTWARDS);
-    LOG(trace) << "Looking for " << MinMaxFocusPosT::asStr(inMinMaxFocusPos) << " in direction " << FocusDirectionT::asStr(direction) << "..." << endl;
+    LOG(info) << "Looking for " << MinMaxFocusPosT::asStr(inMinMaxFocusPos) << " in direction " << FocusDirectionT::asStr(direction) << "..." << endl;
 
     int startFocusPos = mFocuserDevice->getAbsPos();
     LOG(debug) << "startFocusPos: " << startFocusPos << endl;
-
 
     // Take picture
     StarDataT starData;
@@ -250,11 +316,15 @@ namespace AT {
 
     // Loop until max. fitness has been reached
     while(maxFitnessValue > starData.getFitness()) {
+      LOG(debug) << dec << "Not yet reached maxFitnessValue " << maxFitnessValue
+		 << ", measured fitness: " << starData.getFitness()
+		 << ", current pos: " << mFocuserDevice->getAbsPos() << endl;
+
       //FOCUS_FINDER_STOP();
 
       // Move focuser
       mFocuserDevice->moveFocusBy(mStepsToReachRoughFocus /* TODO: Is this step size ok?! */, direction);
-      LOG(debug) << dec << "Moved focus " << FocusDirectionT::asStr(direction) << " by " << mStepsToReachRoughFocus << " steps. " << endl;
+      LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(direction) << " by " << mStepsToReachRoughFocus << " steps. " << endl;
 
       // Take picture
       takePictureCalcStarData(& starData);
@@ -266,9 +336,9 @@ namespace AT {
       
       //mVCurve[inFocuserClient.getAbsPos()] = inQualityMeasureStrategy->calculate(& fwhmHorz1, & fwhmVert1, & hfd1);
     }
-
-
+    
     int extremaPos = mFocuserDevice->getAbsPos();
+    double extremaFitness = starData.getFitness();
 
     LOG(debug) << "Ok, found " << MinMaxFocusPosT::asStr(inMinMaxFocusPos) << ": " << extremaPos << ", moving back to start position..." << endl;
 
@@ -277,78 +347,82 @@ namespace AT {
 
     // Move focuser back to start
     FocusDirectionT::TypeE backDirection = FocusDirectionT::invert(direction);
-    mFocuserDevice->moveFocusBy(mStepsToReachRoughFocus, backDirection);
-    LOG(debug) << dec << "Moved focus back " << FocusDirectionT::asStr(backDirection) << " to start by " << mStepsToReachRoughFocus << " steps." << endl;
+    mFocuserDevice->moveFocusBy(delta, backDirection);
+    LOG(trace) << dec << "Moved focus back " << FocusDirectionT::asStr(backDirection) << " to start by " << delta << " steps." << endl;
 
     // Take picture
     takePictureCalcStarData(& starData);
-    LOG(debug) << dec << "Took picture - resulting star data: " << starData << endl;
+    LOG(trace) << dec << "Took picture - resulting star data: " << starData << endl;
     
     // Send update to listeners
     FocusFinderDataT focusFinderData2(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
     this->callFocusFinderUpdateListener(& focusFinderData2);      
 
     //mVCurve[inFocuserClient.getAbsPos()] = inQualityMeasureStrategy->calculate(& fwhmHorz1, & fwhmVert1, & hfd1);
+
+    LOG(info) << dec << "Reached maxFitnessValue " << maxFitnessValue
+	      << " looking for " << MinMaxFocusPosT::asStr(inMinMaxFocusPos)
+	      << " in direction " << FocusDirectionT::asStr(direction)
+	      << ", measured fitness: " << extremaFitness
+	      << " (boundary is " << maxFitnessValue << ")"
+	      << ", current pos: " << extremaPos << endl;
     
     return extremaPos; // focuser pos
   }
 
+  void FocusFinderLinearInterpolationImplT::recordVCurve(int inAbsStartPos, int inAbsEndPos, size_t inGranularitySteps, VCurveT * outVCurve, bool inMoveBackToOldPos) {
 
+    if (! outVCurve) {
+      throw FocusFinderLinearInterpolationExceptionT("No vcurve passed.");
+    }
 
+    LOG(info) << "Start recording V-Curve..." << endl;
+    LOG(debug) << "Moving to start position " << inAbsStartPos << "..." << endl;
 
+    // Remember old focus position
+    int oldFocusPos = mFocuserDevice->getAbsPos();
 
+    // Move focuser to start position
+    int relMinDelta = mFocuserDevice->getAbsPos() - inAbsStartPos;
+    mFocuserDevice->moveFocusBy(relMinDelta, FocusDirectionT::INWARDS);
+    LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::INWARDS) << " by " << relMinDelta << " steps. " << endl;
+    
+    int curPos = mFocuserDevice->getAbsPos();
+    int delta = inGranularitySteps;
+    
+    StarDataT starData;
 
-// /**
-//  * -Record V-Curve (in: Fmin, Fmax, J? (TODO: Or determine dynamically? J=f(HFD and/or FWHM)? ))
-//  *  -1. Move focus to Fmin (decrease by Fmin)
-//  *  -2. Take picture
-//  *  -3. Save FWHM & HFD and current focus position (and sub image?)
-//  *  -4. If Fmax reached, continue at 7.
-//  *  -5. Else:Increase focus by J steps
-//  *  -6. Continue at 2.
-//  *  -7. Bring focus back to start pos. (Decrease focus by f_rightFmax)
-//  */
-// bool FocusFinderT::recordVCurve(ostream & os, IndiCameraClientT & inCameraClient, IndiFocuserClientT & inFocuserClient, CImg<float> * outImg, int inStartX, int inStartY, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection, IndiFocuserClientT::FocusDirectionT::TypeE inDirectionToImproveFocus, bool * outUserStop, unsigned int inStepsToReachRoughFocus, int inFmin, int inFmax, const QualityMeasureStrategyT * inQualityMeasureStrategy) {
-//   os << "Recording V-Curve..." << endl;
-//   os << "Moving to Fmin..." << endl;
-//   inFocuserClient.moveFocusBy(inFocuserClient.getAbsPos() - inFmin, IndiFocuserClientT::FocusDirectionT::INWARDS);
+    // TODO: STOP-CONDITION?!... --> Use bool member which can be set from outside...asynchronously.......
+    while (curPos < inAbsEndPos) {
+      //   FOCUS_FINDER_STOP();
+      
+      // Take picture
+      takePictureCalcStarData(& starData);
+      LOG(trace) << dec << "Took picture - resulting star data: " << starData << endl;
+      
+      // Send update to listeners
+      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
+      this->callFocusFinderUpdateListener(& focusFinderData);      
+      
+      // Add position + fitness to VCurve
+      outVCurve->insert(make_pair(curPos, starData.getFitness()));
+
+      // Move focuser
+      mFocuserDevice->moveFocusBy(delta, FocusDirectionT::OUTWARDS);
+      LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::OUTWARDS) << " by " << delta << " steps. " << endl;
+      
+      curPos += delta;
+    }
+    
+    if (inMoveBackToOldPos) {
+      size_t deltaBack = fabs(curPos - oldFocusPos);
+      mFocuserDevice->moveFocusBy(deltaBack, FocusDirectionT::INWARDS);
+      LOG(trace) << dec << "Moved focus back " << FocusDirectionT::asStr(FocusDirectionT::OUTWARDS)
+		 << " to old position " << oldFocusPos << " by " << deltaBack << " steps. " << endl;
+    }
+  }
   
-//   int curPos = inFocuserClient.getAbsPos();
-//   int delta = 500; // TODO: Pass / Calculate
 
-//   do {
-//     FOCUS_FINDER_STOP();
-
-//     inCameraClient.takePicture(outImg, 1 /*horz bin*/, 1 /*vert bin*/, inStartX /*x*/, inStartY /*y*/, FocusFinderT::sWindowWidthPx /*w*/, FocusFinderT::sWindowHeightPx /*h*/, FrameTypeT::LIGHT, inExposureTime /*s*/, false /*no compr.*/);
-
-//     //recenter(os, inCameraClient, inFocuserClient, outImg, & inStartX, & inStartY, inExposureTime, inOuterHfdRadius, numStepsToDetermineDirection);
-
-//     FwhmT fwhmHorz1(*outImg, FwhmT::DirectionT::HORZ);
-//     FwhmT fwhmVert1(*outImg, FwhmT::DirectionT::VERT);
-//     HfdT hfd1(*outImg, inOuterHfdRadius /*radius px*/);
-
-//     //mVCurve[inFocuserClient.getAbsPos()] = fwhmVert1.getValue() + fwhmHorz1.getValue(); // TODO: ok?!
-//     //mVCurve[inFocuserClient.getAbsPos()] = hfd1.getValue(); // TODO: ok?!
-//     mVCurve[inFocuserClient.getAbsPos()] = inQualityMeasureStrategy->calculate(& fwhmHorz1, & fwhmVert1, & hfd1);
-
-//     FocusFinderDataT ffd1(inFocuserClient.getAbsPos(), fwhmHorz1, fwhmVert1, hfd1, mVCurve);
-//     mFocusFinderUpdateListeners(& ffd1);
-
-
-//     inFocuserClient.moveFocusBy(delta, IndiFocuserClientT::FocusDirectionT::OUTWARDS);
-//     curPos += delta;
-
-//     if (curPos >= inFmax) {
-//       os << "Reached Fmax - finished VCurve recording." << endl;
-//       break;
-//     }
-  
-//   } while(true);
-
-//   os << "Finished VCurve recording." << endl;
-
-//   return true;
-// }
 
 
 

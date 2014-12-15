@@ -40,12 +40,12 @@ ostream & operator<<(ostream & os, const FwhmT & inFwhm) {
   return inFwhm.print(os);
 }
 
-FwhmT::FwhmT(const CImg<float> & image, const DirectionT::TypeE & inDirection, float inCenterX, float inCenterY, /*TODO: use PositionT */size_t inSizePx) {
-  this->set(image, inDirection, inCenterX, inCenterY, inSizePx);
+FwhmT::FwhmT(const CImg<float> & image, const DirectionT::TypeE & inDirection, double inEpsAbs, double inEpsRel, float inCenterX, float inCenterY, /*TODO: use PositionT */size_t inSizePx) {
+  this->set(image, inDirection, inEpsAbs, inEpsRel, inCenterX, inCenterY, inSizePx);
 }
 
 
-void FwhmT::set(const CImg<float> & image, const DirectionT::TypeE & inDirection, float inCenterX, float inCenterY, size_t inSizePx) {
+void FwhmT::set(const CImg<float> & image, const DirectionT::TypeE & inDirection, double inEpsAbs, double inEpsRel, float inCenterX, float inCenterY, size_t inSizePx) {
   //cout << "FwhmT - direction: " << DirectionT::asStr(inDirection) << endl;
 
   mDirection = inDirection;
@@ -123,7 +123,7 @@ void FwhmT::set(const CImg<float> & image, const DirectionT::TypeE & inDirection
     // TODO: Calculate the SNR?!?!?!!! Values from Fwhm do not seem to be suitable to recognize what kind of region is selected ... ^^ strange!
     
     // Fit horz. & vert. values
-    fitValues(mImgValues, & mFitValues, & mGaussParms);
+    FwhmT::fitValues(mImgValues, & mFitValues, & mGaussParms, inEpsAbs, inEpsRel);
 }
 
 

@@ -22,205 +22,221 @@
 
 #ifndef _VCURVE_TMPL_H_
 #define _VCURVE_TMPL_H_ _VCURVE_TMPL_H_
-// http://www.youtube.com/watch?v=oiawjpuVglo
-#include <iostream>
+
+#include <iosfwd>
 #include <map>
-#include <exception>
 #include <limits>
+
+#include "at_exception.hpp"
 
 using namespace std;
 
+namespace AT {
 
-class VCurveExceptionT : public std::exception {
-public:
-  // TODO: Change to stream....
-  VCurveExceptionT(const string & inExceptionMsg) : mMsg(inExceptionMsg) {
-  }
-  ~VCurveExceptionT() throw() {}
-  const char * what() const throw() { return mMsg.c_str(); }
-
-private:
-  string mMsg;
-};
+  DEF_Exception(VCurve);
 
 
-/**
- * The VCurve is a container for X-Y coordinate pairs.
- * X represents the focuser relative position in steps.
- * Y represents the focus measure (HFD or FWHM - a simple double value in arcsec).
- * Allow only one Y-value per X value -> A VCurve can be implemented as a map<X, Y>.
- * VCurves can be added if they have exactly the same indices in X direction.
- * A VCurve can be divided by a scalar value i.e. each Y value is divided by the same scalar value.
- * The values of a VCurve can be printed to the console.
- * A VCurve is serializable, we may use the boost XML writer or implement a simple (x,y) format.
- * A VCurve has a method to calculate the mean square linear for down- and up directions (we may use gsl).
- * A VCurve has a method to calculate the "optimal" focus X position from the given values (requirement: # of values?).
- * A the data types for X and Y can be suplied by two template parameters.
- * It is possible to add a value X-Y pair to a VCurve (standard map interface).
- * It is possible to remove a value X-Y pair from a VCurve (standard map interface).
- */
-template<typename X, typename Y>
-class VCurveT : public map<X, Y> {
-private:
-
-  struct AddSubVCurvesT {
-    enum TypeE {
-      ADD_VCURVES,
-      SUB_VCURVES,
-      _Count
-    };
-  
-    static const char * asStr(const TypeE & inType) {
-      switch (inType) {
-      case ADD_VCURVES: return "ADD_VCURVES";
-      case SUB_VCURVES: return "SUB_VCURVES";
-      default: return "<?>";
-      }
-    }
-  }; // end struct
-
-
-  static inline void addSub(typename AddSubVCurvesT::TypeE inVCurveType, const VCurveT & c1, const VCurveT & c2, VCurveT * outResVCurve) {
-    VCurveT newCurve;
-
-    // Check if both VCurves can be added
-    if (c1.size() != c2.size())
-      throw VCurveExceptionT("Number of VCurve entries have to be identical for add operation.");
-
-    for (typename VCurveT::const_iterator c1It = c1.begin(); c1It != c1.end(); ++c1It) {
-      typename VCurveT::const_iterator c2It = c2.find(c1It->first);
-
-      if (c2It == c2.end())
-	throw VCurveExceptionT("X indices of VCurves have to be identical for add operation.");
-
-      if (! outResVCurve)
-	return;
-
-      (*outResVCurve)[c1It->first] = (inVCurveType == AddSubVCurvesT::ADD_VCURVES ? c1It->second + c2It->second : c1It->second - c2It->second);
-    }
-    return;
-  }
-
-public:
-  VCurveT() {
-  }
-
-  /*
-   * Min / Max functions for X and Y values
+  /**
+   * The VCurve is a container for X-Y coordinate pairs.
+   * X represents the focuser relative position in steps.
+   * Y represents the focus measure (HFD or FWHM - a simple double value in arcsec).
+   * Allow only one Y-value per X value -> A VCurve can be implemented as a map<X, Y>.
+   * VCurves can be added if they have exactly the same indices in X direction.
+   * A VCurve can be divided by a scalar value i.e. each Y value is divided by the same scalar value.
+   * The values of a VCurve can be printed to the console.
+   * A VCurve is serializable, we may use the boost XML writer or implement a simple (x,y) format.
+   * A VCurve has a method to calculate the mean square linear for down- and up directions (we may use gsl).
+   * A VCurve has a method to calculate the "optimal" focus X position from the given values (requirement: # of values?).
+   * A the data types for X and Y can be suplied by two template parameters.
+   * It is possible to add a value X-Y pair to a VCurve (standard map interface).
+   * It is possible to remove a value X-Y pair from a VCurve (standard map interface).
    */
-  inline X getMinX() const {
-    if (this->empty())
-      return 0;
+  template<typename X, typename Y>
+  class VCurveTmplT : public map<X, Y> {
+  private:
+
+    struct AddSubVCurvesT {
+      enum TypeE {
+	ADD_VCURVES,
+	SUB_VCURVES,
+	_Count
+      };
+      
+      static const char * asStr(const TypeE & inType) {
+	switch (inType) {
+	case ADD_VCURVES: return "ADD_VCURVES";
+	case SUB_VCURVES: return "SUB_VCURVES";
+	default: return "<?>";
+	}
+      }
+    }; // end struct
+    
+    static inline void addSub(typename AddSubVCurvesT::TypeE inVCurveType, const VCurveTmplT & c1, const VCurveTmplT & c2, VCurveTmplT * outResVCurve) {
+      LOG(debug) << "Entering VCurve addSub(" << AddSubVCurvesT::asStr(inVCurveType) << ", ...)..." << endl;
+
+      if (! outResVCurve) {
+	throw VCurveExceptionT("No outVCurve set.");
+      }
+
+      if (c1.empty() && c2.empty()) {
+	LOG(debug) << "c1 and c2 empty... nothing to add/sub." << endl;
+      } else if (c1.empty()) {
+	// Only c1 empty --> outResVCurve = c2, care about sign of c2
+	int sign = (inVCurveType == AddSubVCurvesT::SUB_VCURVES ? -1 : 1);
+	LOG(debug) << "c1 is empty... assign c2 with sign " << sign << "." << endl;
+	*outResVCurve = sign * c2; // use of operator*
+      } else if (c2.empty()) {
+	// Only c2 empty --> outResVCurve = c1, sign of c2 does not matter since vcurve is empty
+	LOG(debug) << "c2 is empty... assign c1, ignore sign." << endl;
+	*outResVCurve = c1;
+      } else {
+	// None of both empty --> check if equal size and same indices...
+	LOG(debug) << "c1 and c2 not empty... assign c1, ignore sign." << endl;
+
+	if (c1.size() != c2.size()) {
+	  stringstream ssExc;
+	  ssExc << "Number of VCurve entries have to be identical for add operation - c1: " << c1.size() << ", c2: " << c2.size() << ".";
+	  const string tmpStr = ssExc.str();
+	  throw VCurveExceptionT(tmpStr.c_str());
+	}
+	
+	for (typename VCurveTmplT::const_iterator c1It = c1.begin(); c1It != c1.end(); ++c1It) {
+	  typename VCurveTmplT::const_iterator c2It = c2.find(c1It->first);
+	  
+	  if (c2It == c2.end()) {
+	    throw VCurveExceptionT("X indices of VCurves have to be identical for add operation.");
+	  }
+	  
+	  (*outResVCurve)[c1It->first] = (inVCurveType == AddSubVCurvesT::ADD_VCURVES ? c1It->second + c2It->second : c1It->second - c2It->second);
+	}
+      }
+      return;
+    }
+    
+  public:
+    VCurveTmplT() {
+    }
+    
+    /*
+     * Min / Max functions for X and Y values
+     */
+    inline X getMinX() const {
+      if (this->empty())
+	return 0;
       //throw VCurveExceptionT("VCurve empty, no minX.");
-    return this->begin()->first;
-  }
-  inline X getMaxX() const {
-    if (this->empty())
-      return 0;
-    //throw VCurveExceptionT("VCurve empty, no maxX.");
-    return this->rbegin()->first;
-  }
-  inline Y getMinY(X * outPos = 0) const {
-    Y curMin = std::numeric_limits<Y>::max();
-    for (typename VCurveT::const_iterator it = this->begin(); it != this->end(); ++it) {
-      if (curMin > it->second) {
-	curMin = it->second;
-
-	if (outPos)
-	  *outPos = it->first;
-      }
+      return this->begin()->first;
     }
-    return curMin;
-  }
-  inline Y getMaxY(X * outPos = 0) const {
-    Y curMax = std::numeric_limits<Y>::min();
-    for (typename VCurveT::const_iterator it = this->begin(); it != this->end(); ++it) {
-      if (curMax < it->second) {
-	curMax = it->second;
-	if (outPos)
-	  *outPos = it->first;
-      }
+    inline X getMaxX() const {
+      if (this->empty())
+	return 0;
+      //throw VCurveExceptionT("VCurve empty, no maxX.");
+      return this->rbegin()->first;
     }
-    return curMax;
-  }
+    inline Y getMinY(X * outPos = 0) const {
+      Y curMin = std::numeric_limits<Y>::max();
+      for (typename VCurveTmplT::const_iterator it = this->begin(); it != this->end(); ++it) {
+	if (curMin > it->second) {
+	  curMin = it->second;
+	  
+	  if (outPos)
+	    *outPos = it->first;
+	}
+      }
+      return curMin;
+    }
+    inline Y getMaxY(X * outPos = 0) const {
+      Y curMax = std::numeric_limits<Y>::min();
+      for (typename VCurveTmplT::const_iterator it = this->begin(); it != this->end(); ++it) {
+	if (curMax < it->second) {
+	  curMax = it->second;
+	  if (outPos)
+	    *outPos = it->first;
+	}
+      }
+      return curMax;
+    }
 
-  /*
-   * Overloading operators for simple VCurve calculations
-   */
-  VCurveT operator+(const VCurveT & inOtherVCurve) {
-    VCurveT newVCurve;
-    addSub(AddSubVCurvesT::ADD_VCURVES, *this, inOtherVCurve, & newVCurve);
-    return newVCurve;
-  }
+    /*
+     * Overloading operators for simple VCurve calculations
+     */
+    VCurveTmplT operator+(const VCurveTmplT & inOtherVCurve) {
+      VCurveTmplT newVCurve;
+      addSub(AddSubVCurvesT::ADD_VCURVES, *this, inOtherVCurve, & newVCurve);
+      return newVCurve;
+    }
 
-  VCurveT operator-(const VCurveT & inOtherVCurve) {
-    VCurveT newVCurve;
-    addSub(AddSubVCurvesT::SUB_VCURVES, *this, inOtherVCurve, & newVCurve);
-    return newVCurve;
-  }
+    // TODO: Overload operator+= and -=..., /=. *=
+
+    VCurveTmplT operator-(const VCurveTmplT & inOtherVCurve) {
+      VCurveTmplT newVCurve;
+      addSub(AddSubVCurvesT::SUB_VCURVES, *this, inOtherVCurve, & newVCurve);
+      return newVCurve;
+    }
   
-  VCurveT operator/(const double & inScalar) {
-    if (! inScalar)
-      throw VCurveExceptionT("Dividing a VCurve by 0 is not allowed.");
+    VCurveTmplT operator/(const double & inScalar) {
+      if (! inScalar)
+	throw VCurveExceptionT("Dividing a VCurve by 0 is not allowed.");
 
-    VCurveT newCurve(*this); // Create a copy of VCurve before dividing
-    for (typename VCurveT::iterator it = newCurve.begin(); it != newCurve.end(); ++it) {
-      it->second /= inScalar;
+      VCurveTmplT newCurve(*this); // Create a copy of VCurve before dividing
+      for (typename VCurveTmplT::iterator it = newCurve.begin(); it != newCurve.end(); ++it) {
+	it->second /= inScalar;
+      }
+      return newCurve;
     }
-    return newCurve;
+
+    // VCurveTmplT * scalar
+    VCurveTmplT operator*(const double & inScalar) {
+      VCurveTmplT newCurve(*this); // Create a copy of VCurve before multiplying
+      for (typename VCurveTmplT::iterator it = newCurve.begin(); it != newCurve.end(); ++it) {
+	it->second *= inScalar;
+      }
+      return newCurve;
+    }
+
+    bool operator==(const VCurveTmplT & inOtherVCurve) {
+      if (this->size() != inOtherVCurve.size())
+	return false;
+
+      for (typename VCurveTmplT::const_iterator c1It = this->begin(); c1It != this->end(); ++c1It) {
+	typename VCurveTmplT::const_iterator c2It = inOtherVCurve.find(c1It->first);
+      
+	if (c2It == inOtherVCurve.end())
+	  return false;
+
+	// FIXME: Comparing double values will probably fail this way...
+	if (c1It->first != c2It->first || c1It->second != c2It->second)
+	  return false;
+      }
+      return true;
+    }
+
+    //TODO: void saveToStream();
+    //TODO: void loadFroMStream();
+  };
+
+  template<typename X, typename Y>
+  ostream & operator<<(ostream & os, const VCurveTmplT<X, Y> & vcurve) {
+    if (!vcurve.size()) {
+      os << "VCurve is empty." << endl;
+    } else {
+      os << "VCurve (" << vcurve.size() << " entries)" << endl;
+      for (typename VCurveTmplT<X,Y>::const_iterator it = vcurve.begin(); it != vcurve.end(); ++it) {
+	os << "(x, y) = (" << it->first << ", " << it->second << ")" << endl;
+      }
+    }
+    return os;
   }
 
-  // VCurveT * scalar
-  VCurveT operator*(const double & inScalar) {
-    VCurveT newCurve(*this); // Create a copy of VCurve before multiplying
-    for (typename VCurveT::iterator it = newCurve.begin(); it != newCurve.end(); ++it) {
+  // scalar * VCurveTmplT
+  template<typename X, typename Y>
+  VCurveTmplT<X,Y> operator*(const double & inScalar, const VCurveTmplT<X, Y> & inVCurve) {
+    VCurveTmplT<X, Y> newCurve(inVCurve); // Create a copy of VCurve before multiplying
+    for (typename VCurveTmplT<X, Y>::iterator it = newCurve.begin(); it != newCurve.end(); ++it) {
       it->second *= inScalar;
     }
     return newCurve;
   }
 
-  bool operator==(const VCurveT & inOtherVCurve) {
-    if (this->size() != inOtherVCurve.size())
-      return false;
-
-    for (typename VCurveT::const_iterator c1It = this->begin(); c1It != this->end(); ++c1It) {
-      typename VCurveT::const_iterator c2It = inOtherVCurve.find(c1It->first);
-      
-      if (c2It == inOtherVCurve.end())
-	return false;
-
-      // Note: Comparing double values will probably fail this way...
-      if (c1It->first != c2It->first || c1It->second != c2It->second)
-	return false;
-    }
-    return true;
-  }
-
-  //TODO: void saveToStream();
-  //TODO: void loadFroMStream();
-};
-
-template<typename X, typename Y>
-ostream & operator<<(ostream & os, const VCurveT<X, Y> & vcurve) {
-  if (!vcurve.size()) {
-    os << "VCurve is empty." << endl;
-  } else {
-    os << "VCurve (" << vcurve.size() << " entries)" << endl;
-    for (typename VCurveT<X,Y>::const_iterator it = vcurve.begin(); it != vcurve.end(); ++it) {
-      os << "(x, y) = (" << it->first << ", " << it->second << ")" << endl;
-    }
-  }
-  return os;
-}
-
-// scalar * VCurveT
-template<typename X, typename Y>
-VCurveT<X,Y> operator*(const double & inScalar, const VCurveT<X, Y> & inVCurve) {
-  VCurveT<X, Y> newCurve(inVCurve); // Create a copy of VCurve before multiplying
-  for (typename VCurveT<X, Y>::iterator it = newCurve.begin(); it != newCurve.end(); ++it) {
-    it->second *= inScalar;
-  }
-  return newCurve;
-}
+} // end AT
 
 #endif // _VCURVE_TMPL_H_
