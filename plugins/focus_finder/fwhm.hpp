@@ -51,33 +51,21 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 
-#include "fitgsl.hpp"
 #include "centroid.hpp"
-
 #include "at_exception.hpp"
+#include "fitgsl_tmpl.hpp"
 
 
 using namespace std;
 using namespace cimg_library;
 
 DEF_Exception(Fwhm);
-DEF_Exception(FwhmCurveFitting);
-
-struct GaussParmsT {
-  float b, p, c, w, area;
-  size_t numFitPts;
-
-  GaussParmsT() : b(0), p(0), c(0), w(0), area(0), numFitPts(0) { }
-  ostream & print(ostream & os) const {
-    os << "b: " << b << ", p: " << p << ", c: " << c << ", w: " << w << ", area: " << area << ", numFitPts: " << numFitPts << endl;
-    return os;
-  }
-
-  friend ostream & operator<<(ostream & os, const GaussParmsT & inGaussParms);
-};
 
 // TODO: Pull out DirectionT from Fwhm?! instead pass vector of values...?!value itself is independent frm image, horz and vert!!!!!!!
 class FwhmT {  
+private:
+  typedef FunctionFitTmplT<GaussianFitTraitsT> GaussMatcherT;
+
 public:
   struct DirectionT {
     enum TypeE {
@@ -109,62 +97,14 @@ public:
 private:
   float mXCom, mYCom;
   vector<float> mImgValues, mFitValues;
-  GaussParmsT mGaussParms;
+  GaussMatcherT::ParamsT mGaussParms;
   DirectionT::TypeE mDirection; // TODO: Not sure if this is good design...
   
   static const double SIGMA_TO_FWHM;
   static const size_t MAX_PTS;
 
-  static float calcGaussValue(const GaussParmsT & gaussParms, float x) {
-    return fitgsl_fx(gaussParms.b, gaussParms.p, gaussParms.c, gaussParms.w, x);
-  }
-
-  static void fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussParmsT * gaussParms, double inEpsAbs = 1e-2, double inEpsRel = 1e-2) {
-    outFitValues->resize(imgValues.size());
-    vector<float> & fitValues = (*outFitValues);
-    float A[4]; // Contains the coefficients of the fitted line
-    
-    LOG(trace) << "Sliced values: ";
-    for (vector<float>::const_iterator it = imgValues.begin(); it != imgValues.end(); ++it)
-      LOG(trace) << *it << "; ";
-    LOG(trace) << endl;
-    
-    // Allocate temporary data buffer
-    fitgsl_data	* dat = fitgsl_alloc_data(imgValues.size());
-    
-    // Fill data
-    for(unsigned int i = 0; i < imgValues.size(); ++i) {
-      dat->pt[i].x = i;
-      dat->pt[i].y = imgValues[i];
-    }
-
-    // Do the LM fit
-    int err = fitgsl_lm(dat, A, inEpsAbs, inEpsRel);
-
-    if (err) {
-      stringstream ss;
-      ss << "FwhmT::fitValues - fitgsl_lm() returned non-zero status: " << err << endl; 
-      throw FwhmCurveFittingExceptionT(ss.str().c_str());
-    }
-
-    // Transfer over the data to the global storage. Plot the true points onto the graph as well.
-    size_t i;
-    for(i = 0; i < imgValues.size() && i < FwhmT::MAX_PTS; ++i) {
-      fitValues[i] = fitgsl_fx(A[FITGSL_B_INDEX], A[FITGSL_P_INDEX], A[FITGSL_C_INDEX], A[FITGSL_W_INDEX], dat->pt[i].x);
-    }
-
-    // Free allocated data
-    fitgsl_free_data(dat);
-    
-    // Return values
-    gaussParms->area = sqrt(2.0 * M_PI) * A[FITGSL_P_INDEX] * A[FITGSL_W_INDEX];
-    gaussParms->b = A[FITGSL_B_INDEX];
-    gaussParms->p = A[FITGSL_P_INDEX];
-    gaussParms->c = A[FITGSL_C_INDEX];
-    gaussParms->w = A[FITGSL_W_INDEX];
-    gaussParms->numFitPts = i - 1;
-  }
-  
+  static float calcGaussValue(const GaussMatcherT::ParamsT & inGaussParms, float x);
+  static void fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::ParamsT * outGaussParms, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
 
 public:
   FwhmT() : mXCom(0), mYCom(0) { }
@@ -178,7 +118,7 @@ public:
   static inline double sigmaToFwhm(double sigma) { return FwhmT::SIGMA_TO_FWHM * sigma; }
   static inline double fwhmToSigma(double sigma) { return sigma / FwhmT::SIGMA_TO_FWHM; }
 
-  inline float getValue() const { return sigmaToFwhm(mGaussParms.w); }
+  inline float getValue() const { return sigmaToFwhm(mGaussParms[GaussMatcherT::IdxT::W_IDX]); }
   inline DirectionT::TypeE getDirection() const { return mDirection; }
 
   // TODO: Return PositionT instead...
@@ -198,7 +138,6 @@ public:
     // for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it) { os << *it << "; "; }
     // os << ", Fit values: ";
     // for (vector<float>::const_iterator it = mFitValues.begin(); it != mFitValues.end(); ++it) { os << *it << "; "; }
-
     return os;
   }
 

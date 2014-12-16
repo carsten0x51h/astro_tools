@@ -81,16 +81,34 @@ namespace AT {
     }
 
     // Calculate optimal focus position
-    double optFocusPos = calcOptimalAbsFocusPos(vcurves);
-    LOG(info) << "Optimal focus pos: " << optFocusPos << endl;
+    double optAbsFocusPos = this->calcOptimalAbsFocusPos(vcurves);
+    LOG(info) << "Optimal focus pos: " << optAbsFocusPos << endl;
 
 
-    // TODO: Move to optimal focus position!
-    // TODO!!!
+    // Move to optimal focus position
+    float delta = mFocuserDevice->getAbsPos() - optAbsFocusPos;
+    size_t steps = (size_t) fabs(delta);
+    FocusDirectionT::TypeE finalDirection = (delta < 0 ? FocusDirectionT::OUTWARDS : FocusDirectionT::INWARDS);
+
+    mFocuserDevice->moveFocusBy(steps, finalDirection); // TODO: We may use setAbsPos instead...
+
+    LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(finalDirection) << " by "
+	       << steps << " steps, pos: " << mFocuserDevice->getAbsPos() << endl;
+
+    // Take picture, calc star values and send update
+    StarDataT starData;
+    takePictureCalcStarData(& starData);
+    LOG(info) << dec << "Took FINAL picture - resulting star data: " << starData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
+
+    // Send update to listeners
+    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
+    this->callFocusFinderUpdateListener(& focusFinderData);
   }
 
   double
   FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos(const VCurveVecT & inVCurves) {
+    typedef FunctionFitTmplT<ParabelFitTraitsT> ParabelMatcherT;
+
     AT_ASSERT(FocusFinderLinearInterpolation, inVCurves.size(), "VCurve vector is empty!");
 
     VCurveT masterVCurve;
@@ -103,8 +121,70 @@ namespace AT {
 
     LOG(info) << "Master VCurve: " << masterVCurve << endl;
 
-    return -1; // TODO
-}
+
+    ParabelMatcherT::ParamsT parabelParms;
+    double epsAbs = 5e-2; // TODO: As parameter?!
+    double epsRel = 5e-2; // TODO: As parameter?!;
+
+    // Allocate temporary data buffer
+    // TODO: Should be handled internally
+    fitgsl_data * dat = ParabelMatcherT::fitgsl_alloc_data(masterVCurve.size());
+  
+    // Fill data
+    size_t idx=0;
+    for (VCurveT::const_iterator it = masterVCurve.begin(); it != masterVCurve.end(); ++it, ++idx) {
+      dat->pt[idx].x = it->first;
+      dat->pt[idx].y = it->second;
+    }
+
+    // Do the LM fit - TODO: this function should throw if it does not succeed?!
+    int err = ParabelMatcherT::fitgsl_lm(dat, & parabelParms, epsAbs, epsRel);
+  
+    if (err) {
+      // Free allocated data
+      // TODO: Should be handled internally
+      ParabelMatcherT::fitgsl_free_data(dat);
+      
+      stringstream ss;
+      ss << "FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos - fitgsl_lm() returned non-zero status: " << err << endl; 
+      throw CurveFittingExceptionT(ss.str().c_str());
+    }
+
+    float a = parabelParms[ParabelMatcherT::IdxT::A_IDX];
+    float b = parabelParms[ParabelMatcherT::IdxT::B_IDX];
+    float c = parabelParms[ParabelMatcherT::IdxT::C_IDX];
+    
+    // TODO: Logging...
+    cerr << "Calculated parabel parms - a: " << a << ", b: " << b << ", c: " << c << endl;
+
+    // Calculate xmin, ymin
+    float xMin = - b / (2.0f * a);
+    float yMin = - 0.25f * (b * b) / a + c;
+
+    // TODO: Logging...
+    cerr << "xMin: " << xMin << ", yMin: " << yMin << endl;
+
+    // Transfer over the data to the global storage. Plot the true points onto the graph as well.
+    // TODO: Required?! -> use VCurve instead!?
+    // struct PointT {
+    //   float x, y;
+    //   PointT(float inX = 0, float inY = 0) : x(inX), y(inY) {}
+    // };
+    // vector<PointT> fitValues(masterVCurve.size());
+    // cerr << "Parabel fit values:" << endl;
+    // size_t i;
+    // for(i = 0; i < values.size(); ++i) {
+    //   fitValues[i].x = dat->pt[i].x;
+    //   fitValues[i].y = ParabelFitTraitsT::fx(dat->pt[i].x, parabelParms);
+    //   cerr << "x=" << fitValues[i].x << ", y=" << fitValues[i].y << endl;
+    // }
+  
+    // Free allocated data
+    // TODO: Should be handled internally
+    ParabelMatcherT::fitgsl_free_data(dat);
+
+    return xMin;
+  }
 
   void
   FocusFinderLinearInterpolationImplT::takePictureCalcStarData(StarDataT * outStarData, CImg<float> * outImg) {
@@ -130,7 +210,7 @@ namespace AT {
 	outStarData->getHfd().set(img, sHfdOuterRadiusPx);
 	break; // success
 
-      } catch (FwhmCurveFittingExceptionT & exc) {
+      } catch (CurveFittingExceptionT & exc) {
 	// Fitting did not work as expected...
 	LOG(warning) << "Fitting did not work as expected...retry " << (retryCnt+1) << " / " << maxRetryCnt << endl;
 	++retryCnt;
@@ -138,7 +218,7 @@ namespace AT {
     }
 
     if (maxRetryCnt <= retryCnt) {
-      throw FwhmCurveFittingExceptionT("Could not fit curve even after retrying.");
+      throw CurveFittingExceptionT("Could not fit curve even after retrying.");
     }
 
     if (outImg)
