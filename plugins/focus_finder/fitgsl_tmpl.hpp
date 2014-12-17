@@ -71,10 +71,10 @@ private:
 public:
   struct ParamsIdxT {
     enum TypeE {
-      B_IDX = 0,
-      P_IDX,
-      C_IDX,
-      W_IDX,
+      B_IDX = 0, // base
+      P_IDX,     // peak (in y direction) ? - TODO: ~area...
+      C_IDX,     // center (in x direction)
+      W_IDX,     // mean width (FWHM) 
       _Count
     };
 
@@ -232,9 +232,10 @@ public:
 
     cerr << "x_min: " << x_min << ", y_min: " << y_min << endl;
 
+    // TODO: Improve guess!
     float a_guess = 1;
     float b_guess = -2.0 * a_guess * x_min;
-    float c_guess = y_min + a_guess * x_min * x_min; // 11.6345 + 1 * 39210 * 39210
+    float c_guess = y_min + a_guess * x_min * x_min;
 
     cerr << "Guessing a=" << a_guess << ", b=" << b_guess << ", c=" << c_guess << endl;
 
@@ -371,6 +372,7 @@ public:
   // TODO: Rename function...
   // TODO: Add logging!
   // Return type should be void, throws in case of exception!
+  // See http://en.wikipedia.org/wiki/Approximation_error for expl. of rel and abs errors.
   static int fitgsl_lm(const fitgsl_data * dat, ParamsT * outResults, double epsabs, double epsrel) {
     
     AT_ASSERT(FunctionFit, outResults, "Result vector not set!");

@@ -92,10 +92,7 @@
       NOTE: Important condition: f_decreasing_fwhm&hfd(pos) = f_increasing_fwhm&hfd(pos) == FWHM == HFD == 0!! --> pos is optimal focus position
           --> Find a_1, b_1 & a_2, b_2 of both functions so that (MSE1 + MSE2) is minimized
           --> Maybe hard to formulate in gsl?! --> We may implement this manually....
-
-
-
--Move to optimal focus position (in: optimal focus position)
+   -Move to optimal focus position (in: optimal focus position)
    -TODO: Does this involve any corrections (feedback?)
 */
 
@@ -106,8 +103,6 @@
 
 #include "indi/indi_camera.hpp"
 #include "indi/indi_focuser.hpp"
-
-//#include "vcurve.hpp"
 
 // #define FOCUS_FINDER_STOP()			\
 //   if (mStop) {				\
@@ -130,13 +125,27 @@ namespace AT {
   private:
     IndiCameraT * mCameraDevice;
     IndiFocuserT * mFocuserDevice;
+    PositionT mStarCenterPos;
     float mExposureTimeSec;
     BinningT mBinning;
-    PositionT mStarCenterPos;
-    unsigned int mOuterHfdRadiusPx; // TODO: ok?! Init ok?!
-    unsigned int mNumStepsToDetermineDirection; // TODO: ok?! Init ok?!
+
+    size_t mWindowSize;
+    unsigned int mOuterHfdRadiusPx;
+    unsigned int mNumStepsToDetermineDirection;
     unsigned int mStepsToReachRoughFocus;
-    
+    double mExtremaFitnessBoundary;
+    double mVCurveFitEpsAbs;
+    double mVCurveFitEpsRel;
+    size_t mRoughFocusMaxIterCnt;
+    size_t mTakePictureFitGaussCurveMaxRetryCnt;
+    bool mDebugShowTakePictureImage;
+    size_t mRoughFocusSearchRangePerc;
+    size_t mRoughFocusRecordNumCurves;
+    size_t mRoughFocusGranularitySteps;
+    size_t mFineFocusRecordNumCurves;
+    size_t mFineFocusGranularitySteps;
+    size_t mFineSearchRangeSteps;
+
     void takePictureCalcStarData(StarDataT * outStarData, CImg<float> * outImg = 0);
 
     /**
@@ -190,15 +199,19 @@ namespace AT {
      */
     void recordVCurve(int inAbsStartPos, int inAnsEndPos, size_t inGranularitySteps, VCurveT * outVCurve, bool inMoveBackToOldPos = true);
 
+    /**
+     * -Find focus in range.
+     * -TODO: Add documentation
+     */
+    double findOptimalFocusInRange(int inAbsStartPos, int inAbsEndPos, size_t inNumVCurves, size_t inCurveGranularitySteps, StarDataT * outStarData = 0);
 
     /**
      * -Calculate optimal focus position
+     * -TODO: Add documentation
      */
     double calcOptimalAbsFocusPos(const VCurveVecT & inVCurves);
 
   public:
-    static const size_t sWindowSize;
-
     FocusFinderLinearInterpolationImplT(IndiCameraT * inCameraDevice,
 					IndiFocuserT * inFocuserDevice,
 					const PositionT & inStarCenterPos,
@@ -209,115 +222,90 @@ namespace AT {
       mStarCenterPos(inStarCenterPos),
       mExposureTimeSec(inExposureTimeSec),
       mBinning(inBinning),
-      mNumStepsToDetermineDirection(3000 /*TODO*/),
+      mWindowSize(31),
+      mOuterHfdRadiusPx(5),
+      mNumStepsToDetermineDirection(3000),
       mStepsToReachRoughFocus(3000),
-      mOuterHfdRadiusPx(15 /*TODO*/) {
+      mExtremaFitnessBoundary(25),
+      mVCurveFitEpsAbs(1e-1),
+      mVCurveFitEpsRel(1e-1),
+      mRoughFocusMaxIterCnt(20),
+      mTakePictureFitGaussCurveMaxRetryCnt(5),
+      mDebugShowTakePictureImage(false),
+      mRoughFocusSearchRangePerc(70),
+      mRoughFocusRecordNumCurves(1),
+      mRoughFocusGranularitySteps(500),
+      mFineFocusRecordNumCurves(3),
+      mFineFocusGranularitySteps(50),
+      mFineSearchRangeSteps(2000) {
       //mIndiClient->registerNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
     }
     ~FocusFinderLinearInterpolationImplT() {
 //     mIndiClient->unregisterNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
     }
 
-
-    inline unsigned int getStepsToReachFocus() const { return mStepsToReachRoughFocus; }
-    inline void setStepsToReachFocus(unsigned int inStepsToReachRoughFocus) { mStepsToReachRoughFocus = inStepsToReachRoughFocus; }
-
-
     virtual void findFocus();
 
+
+    /**
+     * Configuration options
+     */
+    inline void setWindowSize(size_t inWindowSize) {
+      AT_ASSERT(FocusFinderLinearInterpolation, inWindowSize % 2, "inWindowSize must be odd.");
+      mWindowSize = inWindowSize;
+    }
+    inline size_t getWindowSize() const { return mWindowSize; }
+
+    inline void setNumStepsToDetermineDirection(unsigned int inNumStepsToDetermineDirection) { mNumStepsToDetermineDirection = inNumStepsToDetermineDirection; }
+    inline unsigned int getNumStepsToDetermineDirection() const { return mNumStepsToDetermineDirection; }
+
+    inline void setStepsToReachFocus(unsigned int inStepsToReachRoughFocus) { mStepsToReachRoughFocus = inStepsToReachRoughFocus; }
+    inline unsigned int getStepsToReachFocus() const { return mStepsToReachRoughFocus; }
+
+    inline void setExtremaFitnessBoundary(double inExtremaFitnessBoundary) { mExtremaFitnessBoundary = inExtremaFitnessBoundary; }
+    inline double getExtremaFitnessBoundary() { return mExtremaFitnessBoundary; }
+
+    inline void setOuterHfdRadiusPx(unsigned int inOuterHfdRadiusPx) { mOuterHfdRadiusPx = inOuterHfdRadiusPx; }
+    inline unsigned int getOuterHfdRadiusPx() const { return mOuterHfdRadiusPx; }
+
+    inline void setRoughFocusMaxIterCnt(size_t inRoughFocusMaxIterCnt) { mRoughFocusMaxIterCnt = inRoughFocusMaxIterCnt; }
+    inline size_t getRoughFocusMaxIterCnt() const { return mRoughFocusMaxIterCnt; }
+
+    inline void setTakePictureFitGaussCurveMaxRetryCnt(size_t inTakePictureFitGaussCurveMaxRetryCnt) { mTakePictureFitGaussCurveMaxRetryCnt = inTakePictureFitGaussCurveMaxRetryCnt; }
+    inline size_t getTakePictureFitGaussCurveMaxRetryCnt() const { return mTakePictureFitGaussCurveMaxRetryCnt; }
+
+    inline void setDebugShowTakePictureImage(bool inDebugShowTakePictureImage) { mDebugShowTakePictureImage = inDebugShowTakePictureImage; }
+    inline bool getDebugShowTakePictureImage() const { return mDebugShowTakePictureImage; }
+
+    inline void setRoughFocusSearchRangePerc(size_t inRoughFocusSearchRangePerc) { mRoughFocusSearchRangePerc = inRoughFocusSearchRangePerc; }
+    inline size_t getRoughFocusSearchRangePerc() const { return mRoughFocusSearchRangePerc; }
+
+    inline void setRoughFocusRecordNumCurves(size_t inRoughFocusRecordNumCurves) { mRoughFocusRecordNumCurves = inRoughFocusRecordNumCurves; }
+    inline size_t getRoughFocusRecordNumCurves() const { return mRoughFocusRecordNumCurves; }
+
+    inline void setRoughFocusGranularitySteps(size_t inRoughFocusGranularitySteps) { mRoughFocusGranularitySteps = inRoughFocusGranularitySteps; }
+    inline size_t getRoughFocusGranularitySteps() const { return mRoughFocusGranularitySteps; }
+
+    inline void setFineFocusRecordNumCurves(size_t inFineFocusRecordNumCurves) { mFineFocusRecordNumCurves = inFineFocusRecordNumCurves; }
+    inline size_t getFineFocusRecordNumCurves() const { return mFineFocusRecordNumCurves; }
+
+    inline void setFineFocusGranularitySteps(size_t inFineFocusGranularitySteps) { mFineFocusGranularitySteps = inFineFocusGranularitySteps; }
+    inline size_t getFineFocusGranularitySteps() const { return mFineFocusGranularitySteps; }
+
+    inline void setFineSearchRangeSteps(size_t inFineSearchRangeSteps) { mFineSearchRangeSteps = inFineSearchRangeSteps; }
+    inline size_t getFineSearchRangeSteps() const { return mFineSearchRangeSteps; }
+
+    inline void setVCurveFitEpsAbs(double inVCurveFitEpsAbs) { mVCurveFitEpsAbs = inVCurveFitEpsAbs; }
+    inline double getVCurveFitEpsAbs() { return mVCurveFitEpsAbs; }
+
+    inline void setVCurveFitEpsRel(double inVCurveFitEpsRel) { mVCurveFitEpsRel = inVCurveFitEpsRel; }
+    inline double getVCurveFitEpsRel() { return mVCurveFitEpsRel; }
 
     DEFINE_PROP_LISTENER(FocusFinderUpdate, const FocusFinderDataT *);
 
   };
 
-
-
-
-
-
-
-
-  // struct FocusFinderDataT {
-  //   int mAbsFocusPosition;
-  //   int mAbsMinFocusPos;
-  //   int mAbsMaxFocusPos;
-  //   FwhmT mFwhmHorz;
-  //   FwhmT mFwhmVert;
-  //   HfdT mHfd;
-  //   string mStatusText;
-  //   VCurveT<int, double> mVCurve;
-  //   FocusFinderDataT(int inAbsFocusPosition = 0) : mAbsFocusPosition(inAbsFocusPosition), mAbsMinFocusPos(-1), mAbsMaxFocusPos(-1), mStatusText("") {} // TODO: Remove? HACK?!!
-  //   FocusFinderDataT(const string & inStatusText) : mStatusText(inStatusText), mAbsFocusPosition(0) {}  // TODO: Remove? HACK?!!
-  //   FocusFinderDataT(int inAbsFocusPosition, const FwhmT & inFwhmHorz, const FwhmT & inFwhmVert, const HfdT & inHfd, const VCurveT<int, double> & inVCurve) : mAbsFocusPosition(inAbsFocusPosition), mFwhmHorz(inFwhmHorz), mFwhmVert(inFwhmVert), mHfd(inHfd), mVCurve(inVCurve), mAbsMinFocusPos(-1), mAbsMaxFocusPos(-1), mStatusText("") { }
-  // };
-  
-    
-  
-  // #define LOG(m)				\
-  //   os << m << flush;			\
-  //   FocusFinderDataT ffdStatus(m);		\
-  //   mFocusFinderUpdateListeners(& ffdStatus);	\
-  //   return os;					\
-  
-  
-  // class FocusFinderT {
-  // private:
-    
-  //   //void recenter(ostream & os, IndiCameraClientT & inCameraClient, IndiFocuserClientT & inFocuserClient, CImg<float> * outImg, int * outStartX, int * outStartY, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection);
-    
-  //   bool determineInitialDirection(ostream & os, IndiCameraClientT & inCameraClient, IndiFocuserClientT & inFocuserClient, CImg<float> * outImg, int startX, int startY, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection, IndiFocuserClientT::FocusDirectionT::TypeE * outDirectionToImproveFocus);
-    
-  //   bool findRoughFocus(ostream & os, IndiCameraClientT & inCameraClient, IndiFocuserClientT & inFocuserClient, CImg<float> * outImg, int inStartX, int inStartY, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection, IndiFocuserClientT::FocusDirectionT::TypeE inDirectionToImproveFocus, bool * outUserStop, unsigned int inStepsToReachRoughFocus);
-    
-  //   bool findExtrema(ostream & os, IndiCameraClientT & inCameraClient, IndiFocuserClientT & inFocuserClient, CImg<float> * outImg, int inStartX, int inStartY, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection, IndiFocuserClientT::FocusDirectionT::TypeE inDirectionToImproveFocus, bool * outUserStop, unsigned int inStepsToReachRoughFocus, MinMaxFocusPosT::TypeE inMinMaxFocusPos, int * outFExtremaPos, const QualityMeasureStrategyT * inQualityMeasureStrategy);
-    
-  //   bool recordVCurve(ostream & os, IndiCameraClientT & inCameraClient, IndiFocuserClientT & inFocuserClient, CImg<float> * outImg, int inStartX, int inStartY, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection, IndiFocuserClientT::FocusDirectionT::TypeE inDirectionToImproveFocus, bool * outUserStop, unsigned int inStepsToReachRoughFocus, int inFmin, int inFmax, const QualityMeasureStrategyT * inQualityMeasureStrategy);
-    
-  // public:
-  //   static const size_t sWindowWidthPx;
-  //   static const size_t sWindowHeightPx;
-  //   static const size_t sHfdOuterRadiusPx;
-    
-  //   FocusFinderT(IndiClientTmplT * inIndiClient, const string & inCameraDeviceName, const string & inFocuserDeviceName);
-  //   ~FocusFinderT();
-    
-  //   void numberChangeHandler(INumberVectorProperty * inVecNumber);
-  //   inline IndiClientTmplT * getIndiClient() const { return mIndiClient; }
-    
-  //   bool findFocus(int inCenterX, unsigned int inCenterY, int inSize, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection, unsigned int inStepsToReachRoughFocus, bool * outUserStop, ostream & os, const QualityMeasureStrategyT * inQualityMeasureStrategy);
-    
-  //   inline void stop() { mStop = true; /*TODO: Do we need a mutex here?!!!!!*/ }
-    
-  //   /*
-  //    * Focus Finder Update Listener
-  //    */
-  //   // TODO: Use macro instead...?!
-  //   DEFINE_PROP_LISTENER(FocusFinderUpdate, const FocusFinderDataT *);
-  //   //DEFINE_PROP_LISTENER(FocusFinderUpdateStatus, string); // TODO: Maybe later separate...
-    
-  //   // typedef signals2::signal<void (const FocusFinderDataT *)> FocusFinderUpdateListenerT;
-    
-  //   // void registerFocusFinderUpdateListener(FocusFinderUpdateListenerT::slot_type inCallBack) {
-  //   //   mFocusFinderUpdateListener.connect(inCallBack);
-  //   // }
-  //   // void unregisterMessageListener(FocusFinderUpdateListenerT::slot_type inCallBack) {
-  //   //   mFocusFinderUpdateListener.disconnect(inCallBack);
-  //   // }
-    
-  //   inline const VCurveT<int, double> & getVCurve() const { return mVCurve; }
-    
-  // private:
-  //   IndiClientTmplT * mIndiClient;
-  //   string mCameraDeviceName;
-  //   string mFocuserDeviceName;
-  //   bool mStop;
-  //   //FocusFinderUpdateListenerT mFocusFinderUpdateListener;
-  //   VCurveT<int, double> mVCurve;
-  // };
-
-
 } // end AT namespace
-
 
 
 #endif /* _FOCUS_FINDER_LINER_INTERPOLATION_IMPL_HPP_ */

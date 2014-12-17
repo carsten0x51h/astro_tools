@@ -29,7 +29,6 @@
 #include "vcurve.hpp"
 
 namespace AT {
-
   /*
    * StarDataT
    */
@@ -47,6 +46,26 @@ namespace AT {
     inline FwhmT & getFwhmVert() { return mFwhmVert; }
     inline const HfdT & getHfd() const { return mHfd; }
     inline HfdT & getHfd() { return mHfd; }
+
+    static inline bool isValidStar(const CImg<float> & inImg, float inMinPsnr = 70) {
+      if (! inImg.size()) {
+	return false;
+      }
+
+      bool validStar;
+
+      // Use centroid calculation to determine if there is a valid star selected
+      try {
+	PositionT centerPos(inImg.width() / 2, inImg.height() / 2);
+	PositionT centroid = CentroidCalcT::starCentroid(inImg, centerPos, inImg.width(), CoordTypeT::ABSOLUTE);
+	cout << dec << "Centroid: " << centroid << endl;
+	validStar = true;
+      } catch(CentroidExceptionT & exc) {
+	validStar = false;
+      }
+      
+      return validStar;
+    }
 
     /*
      * Currently the fitness is just the sum of all values - which we would

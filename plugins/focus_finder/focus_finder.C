@@ -45,11 +45,31 @@ namespace AT {
     static FocusFinderT *
     createFocusFinder(const string & inStrategyName, IndiCameraT * inIndiCamera, IndiFocuserT * inIndiFocuser, const PositionT & inStarCenterPos, float inExposureTimeSec, BinningT inBinning) {
       FocusFinderT * focusFinder = 0;
-      if (! strcmp(inStrategyName.c_str(), "linear_interpolation"))
-	focusFinder = new FocusFinderLinearInterpolationImplT(inIndiCamera, inIndiFocuser, inStarCenterPos, inExposureTimeSec, inBinning);
-					
-      /*TODO: Add further cases...*/
-      else {
+      if (! strcmp(inStrategyName.c_str(), "linear_interpolation")) {
+	FocusFinderLinearInterpolationImplT * ffli = new FocusFinderLinearInterpolationImplT(inIndiCamera, inIndiFocuser, inStarCenterPos, inExposureTimeSec, inBinning);
+
+
+	// TODO / FIXME: This is a hack! We want to set the properties below!
+	// Set further configurations
+	ffli->setWindowSize(31);
+	ffli->setNumStepsToDetermineDirection(3000);
+	ffli->setStepsToReachFocus(3000);
+	ffli->setExtremaFitnessBoundary(25);
+	ffli->setOuterHfdRadiusPx(5);
+	ffli->setRoughFocusMaxIterCnt(20);
+	ffli->setTakePictureFitGaussCurveMaxRetryCnt(5);
+	ffli->setDebugShowTakePictureImage(false);
+	ffli->setRoughFocusSearchRangePerc(70);
+	ffli->setRoughFocusRecordNumCurves(1);
+	ffli->setRoughFocusGranularitySteps(500);
+	ffli->setFineFocusRecordNumCurves(3);
+	ffli->setFineFocusGranularitySteps(50);
+	ffli->setFineSearchRangeSteps(2000);
+	ffli->setVCurveFitEpsAbs(1e-1);
+	ffli->setVCurveFitEpsRel(1e-1);
+	
+	focusFinder = ffli;
+      } else {
 	const string exStr = "'" + inStrategyName + "' is not a known strategy.";
 	throw UnknownFocusFinderImplExceptionT(exStr.c_str());
       }
@@ -140,12 +160,15 @@ namespace AT {
 	LOG(info) << "Star center pos: " << starCenterPos << endl;
 
 	// NOTE: throws if unknown strategy
+	// TODO: Strategy concept is a problem here because we want to call instance specific methods here i.e. we have to know the exact type!
+	//       Question is if a strategy makes sense in this case!
 	FocusFinderT * focusFinder = FocusFinderActionT::createFocusFinder(focusFinderStrategy,
 									   cameraDevice,
 									   focuserDevice,
 									   starCenterPos,
 									   exposureTimeSec,
 									   binning);
+	// Find focus
 	focusFinder->findFocus();
 	FocusFinderActionT::destroyFocusFinder(focusFinder);
 

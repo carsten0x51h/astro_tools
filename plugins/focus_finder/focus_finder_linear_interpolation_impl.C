@@ -22,9 +22,7 @@
 
 #include "focus_finder_linear_interpolation_impl.hpp"
 
-namespace AT {
-  const size_t FocusFinderLinearInterpolationImplT::sWindowSize = 31; // px
-  
+namespace AT {  
   // TODO: Maybe rename those FocusFinder classes to ...Minimizer - because FocusFinder is too generic - it is the whole thing...
   // but this class only tries to find the minimum HFD and/or Fwhm. In addition we could pass a minimizer policy... which tells the 
   // minimizer which star values should be taken into account.
@@ -49,64 +47,96 @@ namespace AT {
       throw FocusFinderLinearInterpolationExceptionT(tmpStr.c_str());
     }
 
-    // TODO: Put to another function?!
+    // Rough focus search
     // From Fmin and Fmax calculate start and end position
-    double centerPos = Fmin + fabs(Fmax - Fmin) / 2;
-    double halfLength = fabs(Fmax - centerPos);
-    const size_t perc = 70; // TODO: Make configurable?!
-    double percLength = halfLength * 0.01 * (double) perc;
-
-    int absStartPos = centerPos - percLength;
-    int absEndPos = centerPos + percLength;
-
-    LOG(debug) << dec << "centerPos: " << centerPos << ", halfLength: " << halfLength << ", perc: " << perc << "%, percLength: " << percLength << endl;
-    LOG(info) << dec << "Calculated start/end positions [start, end]=[" << absStartPos << ", " << absEndPos << "]" << endl;
-
-    // Record VCurves
-    size_t numVCurves = 2; // TODO: Make as member? Make configurable?!
-    size_t vCurveGranularitySteps = 500; // TODO: Pass / Calculate?!
-
-    VCurveVecT vcurves(numVCurves); // Contains empty VCurves
+    float centerPos = Fmin + fabs(Fmax - Fmin) / 2;
+    float halfLength = fabs(Fmax - centerPos);
+    float percLength = halfLength * 0.01 * (float) mRoughFocusSearchRangePerc;
     
-    LOG(info) << dec << "Recording " << numVCurves << " VCurves with "
-	      << (fabs(absEndPos - absStartPos) / vCurveGranularitySteps) << " points each..." << endl;
+    int roughAbsStartPos = centerPos - percLength;
+    int roughAbsEndPos = centerPos + percLength;
 
+    LOG(debug) << dec << "centerPos: " << centerPos << ", halfLength: " << halfLength << ", mRoughFocusSearchRangePerc: " << mRoughFocusSearchRangePerc << "%, percLength: " << percLength << endl;
+
+    StarDataT roughStarData;
+    double roughOptAbsFocusPos = this->findOptimalFocusInRange(roughAbsStartPos, roughAbsEndPos, mRoughFocusRecordNumCurves, mRoughFocusGranularitySteps, & roughStarData);
+    LOG(debug) << dec << "Rough focus determined: " << roughOptAbsFocusPos << ", starData: " << roughStarData << endl;
+
+
+    // Fine focus search
+    // From roughOptAbsFocusPos calc start and end pos.
+    int fineAbsStartPos = roughOptAbsFocusPos - mFineSearchRangeSteps;
+    int fineAbsEndPos = roughOptAbsFocusPos + mFineSearchRangeSteps;
+
+    LOG(debug) << dec << "roughOptAbsFocusPos: " << roughOptAbsFocusPos << ", mFineSearchRangeSteps: " << mFineSearchRangeSteps
+	       << ", fine search range=[" << fineAbsStartPos << ", " << fineAbsEndPos << "]..." << endl;
+
+    StarDataT fineStarData;
+    double fineOptAbsFocusPos = this->findOptimalFocusInRange(fineAbsStartPos, fineAbsEndPos, mFineFocusRecordNumCurves, mFineFocusGranularitySteps, & fineStarData);
+    LOG(debug) << dec << "Fine focus determined: " << roughOptAbsFocusPos << ", starData: " << fineStarData << endl;
+
+
+    // Logging summary
+    LOG(info) << dec << "Rough focus found at: " << roughOptAbsFocusPos << ", starData: " << roughStarData << endl;
+    LOG(info) << dec << "Fine focus found at: " << fineOptAbsFocusPos << ", starData: " << fineStarData << endl;
+  }
+
+  double
+  FocusFinderLinearInterpolationImplT::findOptimalFocusInRange(int inAbsStartPos, int inAbsEndPos, size_t inNumVCurves, size_t inCurveGranularitySteps, StarDataT * outStarData) {
+    LOG(info) << dec << "Calculated start/end positions [start, end]=[" << inAbsStartPos << ", " << inAbsEndPos << "]" << endl;
+    
+    // Record VCurves
+    VCurveVecT vcurves(inNumVCurves); // Contains empty VCurves
+    
+    LOG(info) << dec << "Recording " << inNumVCurves << " VCurves with "
+	      << (fabs(inAbsEndPos - inAbsStartPos) / inCurveGranularitySteps) << " points each..." << endl;
+    
     for (VCurveVecT::iterator it = vcurves.begin(); it != vcurves.end(); ++it) {
       LOG(info) << dec << " > Recording VCurve " << std::distance(vcurves.begin(), it) << "..." << endl;
-
+      
       VCurveT & curVCurve = *it;
-      this->recordVCurve(absStartPos, absEndPos, vCurveGranularitySteps, & curVCurve, false /*do not move back to old pos*/);
-
+      this->recordVCurve(inAbsStartPos, inAbsEndPos, inCurveGranularitySteps, & curVCurve, false /*do not move back to old pos*/);
+      
       LOG(info) << dec << "-> VCurve " << std::distance(vcurves.begin(), it) << " recorded: " << curVCurve << endl;
     }
 
     // Calculate optimal focus position
     double optAbsFocusPos = this->calcOptimalAbsFocusPos(vcurves);
     LOG(info) << "Optimal focus pos: " << optAbsFocusPos << endl;
-
-
+    
     // Move to optimal focus position
     float delta = mFocuserDevice->getAbsPos() - optAbsFocusPos;
     size_t steps = (size_t) fabs(delta);
     FocusDirectionT::TypeE finalDirection = (delta < 0 ? FocusDirectionT::OUTWARDS : FocusDirectionT::INWARDS);
-
+    
     mFocuserDevice->moveFocusBy(steps, finalDirection); // TODO: We may use setAbsPos instead...
-
+    
     LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(finalDirection) << " by "
 	       << steps << " steps, pos: " << mFocuserDevice->getAbsPos() << endl;
-
+    
     // Take picture, calc star values and send update
     StarDataT starData;
     takePictureCalcStarData(& starData);
-    LOG(info) << dec << "Took FINAL picture - resulting star data: " << starData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
+    LOG(info) << dec << "Took picture - resulting star data: " << starData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
+    
+    if (outStarData) {
+      *outStarData = starData; // copy
+    }
 
     // Send update to listeners
     FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
     this->callFocusFinderUpdateListener(& focusFinderData);
+    
+    return optAbsFocusPos;
   }
+
 
   double
   FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos(const VCurveVecT & inVCurves) {
+    // TODO: Implement retry... if fitting does not work - but how?!
+    //-> take another picture?!?! or just increase possible error by *2 ?!
+    //-> Maybe there is a better solution by just still using the results?? ...
+    //   Because the results will be the same if data does not change!! Maybe add "noExIfErrorCondNotFulfilled" ??!
     typedef FunctionFitTmplT<ParabelFitTraitsT> ParabelMatcherT;
 
     AT_ASSERT(FocusFinderLinearInterpolation, inVCurves.size(), "VCurve vector is empty!");
@@ -121,33 +151,36 @@ namespace AT {
 
     LOG(info) << "Master VCurve: " << masterVCurve << endl;
 
-
     ParabelMatcherT::ParamsT parabelParms;
-    double epsAbs = 5e-2; // TODO: As parameter?!
-    double epsRel = 5e-2; // TODO: As parameter?!;
 
     // Allocate temporary data buffer
     // TODO: Should be handled internally
     fitgsl_data * dat = ParabelMatcherT::fitgsl_alloc_data(masterVCurve.size());
   
     // Fill data
-    size_t idx=0;
+    size_t idx = 0;
     for (VCurveT::const_iterator it = masterVCurve.begin(); it != masterVCurve.end(); ++it, ++idx) {
       dat->pt[idx].x = it->first;
       dat->pt[idx].y = it->second;
     }
 
     // Do the LM fit - TODO: this function should throw if it does not succeed?!
-    int err = ParabelMatcherT::fitgsl_lm(dat, & parabelParms, epsAbs, epsRel);
+    int err = ParabelMatcherT::fitgsl_lm(dat, & parabelParms, mVCurveFitEpsAbs, mVCurveFitEpsRel);
   
     if (err) {
       // Free allocated data
       // TODO: Should be handled internally
-      ParabelMatcherT::fitgsl_free_data(dat);
-      
+      //ParabelMatcherT::fitgsl_free_data(dat);
+
+      // TODO: Try to fin dout what is the rel and abs error compared to the required ones! --> print
       stringstream ss;
-      ss << "FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos - fitgsl_lm() returned non-zero status: " << err << endl; 
-      throw CurveFittingExceptionT(ss.str().c_str());
+      ss << "FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos - fitgsl_lm() returned non-zero status: " << err
+	 << ", a: " << parabelParms[ParabelMatcherT::IdxT::A_IDX]
+	 << ", b: " << parabelParms[ParabelMatcherT::IdxT::B_IDX]
+	 << ", c: " << parabelParms[ParabelMatcherT::IdxT::C_IDX]
+	 << ", however, for now we do not throw! TODO!" << endl;
+
+      //throw CurveFittingExceptionT(ss.str().c_str()); Remember to comment in free above!
     }
 
     float a = parabelParms[ParabelMatcherT::IdxT::A_IDX];
@@ -163,21 +196,6 @@ namespace AT {
 
     // TODO: Logging...
     cerr << "xMin: " << xMin << ", yMin: " << yMin << endl;
-
-    // Transfer over the data to the global storage. Plot the true points onto the graph as well.
-    // TODO: Required?! -> use VCurve instead!?
-    // struct PointT {
-    //   float x, y;
-    //   PointT(float inX = 0, float inY = 0) : x(inX), y(inY) {}
-    // };
-    // vector<PointT> fitValues(masterVCurve.size());
-    // cerr << "Parabel fit values:" << endl;
-    // size_t i;
-    // for(i = 0; i < values.size(); ++i) {
-    //   fitValues[i].x = dat->pt[i].x;
-    //   fitValues[i].y = ParabelFitTraitsT::fx(dat->pt[i].x, parabelParms);
-    //   cerr << "x=" << fitValues[i].x << ", y=" << fitValues[i].y << endl;
-    // }
   
     // Free allocated data
     // TODO: Should be handled internally
@@ -189,46 +207,48 @@ namespace AT {
   void
   FocusFinderLinearInterpolationImplT::takePictureCalcStarData(StarDataT * outStarData, CImg<float> * outImg) {
     AT_ASSERT(FocusFinderLinearInterpolation, outStarData, "outStarData expected to be set!");
-
-    const size_t sHfdOuterRadiusPx = 5; // TODO: Where to put?! --> Should not be passed by default... should either be calculated by HfdT, and / or HfdT should have a good default...
-    const size_t maxRetryCnt = 5; // TODO: Pass as parameter?!
-
     CImg<float> img;
     
     // Calc frameSize from inStarCenterPos
-    FrameT imgFrame = centerPosToFrame(mStarCenterPos, FocusFinderLinearInterpolationImplT::sWindowSize);
+    FrameT imgFrame = centerPosToFrame(mStarCenterPos, mWindowSize);
 
     // Calc star values, throws if star could not be determined
     size_t retryCnt = 0;
-    while(retryCnt < maxRetryCnt) {
+    while(retryCnt < mTakePictureFitGaussCurveMaxRetryCnt) {
       try {
 	// Take a picture, throws if not connected or problem with device
 	mCameraDevice->takePicture(& img, mExposureTimeSec, imgFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
 
+	// Calc PSNR to decide if valid star was selected
+	if (! StarDataT::isValidStar(img, 70 /* TODO: as parm?! */)) {
+	  // Too much noise - no star detected / star too weak....
+	  throw FocusFinderLinearInterpolationExceptionT("No valid star selected.");
+	}
+
 	outStarData->getFwhmHorz().set(img, FwhmT::DirectionT::HORZ);
 	outStarData->getFwhmVert().set(img, FwhmT::DirectionT::VERT);
-	outStarData->getHfd().set(img, sHfdOuterRadiusPx);
+	outStarData->getHfd().set(img, mOuterHfdRadiusPx);
 	break; // success
 
       } catch (CurveFittingExceptionT & exc) {
 	// Fitting did not work as expected...
-	LOG(warning) << "Fitting did not work as expected...retry " << (retryCnt+1) << " / " << maxRetryCnt << endl;
+	LOG(warning) << "Fitting did not work as expected...retry " << (retryCnt+1) << " / " << mTakePictureFitGaussCurveMaxRetryCnt << endl;
 	++retryCnt;
       }
     }
 
-    if (maxRetryCnt <= retryCnt) {
+    if (mTakePictureFitGaussCurveMaxRetryCnt <= retryCnt) {
       throw CurveFittingExceptionT("Could not fit curve even after retrying.");
     }
 
-    if (outImg)
+    if (outImg) {
       *outImg = img; // Copy image if desired
+    }
 
-    // TODO: Enable by switch?! Put to another function?
-    // DEBUG - DISPLAY IMG
-    // CImgDisplay disp1(img, "image");
-    // while(! disp1.is_closed()) { CImgDisplay::wait(disp1); }
-    // DEBUG END
+    if (mDebugShowTakePictureImage) {
+      CImgDisplay disp1(img, "image");
+      while(! disp1.is_closed()) { CImgDisplay::wait(disp1); }
+    }
   }
 
 
@@ -295,8 +315,6 @@ namespace AT {
 
     LOG(info) << "Looking for rough focus in direction " << FocusDirectionT::asStr(inDirectionToImproveFocus) << "..." << endl;
     
-    const size_t maxIterCnt = 20; // TODO: configure? What is a good value? Depends on mStepsToReachRoughFocus...?
-    
     // Take picture
     StarDataT starDataNew, starDataPrev;
     takePictureCalcStarData(& starDataNew);
@@ -337,10 +355,10 @@ namespace AT {
       //mVCurve[inFocuserClient.getAbsPos()] = hfdNew.getValue(); // TODO: ok?!
       ++iterCounter;
       
-    } while (iterCounter < maxIterCnt && starDataNew.getFitness() < starDataPrev.getFitness()); // end while
+    } while (iterCounter < mRoughFocusMaxIterCnt && starDataNew.getFitness() < starDataPrev.getFitness()); // end while
     
     // Did we find a rough focus within max amount of iterations?
-    if (iterCounter < maxIterCnt) {
+    if (iterCounter < mRoughFocusMaxIterCnt) {
       // Rough focus found - move focus back
       FocusDirectionT::TypeE backDirection = FocusDirectionT::invert(inDirectionToImproveFocus);
       mFocuserDevice->moveFocusBy(mStepsToReachRoughFocus, backDirection);
@@ -374,10 +392,6 @@ namespace AT {
   int
   FocusFinderLinearInterpolationImplT::findExtrema(FocusDirectionT::TypeE inDirectionToImproveFocus, MinMaxFocusPosT::TypeE inMinMaxFocusPos) {
 
-    // TODO / FIXME - Experimental: Fitness boundary... we may pass this as parameter..
-    // TODO: We may pass maxFitness instead...
-    const unsigned int maxFitnessValue = 25;
-
     FocusDirectionT::TypeE direction = (inMinMaxFocusPos == MinMaxFocusPosT::MIN_FOCUS_POS ? FocusDirectionT::INWARDS : FocusDirectionT::OUTWARDS);
     LOG(info) << "Looking for " << MinMaxFocusPosT::asStr(inMinMaxFocusPos) << " in direction " << FocusDirectionT::asStr(direction) << "..." << endl;
 
@@ -395,8 +409,8 @@ namespace AT {
 
 
     // Loop until max. fitness has been reached
-    while(maxFitnessValue > starData.getFitness()) {
-      LOG(debug) << dec << "Not yet reached maxFitnessValue " << maxFitnessValue
+    while(mExtremaFitnessBoundary > starData.getFitness()) {
+      LOG(debug) << dec << "Not yet reached mExtremaFitnessBoundary " << mExtremaFitnessBoundary
 		 << ", measured fitness: " << starData.getFitness()
 		 << ", current pos: " << mFocuserDevice->getAbsPos() << endl;
 
@@ -422,7 +436,6 @@ namespace AT {
 
     LOG(debug) << "Ok, found " << MinMaxFocusPosT::asStr(inMinMaxFocusPos) << ": " << extremaPos << ", moving back to start position..." << endl;
 
-    // double delta = (inMinMaxFocusPos == MinMaxFocusPosT::MIN_FOCUS_POS ? startFocusPos - extremaPos : extremaPos - startFocusPos);
     double delta = fabs(startFocusPos - extremaPos);
 
     // Move focuser back to start
@@ -440,11 +453,10 @@ namespace AT {
 
     //mVCurve[inFocuserClient.getAbsPos()] = inQualityMeasureStrategy->calculate(& fwhmHorz1, & fwhmVert1, & hfd1);
 
-    LOG(info) << dec << "Reached maxFitnessValue " << maxFitnessValue
-	      << " looking for " << MinMaxFocusPosT::asStr(inMinMaxFocusPos)
+    LOG(info) << dec << "Reached extrema (boundary is " << mExtremaFitnessBoundary
+	      << "), looking for " << MinMaxFocusPosT::asStr(inMinMaxFocusPos)
 	      << " in direction " << FocusDirectionT::asStr(direction)
 	      << ", measured fitness: " << extremaFitness
-	      << " (boundary is " << maxFitnessValue << ")"
 	      << ", current pos: " << extremaPos << endl;
     
     return extremaPos; // focuser pos
@@ -501,183 +513,4 @@ namespace AT {
 		 << " to old position " << oldFocusPos << " by " << deltaBack << " steps. " << endl;
     }
   }
-  
-
-
-
-
-// bool FocusFinderT::findFocus(int inCenterX, unsigned int inCenterY, int inSize, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection, unsigned int inStepsToReachRoughFocus, bool * outUserStop, ostream & os, const QualityMeasureStrategyT * inQualityMeasureStrategy) {
-//   if (! mIndiClient)
-//     throw FocusFinderExceptionT("No indi client set.");
-  
-//   if (mCameraDeviceName.empty())
-//     throw FocusFinderExceptionT("No camera device name set.");
-  
-//   if (mFocuserDeviceName.empty())
-//     throw FocusFinderExceptionT("No focuser device name set.");
-  
-//   if (outUserStop)
-//     *outUserStop = false;
-  
-//   // Camera & focuser access helper
-//   IndiCameraClientT cameraClient(mIndiClient, mCameraDeviceName);
-//   IndiFocuserClientT focuserClient(mIndiClient, mFocuserDeviceName);
-  
-//   const int BACK = ceil(inSize / 2.0) - 1;
-//   int startX = (int) inCenterX - BACK;
-//   int startY = (int) inCenterY - BACK;
-
-//   os << ">>>> FRAME IS!!! X: " << startX << ", Y: " << startY << ", w: " << FocusFinderT::sWindowWidthPx << ", h: " << FocusFinderT::sWindowHeightPx << endl;
-
-//   CImg<float> img;
-//   IndiFocuserClientT::FocusDirectionT::TypeE directionToImproveFocus;
-
-//   // TODO: Many parameters may be set as class members!
-//   if (! determineInitialDirection(os, cameraClient, focuserClient, & img, startX, startY, inExposureTime, inOuterHfdRadius, numStepsToDetermineDirection, & directionToImproveFocus))
-//     return false;
-  
-//   if (! findRoughFocus(os, cameraClient, focuserClient, & img, startX, startY, inExposureTime, inOuterHfdRadius, numStepsToDetermineDirection, directionToImproveFocus, outUserStop, inStepsToReachRoughFocus))
-//     return false;
-
-//   // -Determine rough relative focus boundaries (in: FWHM/HFD BOUNDARY, out; dFmin [steps], dFmax [steps])
-//   os << "Determine rough relative focus boundaries (in: FWHM/HFD BOUNDARY, out; dFmin [steps], dFmax [steps]..." << endl;
-//   int Fmin = 0, Fmax = 0;
-
-//   mVCurve.clear();
-
-//   if (! findExtrema(os, cameraClient, focuserClient, & img, startX, startY, inExposureTime, inOuterHfdRadius, numStepsToDetermineDirection, directionToImproveFocus, outUserStop, inStepsToReachRoughFocus, MinMaxFocusPosT::MIN_FOCUS_POS, & Fmin, inQualityMeasureStrategy))
-//       return false;
-
-//   if (! findExtrema(os, cameraClient, focuserClient, & img, startX, startY, inExposureTime, inOuterHfdRadius, numStepsToDetermineDirection, directionToImproveFocus, outUserStop, inStepsToReachRoughFocus, MinMaxFocusPosT::MAX_FOCUS_POS, & Fmax, inQualityMeasureStrategy))
-//       return false;
-
-//   os << "Ok, extrema determined - FminPos: " << Fmin << ", FmaxPos: " << Fmax << endl;
-
-
-//   mVCurve.clear();
-
-//   if (! recordVCurve(os, cameraClient, focuserClient, & img, startX, startY, inExposureTime, inOuterHfdRadius, numStepsToDetermineDirection, directionToImproveFocus, outUserStop, inStepsToReachRoughFocus, Fmin, Fmax, inQualityMeasureStrategy))
-//     return false;
-
-
-  
-
-//   // Move to opt. focus pos - TODO: sep. function...
-//   int xpos;
-//   double ymin = mVCurve.getMinY(& xpos);
-//   os << "Min FWHM: " << ymin << ", opt focus pos: " << xpos << endl;
-
-//   int curFocusPos = focuserClient.getAbsPos();
-//   int delta;
-//   IndiFocuserClientT::FocusDirectionT::TypeE direction;
-
-//   if(curFocusPos - xpos > 0) {    
-//     delta = curFocusPos - xpos; // Move "left" (INWARDS)
-//     direction = IndiFocuserClientT::FocusDirectionT::INWARDS;
-//   } else {
-//     delta = xpos - curFocusPos; // Move "right" (OUTWARDS)
-//     direction = IndiFocuserClientT::FocusDirectionT::OUTWARDS;
-//   }
-//   focuserClient.moveFocusBy(delta, direction);
-
-//   os << "Moved to optimal focus pos: " << focuserClient.getAbsPos() << " (should be " << xpos << ")..." << endl;
-
-//   cameraClient.takePicture(& img, 1 /*horz bin*/, 1 /*vert bin*/, startX /*x*/, startY /*y*/, FocusFinderT::sWindowWidthPx /*w*/, FocusFinderT::sWindowHeightPx /*h*/, FrameTypeT::LIGHT, inExposureTime /*s*/, false /*no compr.*/);
-
-//   FwhmT fwhmHorz1(img, FwhmT::DirectionT::HORZ);
-//   FwhmT fwhmVert1(img, FwhmT::DirectionT::VERT);
-//   HfdT hfd1(img, inOuterHfdRadius /*radius px*/);
-  
-//   FocusFinderDataT ffd1(focuserClient.getAbsPos(), fwhmHorz1, fwhmVert1, hfd1, mVCurve);
-//   mFocusFinderUpdateListeners(& ffd1);
-  
-  
-
-  
-//   // -Determine optimal focus position from V-Curve(s) (requires valid V-Curve(s)) (in: V-Curves (a V-Curve is a list of relative focusPos & FWHM/HFD pairs))
-//   //    -1. Build one average V-Curve (all V-Curves must be within same relative Fmin & Fmax) (Note: Then for each focusPos there is exactly one HFD & FWHM value per V-Curve)
-//   //       -For idx = Fmin to Fmax
-//   //          -For all V-Curves
-//   //             -Sum the idx value of all V-Curves
-//   //          -Divide accumulated idx value by the number of V-Curves
-
-//   //    -2. Separate V-Curve in decreasing data-points and increasing data-points, minimum is to be included in both sets (TODO: Really?))
-//   //       -TODO...
-
-//   //    -3. Determine optimal focus position 
-//   //       NOTE: Important condition: f_decreasing_fwhm&hfd(pos) = f_increasing_fwhm&hfd(pos) == FWHM == HFD == 0!! --> pos is optimal focus position
-//   //           --> Find a_1, b_1 & a_2, b_2 of both functions so that (MSE1 + MSE2) is minimized
-//   //           --> Maybe hard to formulate in gsl?! --> We may implement this manually....
-
-
-
-//   // -Move to optimal focus position (in: optimal focus position)
-//   //    -TODO: Does this involve any corrections (feedback?)
-
-//   return true; // Focus found!
-// }
-
 }; // end AT namespace
-
-
-
-// const size_t FocusFinderT::sWindowWidthPx = 15;
-// const size_t FocusFinderT::sWindowHeightPx = 15;
-// const size_t FocusFinderT::sHfdOuterRadiusPx = 5;
-
-
-// const size_t FocusFinderT::sHfdOuterRadiusPx = 15;
-
-// FocusFinderT::FocusFinderT(IndiClientTmplT * inIndiClient, const string & inCameraDeviceName, const string & inFocuserDeviceName) : mIndiClient(inIndiClient), mCameraDeviceName(inCameraDeviceName), mFocuserDeviceName(inFocuserDeviceName), mStop(false) {
-
-//   if (! mIndiClient)
-//     throw FocusFinderExceptionT("No indi client set.");
-  
-//   // Number change listener
-//   mIndiClient->registerNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
-// }
-
-// FocusFinderT::~FocusFinderT() {
-//   cerr << "FocusFinderT::~FocusFinderT()... mIndiClient: " << mIndiClient << endl;
-//   if (mIndiClient)
-//     mIndiClient->unregisterNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
-// }
-
-// void FocusFinderT::numberChangeHandler(INumberVectorProperty * inVecNumber) {
-//   if (! inVecNumber)
-//     return;
-
-//   if (! strcmp(inVecNumber->name, IndiFocuserClientT::VecPropNameT::asStr(IndiFocuserClientT::VecPropNameT::ABS_FOCUS_POSITION))) {
-//     double absFocuserValue = 0;
-//     mIndiClient->getNumberChecked(mFocuserDeviceName, IndiFocuserClientT::VecPropNameT::asStr(IndiFocuserClientT::VecPropNameT::ABS_FOCUS_POSITION), IndiFocuserClientT::PropNameT::asStr(IndiFocuserClientT::PropNameT::RELATIVE_ABSOLUTE_POSITION), & absFocuserValue);
-
-//     FocusFinderDataT ffd(absFocuserValue, FwhmT(), FwhmT(), HfdT(), mVCurve); // TODO: Ok?! Not so nice?!
-//     mFocusFinderUpdateListeners(& ffd);
-//   }
-
-//   return;
-// }
-
-// // TODO: Required?!
-// // void FocusFinderT::recenter(ostream & os, IndiCameraClientT & inCameraClient, IndiFocuserClientT & inFocuserClient, CImg<float> * outImg, int * outStartX, int * outStartY, double inExposureTime, unsigned int inOuterHfdRadius, unsigned int numStepsToDetermineDirection) {
-// //   cerr << "FocusFinderT::recenter..." << endl;
-
-// //   float centerX, centerY;
-// //   try {
-// //     CentroidCalcT::starCentroid(*outImg, 0 /*x*/, 0 /*y*/, FocusFinderT::sWindowWidthPx, FocusFinderT::sWindowHeightPx, & centerX, & centerY, CoordTypeT::ABSOLUTE, false /* no debug msgs */);
-// //   } catch(CentroidExceptionT & exc) {
-// //     cerr << "Unable to determine centroid. Leaving it as is." << endl;
-// //     return;
-// //   }
-
-// //   const int BACK = ceil(FocusFinderT::sWindowWidthPx / 2.0) - 1;
-// //   int deltaX = (int) centerX - BACK;
-// //   int deltaY = (int) centerY - BACK;
-    
-// //   if (deltaX || deltaY) {
-// //     os << ">>>> RE-CENTERING by (dx, dy)=(" << deltaX << ", " << deltaY << ") -> startX: " << *outStartX << ", startY: " << *outStartY << ", w: " << FocusFinderT::sWindowWidthPx << ", h: " << FocusFinderT::sWindowHeightPx << ", taking new image..." << endl;
-// //     *outStartX = *outStartX - deltaX;
-// //     *outStartY = *outStartY - deltaY;
-// //     inCameraClient.takePicture(outImg, 1 /*horz bin*/, 1 /*vert bin*/, *outStartX /*x*/, *outStartY /*y*/, FocusFinderT::sWindowWidthPx /*w*/, FocusFinderT::sWindowHeightPx /*h*/, FrameTypeT::LIGHT, inExposureTime /*s*/, false /*no compr.*/);
-// //   }
-// // }

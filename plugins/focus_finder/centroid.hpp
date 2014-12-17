@@ -72,6 +72,7 @@ public:
     const CImg <float> & subImage = inImg.get_crop(x, y, x + w, y + h); // TODO: Reference possible?!
     
     // Find max pixel value and position
+    // TODO: We may use min_max function instead!?
     double maxValue = 0;
     int maxX, maxY;
     cimg_forXY(subImage, x, y) {

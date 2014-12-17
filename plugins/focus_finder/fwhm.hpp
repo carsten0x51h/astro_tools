@@ -131,13 +131,19 @@ public:
   float getStandardDeviation() const;
 
   ostream & print(ostream & os) const {
-    os << "Fwhm(" << DirectionT::asStr(mDirection) << ")=" << getValue() << "\"";
     // TODO: Only print if details requested...
-    //       << ", GaussParms: " << mGaussParms;
-    // os << ", Img values: ";
-    // for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it) { os << *it << "; "; }
-    // os << ", Fit values: ";
-    // for (vector<float>::const_iterator it = mFitValues.begin(); it != mFitValues.end(); ++it) { os << *it << "; "; }
+    os << "Fwhm(" << DirectionT::asStr(mDirection) << ")=" << getValue() << "\"" 
+       << " [centroid(x,y)=(" << mXCom << ", " << mYCom << ")"
+       << ", b=" << mGaussParms[GaussMatcherT::IdxT::B_IDX]
+       << ", p=" << mGaussParms[GaussMatcherT::IdxT::P_IDX]
+       << ", c=" << mGaussParms[GaussMatcherT::IdxT::C_IDX]
+       << ", w=" << mGaussParms[GaussMatcherT::IdxT::W_IDX] << "]..." << endl;
+
+    os << ", Img values: ";
+    for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it) { os << *it << "; "; }
+    os << ", Fit values: ";
+    for (vector<float>::const_iterator it = mFitValues.begin(); it != mFitValues.end(); ++it) { os << *it << "; "; }
+
     return os;
   }
 
