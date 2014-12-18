@@ -143,11 +143,11 @@ namespace AT {
 
     VCurveT masterVCurve;
     for (VCurveVecT::const_iterator itCurve = inVCurves.begin(); itCurve != inVCurves.end(); ++itCurve) {
-      masterVCurve = masterVCurve + *itCurve; // TODO: Use +=...
+      masterVCurve += *itCurve;
     }
     
     // Calculate average
-    masterVCurve = masterVCurve / (double) inVCurves.size(); // TODO: Use /=
+    masterVCurve /= (double) inVCurves.size();
 
     LOG(info) << "Master VCurve: " << masterVCurve << endl;
 

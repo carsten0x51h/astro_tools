@@ -165,13 +165,22 @@ namespace AT {
       return newVCurve;
     }
 
-    // TODO: Overload operator+= and -=..., /=. *=
+    VCurveTmplT operator+=(const VCurveTmplT & inOtherVCurve) {
+      addSub(AddSubVCurvesT::ADD_VCURVES, *this, inOtherVCurve, this);
+      return *this;
+    }
 
     VCurveTmplT operator-(const VCurveTmplT & inOtherVCurve) {
       VCurveTmplT newVCurve;
       addSub(AddSubVCurvesT::SUB_VCURVES, *this, inOtherVCurve, & newVCurve);
       return newVCurve;
     }
+
+    VCurveTmplT operator-=(const VCurveTmplT & inOtherVCurve) {
+      addSub(AddSubVCurvesT::SUB_VCURVES, *this, inOtherVCurve /* this one is subtracted */, this);
+      return *this;
+    }
+
   
     VCurveTmplT operator/(const double & inScalar) {
       if (! inScalar)
@@ -184,6 +193,16 @@ namespace AT {
       return newCurve;
     }
 
+    VCurveTmplT operator/=(const double & inScalar) {
+      if (! inScalar)
+	throw VCurveExceptionT("Dividing a VCurve by 0 is not allowed.");
+
+      for (typename VCurveTmplT::iterator it = this->begin(); it != this->end(); ++it) {
+	it->second /= inScalar;
+      }
+      return *this;
+    }
+
     // VCurveTmplT * scalar
     VCurveTmplT operator*(const double & inScalar) {
       VCurveTmplT newCurve(*this); // Create a copy of VCurve before multiplying
@@ -191,6 +210,13 @@ namespace AT {
 	it->second *= inScalar;
       }
       return newCurve;
+    }
+
+    VCurveTmplT operator*=(const double & inScalar) {
+      for (typename VCurveTmplT::iterator it = this->begin(); it != this->end(); ++it) {
+	it->second *= inScalar;
+      }
+      return *this;
     }
 
     bool operator==(const VCurveTmplT & inOtherVCurve) {
