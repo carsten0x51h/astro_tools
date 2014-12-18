@@ -246,7 +246,8 @@ namespace AT {
       try {
 	pos = std::stoi(filter);
       } catch(...) {
-	// TODO: Ok, we try to resolve the pos by name...
+	// TODO: Ok, we try to resolve the pos by name... red / green ...
+	//       we need a map which can be configured by user which maps name to slot no.
 	pos = 0; // TODO...
       }
 

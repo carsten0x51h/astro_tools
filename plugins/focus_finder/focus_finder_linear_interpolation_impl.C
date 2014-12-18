@@ -159,6 +159,8 @@ namespace AT {
   
     // Fill data
     size_t idx = 0;
+
+    // TODO: Use PositionT / PointT here?!
     for (VCurveT::const_iterator it = masterVCurve.begin(); it != masterVCurve.end(); ++it, ++idx) {
       dat->pt[idx].x = it->first;
       dat->pt[idx].y = it->second;
@@ -166,36 +168,29 @@ namespace AT {
 
     // Do the LM fit - TODO: this function should throw if it does not succeed?!
     int err = ParabelMatcherT::fitgsl_lm(dat, & parabelParms, mVCurveFitEpsAbs, mVCurveFitEpsRel);
-  
-    if (err) {
-      // Free allocated data
-      // TODO: Should be handled internally
-      //ParabelMatcherT::fitgsl_free_data(dat);
-
-      // TODO: Try to fin dout what is the rel and abs error compared to the required ones! --> print
-      stringstream ss;
-      ss << "FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos - fitgsl_lm() returned non-zero status: " << err
-	 << ", a: " << parabelParms[ParabelMatcherT::IdxT::A_IDX]
-	 << ", b: " << parabelParms[ParabelMatcherT::IdxT::B_IDX]
-	 << ", c: " << parabelParms[ParabelMatcherT::IdxT::C_IDX]
-	 << ", however, for now we do not throw! TODO!" << endl;
-
-      //throw CurveFittingExceptionT(ss.str().c_str()); Remember to comment in free above!
-    }
 
     float a = parabelParms[ParabelMatcherT::IdxT::A_IDX];
     float b = parabelParms[ParabelMatcherT::IdxT::B_IDX];
     float c = parabelParms[ParabelMatcherT::IdxT::C_IDX];
-    
-    // TODO: Logging...
-    cerr << "Calculated parabel parms - a: " << a << ", b: " << b << ", c: " << c << endl;
+  
+    if (err) {
+      // Free allocated data
+      // TODO: Should be handled internally
+      ParabelMatcherT::fitgsl_free_data(dat);
 
+      stringstream ss;
+      ss << "FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos - fitgsl_lm() returned non-zero status: " << err
+	 << ", a: " << a << ", b: " << b << ", c: " << c << endl;
+      throw CurveFittingExceptionT(ss.str().c_str());
+    }
+    
+    LOG(debug) << "Calculated parabel parms - a: " << a << ", b: " << b << ", c: " << c << endl;
+    
     // Calculate xmin, ymin
     float xMin = - b / (2.0f * a);
     float yMin = - 0.25f * (b * b) / a + c;
 
-    // TODO: Logging...
-    cerr << "xMin: " << xMin << ", yMin: " << yMin << endl;
+    LOG(debug) << "xMin: " << xMin << ", yMin: " << yMin << endl;
   
     // Free allocated data
     // TODO: Should be handled internally

@@ -41,52 +41,11 @@ namespace AT {
 
   class FocusFinderActionT {
   public:
-    // TODO: Save new pointers in container and finally delete all?!
-    static FocusFinderT *
-    createFocusFinder(const string & inStrategyName, IndiCameraT * inIndiCamera, IndiFocuserT * inIndiFocuser, const PositionT & inStarCenterPos, float inExposureTimeSec, BinningT inBinning) {
-      FocusFinderT * focusFinder = 0;
-      if (! strcmp(inStrategyName.c_str(), "linear_interpolation")) {
-	FocusFinderLinearInterpolationImplT * ffli = new FocusFinderLinearInterpolationImplT(inIndiCamera, inIndiFocuser, inStarCenterPos, inExposureTimeSec, inBinning);
-
-
-	// TODO / FIXME: This is a hack! We want to set the properties below!
-	// Set further configurations
-	ffli->setWindowSize(31);
-	ffli->setNumStepsToDetermineDirection(3000);
-	ffli->setStepsToReachFocus(3000);
-	ffli->setExtremaFitnessBoundary(25);
-	ffli->setOuterHfdRadiusPx(5);
-	ffli->setRoughFocusMaxIterCnt(20);
-	ffli->setTakePictureFitGaussCurveMaxRetryCnt(5);
-	ffli->setDebugShowTakePictureImage(false);
-	ffli->setRoughFocusSearchRangePerc(70);
-	ffli->setRoughFocusRecordNumCurves(1);
-	ffli->setRoughFocusGranularitySteps(500);
-	ffli->setFineFocusRecordNumCurves(3);
-	ffli->setFineFocusGranularitySteps(50);
-	ffli->setFineSearchRangeSteps(2000);
-	ffli->setVCurveFitEpsAbs(1e-1);
-	ffli->setVCurveFitEpsRel(1e-1);
-	
-	focusFinder = ffli;
-      } else {
-	const string exStr = "'" + inStrategyName + "' is not a known strategy.";
-	throw UnknownFocusFinderImplExceptionT(exStr.c_str());
-      }
-      return focusFinder;
-    }
-
-    static void destroyFocusFinder(FocusFinderT * inFocusFinder) {
-      AT_ASSERT(FocusFinderPlugin, inFocusFinder, "Expecting valid pointer.");
-      delete inFocusFinder;
-    }
-
     static void performAction(void) {
       const po::variables_map & cmdLineMap = CommonAstroToolsAppT::getCmdLineOptionsMap();
       
       // Check cmdline args - depends
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("indi_server") > 0, "Expecting indi_server option being set.");
-      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("strategy") > 0, "Expecting strategy option being set.");
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("camera_device") > 0, "Expecting camera_device option being set.");
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("focuser_device") > 0, "Expecting focuser_device option being set.");
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("focuser_device_port") > 0, "Expecting focuser_device_port option being set.");
@@ -94,7 +53,6 @@ namespace AT {
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("star_select") > 0, "Expecting star_select option being set.");
 
       const HostnameAndPortT & hostnameAndPort = cmdLineMap["indi_server"].as<HostnameAndPortT>();
-      const string & focusFinderStrategy = cmdLineMap["strategy"].as<string>();
       const string & cameraDeviceName = cmdLineMap["camera_device"].as<string>();
       const string & focuserDeviceName = cmdLineMap["focuser_device"].as<string>();
       const string & focuserDevicePort = cmdLineMap["focuser_device_port"].as<string>();
@@ -102,7 +60,7 @@ namespace AT {
       const BinningT & binning = cmdLineMap["binning"].as<BinningT>();
       const string & starSelect = cmdLineMap["star_select"].as<string>();
 
-      LOG(info) << "Indi server: " << hostnameAndPort << ", Strategy: " << focusFinderStrategy
+      LOG(info) << "Indi server: " << hostnameAndPort
 		<< ", cameraDeviceName: " << cameraDeviceName << ", focuserDeviceName: " << focuserDeviceName
 		<< ", focuserDevicePort: " << focuserDevicePort << ", exposureTimeSec: " << exposureTimeSec
 		<< ", binning: " << binning << ", starSelect: " << starSelect << endl;
@@ -143,10 +101,10 @@ namespace AT {
 	PositionT starCenterPos;
 
 	if (! strcmp(starSelect.c_str(), "auto")) {
-	  // TODO: Implement, set starCenterPos...
+	  // TODO: Implement automatic star selection
 	  AT_ASSERT(FocusFinderPlugin, false, "Mode 'auto' not yet implemented");
 	} else if (! strcmp(starSelect.c_str(), "display")) {
-	  // TODO: Implement, set starCenterPos...
+	  // TODO: Implement star selection by displaying window
 	  AT_ASSERT(FocusFinderPlugin, false, "Mode 'display' not yet implemented");
 	} else {
 	  // Check if valid position
@@ -159,18 +117,27 @@ namespace AT {
 
 	LOG(info) << "Star center pos: " << starCenterPos << endl;
 
-	// NOTE: throws if unknown strategy
-	// TODO: Strategy concept is a problem here because we want to call instance specific methods here i.e. we have to know the exact type!
-	//       Question is if a strategy makes sense in this case!
-	FocusFinderT * focusFinder = FocusFinderActionT::createFocusFinder(focusFinderStrategy,
-									   cameraDevice,
-									   focuserDevice,
-									   starCenterPos,
-									   exposureTimeSec,
-									   binning);
+	FocusFinderLinearInterpolationImplT * ffli = new FocusFinderLinearInterpolationImplT(cameraDevice, focuserDevice, starCenterPos, exposureTimeSec, binning);	
+	// Set further configurations
+	ffli->setWindowSize(31);
+	ffli->setNumStepsToDetermineDirection(3000);
+	ffli->setStepsToReachFocus(3000);
+	ffli->setExtremaFitnessBoundary(25);
+	ffli->setOuterHfdRadiusPx(5);
+	ffli->setRoughFocusMaxIterCnt(20);
+	ffli->setTakePictureFitGaussCurveMaxRetryCnt(5);
+	ffli->setDebugShowTakePictureImage(false);
+	ffli->setRoughFocusSearchRangePerc(70);
+	ffli->setRoughFocusRecordNumCurves(1);
+	ffli->setRoughFocusGranularitySteps(500);
+	ffli->setFineFocusRecordNumCurves(3);
+	ffli->setFineFocusGranularitySteps(50);
+	ffli->setFineSearchRangeSteps(2000);
+	ffli->setVCurveFitEpsAbs(1e-1);
+	ffli->setVCurveFitEpsRel(1e-1);
+
 	// Find focus
-	focusFinder->findFocus();
-	FocusFinderActionT::destroyFocusFinder(focusFinder);
+	ffli->findFocus();
 
       } else {
 	stringstream ss;
@@ -181,7 +148,7 @@ namespace AT {
   };
 
 
-
+  // TODO: unsigned int windowSize as tmpl. argument no longer required, we pass it as cmd. argument because we don't know it at compile time!
   template <typename ActionT, unsigned int windowSize>
   class CalcStarActionT {
   public:
@@ -191,9 +158,7 @@ namespace AT {
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("input") > 0, "Expecting input option being set.");
       const string & inputFilename = cmdLineMap["input"].as<string>();
       
-      // Note: Window size is fixed by impl... - e.g. 31 x 31
-      //const unsigned int windowSize = 31; // TODO: Define 31 or whatever globally! But where? FocusFinderT? Or Centroid?Fwhm?HFD?
-      const unsigned int halfWindowSize = windowSize / 2;  // TODO: use >> 1 operator instead?! What if windowSize is even?
+      const unsigned int halfWindowSize = windowSize / 2;
       
       CImg<float> image(inputFilename.c_str()); // TODO: What happens if file does not exist?!
       PositionT selectionCenter;
@@ -237,14 +202,13 @@ namespace AT {
   };
 
   // TODO: Where to put this?!
-  static const unsigned int sWindowSize = 31;
+  static const unsigned int sWindowSize = 31; // TODO: Pass as argument instead?!
 
   class CalcStarCentroidActionT : public CalcStarActionT<CalcStarCentroidActionT, sWindowSize> {
   public:
     static void performAction(const CImg<float> & inImage, const PositionT & inSelectionCenter, const po::variables_map & inCmdLineMap) {
       // At this place, 'position' is valid and marks the center of the analysis window
       // and all pixels wihin this window exist.
-      // TODO: pass sWindowSize as template argument?!
       PositionT centroid = CentroidCalcT::starCentroid(inImage, inSelectionCenter, sWindowSize, CoordTypeT::ABSOLUTE);
       cout << dec << "Centroid: " << centroid << endl;
     }
@@ -276,7 +240,7 @@ namespace AT {
       }
 
       // TODO: Where to put constants? Use sWindowSize / 2?
-      const size_t sHfdOuterRadiusPx = 15;
+      const size_t sHfdOuterRadiusPx = 15; // TODO: Pass as argunment?!
 
       HfdT hfd(inImage, sHfdOuterRadiusPx, centroid.get<0>(), centroid.get<1>(), sWindowSize);
       FwhmT fwhmHorz(inImage, FwhmT::DirectionT::HORZ, centroid.get<0>(), centroid.get<1>(), sWindowSize);
@@ -339,9 +303,6 @@ namespace AT {
     DEFINE_OPTION(optFilterDeviceName, "filter_device", po::value<string>(), "INDI filter device name.");
     DEFINE_OPTION(optFilter, "filter", po::value<string>(), "Filter to be selected for focusing (position number or name).");
 
-    // Focus finder options
-    DEFINE_OPTION(optStrategy, "strategy", po::value<string>()->default_value("linear_interpolation"), "Focus finder strategy [linear_interpolation]."); // TODO: enum?! each strategy registers? vector?
-
 
     /**
      * focus_find command.
@@ -356,7 +317,6 @@ namespace AT {
     focusFindDescr.add(optFocuserDevicePort);
     focusFindDescr.add(optFilterDeviceName);
     focusFindDescr.add(optFilter);
-    focusFindDescr.add(optStrategy);
     focusFindDescr.add(optTimeout);
     //focusFindDescr.add_options()("display_picture", "Display picture.");
     REGISTER_CONSOLE_CMD_LINE_COMMAND("focus_find", focusFindDescr, (& FocusFinderActionT::performAction));
@@ -386,7 +346,5 @@ namespace AT {
     calcStarParmsDescr.add(optPixelSize);
     calcStarParmsDescr.add(optBinning);
     REGISTER_CONSOLE_CMD_LINE_COMMAND("calc_star_parms", calcStarParmsDescr, (& CalcStarActionT<CalcStarParmsActionT, sWindowSize>::performAction));
-
-
   }
 };

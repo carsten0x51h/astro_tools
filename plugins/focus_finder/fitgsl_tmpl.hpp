@@ -64,6 +64,7 @@ typedef struct _fitgsl_fnparams {
 
 /**
  * Gaussian fit traits
+ * TODO: x,y-Point (dat) as template parameter?! 
  */
 class GaussianFitTraitsT {
 private:

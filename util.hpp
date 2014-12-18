@@ -110,6 +110,7 @@ typedef boost::tuple<double, double> DimensionT;
 
 /**
  * PositionT structure (X x Y).
+ * TODO: Rename to PointT?!
  */
 typedef boost::tuple<double, double> PositionT;
 
