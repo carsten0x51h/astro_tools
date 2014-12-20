@@ -1,3 +1,67 @@
+// TODO
+// Test in libreoffice
+// (x, y) = (22850, 19.5919)
+// (x, y) = (23350, 18.7533)
+// (x, y) = (23850, 19.2931)
+// (x, y) = (24350, 18.407)
+// (x, y) = (24850, 18.9501)
+// (x, y) = (25350, 17.0735)
+// (x, y) = (25850, 18.5735)
+// (x, y) = (26350, 16.614)
+// (x, y) = (26850, 17.0103)
+// (x, y) = (27350, 16.3023)
+// (x, y) = (27850, 15.402)
+// (x, y) = (28350, 17.3895)
+// (x, y) = (28850, 15.8039)
+// (x, y) = (29350, 15.8986)
+// (x, y) = (29850, 15.3658)
+// (x, y) = (30350, 13.7889)
+// (x, y) = (30850, 13.4612)
+// (x, y) = (31350, 13.1746)
+// (x, y) = (31850, 15.0217)
+// (x, y) = (32350, 12.9477)
+// (x, y) = (32850, 13.1476)
+// (x, y) = (33350, 12.2441)
+// (x, y) = (33850, 14.4243)
+// (x, y) = (34350, 11.6641)
+// (x, y) = (34850, 12.0535)
+// (x, y) = (35350, 12.258)
+// (x, y) = (35850, 10.8592)
+// (x, y) = (36350, 12.6032)
+// (x, y) = (36850, 13.3219)
+// (x, y) = (37350, 12.9228)
+// (x, y) = (37850, 13.7499)
+// (x, y) = (38350, 12.9885)
+// (x, y) = (38850, 13.0212)
+// (x, y) = (39350, 12.268)
+// (x, y) = (39850, 14.2114)
+// (x, y) = (40350, 14.9318)
+// (x, y) = (40850, 15.5126)
+// (x, y) = (41350, 13.1647)
+// (x, y) = (41850, 14.1658)
+// (x, y) = (42350, 13.6438)
+// (x, y) = (42850, 15.907)
+// (x, y) = (43350, 14.5974)
+// (x, y) = (43850, 14.7542)
+// (x, y) = (44350, 14.0117)
+// (x, y) = (44850, 15.3519)
+// (x, y) = (45350, 15.3365)
+// (x, y) = (45850, 17.5144)
+// (x, y) = (46350, 16.8715)
+// (x, y) = (46850, 16.9312)
+// (x, y) = (47350, 17.7513)
+// (x, y) = (47850, 17.2565)
+// (x, y) = (48350, 17.2912)
+// (x, y) = (48850, 18.6475)
+// (x, y) = (49350, 19.1396)
+// (x, y) = (49850, 19.1723)
+
+
+// xMin: 35850, yMin: 10.8592
+// Guessing a=1, b=-71700, c=1.28522e+09
+// [2014-Dec-19 22:14:10.145044]: Calculated parabel parms - a: 3.80037e-08, b: -0.00278398, c: 63.9065
+
+
 /*****************************************************************************
  *
  *  AstroTools
@@ -22,7 +86,7 @@
 
 #include "focus_finder_linear_interpolation_impl.hpp"
 
-namespace AT {  
+namespace AT {
   // TODO: Maybe rename those FocusFinder classes to ...Minimizer - because FocusFinder is too generic - it is the whole thing...
   // but this class only tries to find the minimum HFD and/or Fwhm. In addition we could pass a minimizer policy... which tells the 
   // minimizer which star values should be taken into account.
@@ -58,8 +122,12 @@ namespace AT {
 
     LOG(debug) << dec << "centerPos: " << centerPos << ", halfLength: " << halfLength << ", mRoughFocusSearchRangePerc: " << mRoughFocusSearchRangePerc << "%, percLength: " << percLength << endl;
 
+    double roughOptAbsFocusPos = this->findOptimalFocusInRange(roughAbsStartPos, roughAbsEndPos, mRoughFocusRecordNumCurves, mRoughFocusGranularitySteps);
+
     StarDataT roughStarData;
-    double roughOptAbsFocusPos = this->findOptimalFocusInRange(roughAbsStartPos, roughAbsEndPos, mRoughFocusRecordNumCurves, mRoughFocusGranularitySteps, & roughStarData);
+    takePictureCalcStarData(& roughStarData);
+    LOG(info) << dec << "Took picture - resulting star data: " << roughStarData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
+
     LOG(debug) << dec << "Rough focus determined: " << roughOptAbsFocusPos << ", starData: " << roughStarData << endl;
 
 
@@ -71,18 +139,34 @@ namespace AT {
     LOG(debug) << dec << "roughOptAbsFocusPos: " << roughOptAbsFocusPos << ", mFineSearchRangeSteps: " << mFineSearchRangeSteps
 	       << ", fine search range=[" << fineAbsStartPos << ", " << fineAbsEndPos << "]..." << endl;
 
-    StarDataT fineStarData;
-    double fineOptAbsFocusPos = this->findOptimalFocusInRange(fineAbsStartPos, fineAbsEndPos, mFineFocusRecordNumCurves, mFineFocusGranularitySteps, & fineStarData);
-    LOG(debug) << dec << "Fine focus determined: " << roughOptAbsFocusPos << ", starData: " << fineStarData << endl;
+    double fineOptAbsFocusPos = this->findOptimalFocusInRange(fineAbsStartPos, fineAbsEndPos, mFineFocusRecordNumCurves, mFineFocusGranularitySteps);
 
+    // Determine final seeing (average)
+    const size_t _numSingleFrames = 5;
+    float fineStarDataFitnessSum = 0;
+
+    for (size_t i = 0; i < _numSingleFrames; ++i) {
+      // Take picture, calc star values and send update
+      StarDataT fineStarData;
+      takePictureCalcStarData(& fineStarData);
+      LOG(info) << dec << "Took picture - resulting star data: " << fineStarData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
+
+      fineStarDataFitnessSum += fineStarData.getFitness();
+      
+      // Send update to listeners
+      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), fineStarData /*, TODO: mVCurve*/);
+      this->callFocusFinderUpdateListener(& focusFinderData);
+    }
+
+    float meanFineStarDataFitness = fineStarDataFitnessSum / (float) _numSingleFrames;
 
     // Logging summary
     LOG(info) << dec << "Rough focus found at: " << roughOptAbsFocusPos << ", starData: " << roughStarData << endl;
-    LOG(info) << dec << "Fine focus found at: " << fineOptAbsFocusPos << ", starData: " << fineStarData << endl;
+    LOG(info) << dec << "Fine focus found at: " << fineOptAbsFocusPos << ", mean fine star data fitness: " << meanFineStarDataFitness << endl;
   }
 
   double
-  FocusFinderLinearInterpolationImplT::findOptimalFocusInRange(int inAbsStartPos, int inAbsEndPos, size_t inNumVCurves, size_t inCurveGranularitySteps, StarDataT * outStarData) {
+  FocusFinderLinearInterpolationImplT::findOptimalFocusInRange(int inAbsStartPos, int inAbsEndPos, size_t inNumVCurves, size_t inCurveGranularitySteps) {
     LOG(info) << dec << "Calculated start/end positions [start, end]=[" << inAbsStartPos << ", " << inAbsEndPos << "]" << endl;
     
     // Record VCurves
@@ -114,19 +198,6 @@ namespace AT {
     LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(finalDirection) << " by "
 	       << steps << " steps, pos: " << mFocuserDevice->getAbsPos() << endl;
     
-    // Take picture, calc star values and send update
-    StarDataT starData;
-    takePictureCalcStarData(& starData);
-    LOG(info) << dec << "Took picture - resulting star data: " << starData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
-    
-    if (outStarData) {
-      *outStarData = starData; // copy
-    }
-
-    // Send update to listeners
-    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
-    this->callFocusFinderUpdateListener(& focusFinderData);
-    
     return optAbsFocusPos;
   }
 
@@ -137,7 +208,7 @@ namespace AT {
     //-> take another picture?!?! or just increase possible error by *2 ?!
     //-> Maybe there is a better solution by just still using the results?? ...
     //   Because the results will be the same if data does not change!! Maybe add "noExIfErrorCondNotFulfilled" ??!
-    typedef FunctionFitTmplT<ParabelFitTraitsT> ParabelMatcherT;
+    typedef CurveFitTmplT<ParabelFitTraitsT> ParabelMatcherT;
 
     AT_ASSERT(FocusFinderLinearInterpolation, inVCurves.size(), "VCurve vector is empty!");
 
@@ -150,38 +221,20 @@ namespace AT {
     masterVCurve /= (double) inVCurves.size();
 
     LOG(info) << "Master VCurve: " << masterVCurve << endl;
-
-    ParabelMatcherT::ParamsT parabelParms;
-
-    // Allocate temporary data buffer
-    // TODO: Should be handled internally
-    fitgsl_data * dat = ParabelMatcherT::fitgsl_alloc_data(masterVCurve.size());
   
-    // Fill data
-    size_t idx = 0;
-
-    // TODO: Use PositionT / PointT here?!
-    for (VCurveT::const_iterator it = masterVCurve.begin(); it != masterVCurve.end(); ++it, ++idx) {
-      dat->pt[idx].x = it->first;
-      dat->pt[idx].y = it->second;
-    }
-
     // Do the LM fit - TODO: this function should throw if it does not succeed?!
-    int err = ParabelMatcherT::fitgsl_lm(dat, & parabelParms, mVCurveFitEpsAbs, mVCurveFitEpsRel);
+    ParabelMatcherT::ParamsT parabelParms;
+    int err = ParabelMatcherT::fitGslLevenbergMarquart(VCurveAccessorT(masterVCurve), & parabelParms, mVCurveFitEpsAbs, mVCurveFitEpsRel);
 
     float a = parabelParms[ParabelMatcherT::IdxT::A_IDX];
     float b = parabelParms[ParabelMatcherT::IdxT::B_IDX];
     float c = parabelParms[ParabelMatcherT::IdxT::C_IDX];
   
     if (err) {
-      // Free allocated data
-      // TODO: Should be handled internally
-      ParabelMatcherT::fitgsl_free_data(dat);
-
       stringstream ss;
       ss << "FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos - fitgsl_lm() returned non-zero status: " << err
 	 << ", a: " << a << ", b: " << b << ", c: " << c << endl;
-      throw CurveFittingExceptionT(ss.str().c_str());
+      throw CurveFitExceptionT(ss.str().c_str());
     }
     
     LOG(debug) << "Calculated parabel parms - a: " << a << ", b: " << b << ", c: " << c << endl;
@@ -191,10 +244,12 @@ namespace AT {
     float yMin = - 0.25f * (b * b) / a + c;
 
     LOG(debug) << "xMin: " << xMin << ", yMin: " << yMin << endl;
-  
-    // Free allocated data
-    // TODO: Should be handled internally
-    ParabelMatcherT::fitgsl_free_data(dat);
+
+    // TODO: Adapt...
+    // vector<float> & fitValues = (*outFitValues);
+    // for(size_t i = 0; i < imgValues.size() && i < FwhmT::MAX_PTS; ++i) {
+    //   fitValues[i] = GaussianFitTraitsT::fx(i, /*TODO: was - still works? dataPoints[i].x*/, *outGaussParms);
+    // }
 
     return xMin;
   }
@@ -225,7 +280,7 @@ namespace AT {
 	outStarData->getHfd().set(img, mOuterHfdRadiusPx);
 	break; // success
 
-      } catch (CurveFittingExceptionT & exc) {
+      } catch (CurveFitExceptionT & exc) {
 	// Fitting did not work as expected...
 	LOG(warning) << "Fitting did not work as expected...retry " << (retryCnt+1) << " / " << mTakePictureFitGaussCurveMaxRetryCnt << endl;
 	++retryCnt;
@@ -233,7 +288,7 @@ namespace AT {
     }
 
     if (mTakePictureFitGaussCurveMaxRetryCnt <= retryCnt) {
-      throw CurveFittingExceptionT("Could not fit curve even after retrying.");
+      throw CurveFitExceptionT("Could not fit curve even after retrying.");
     }
 
     if (outImg) {

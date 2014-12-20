@@ -62,95 +62,97 @@ using namespace cimg_library;
 DEF_Exception(Fwhm);
 
 // TODO: Pull out DirectionT from Fwhm?! instead pass vector of values...?!value itself is independent frm image, horz and vert!!!!!!!
-class FwhmT {  
-private:
-  typedef FunctionFitTmplT<GaussianFitTraitsT> GaussMatcherT;
-
-public:
-  struct DirectionT {
+namespace AT {
+  class FwhmT {  
+  private:
+    typedef CurveFitTmplT<GaussianFitTraitsT> GaussMatcherT;
+    
+  public:
+    struct DirectionT {
     enum TypeE {
       HORZ,
       VERT,
       _Count
     };
-    
-    static const char * asStr(const TypeE & inType) {
-      switch(inType) {
-      case HORZ: return "HORZ";
-      case VERT: return "VERT";
-      default: return "<?>";
+      
+      static const char * asStr(const TypeE & inType) {
+	switch(inType) {
+	case HORZ: return "HORZ";
+	case VERT: return "VERT";
+	default: return "<?>";
+	}
       }
+      
+      MAC_AS_TYPE(Type, E, _Count);
+    };
+    
+    // TODO: Calc FWHM ["] from FWHM [px] --> Needs F?! --> Move out of here?!--> Diff class?!
+    // See http://www.paulmcgale.co.uk/tech.htm
+    // See http://www.wilmslowastro.com/software/formulae.htm  
+    static double pxToArcsec(double px, double inFocalLength /*mm*/, DimensionT inPixelSize /*um*/, BinningT inBinning) {
+      const double pixelSizeEq = sqrt(inPixelSize.get<0>() * inPixelSize.get<1>());
+      const double arcsecPerPixel = (206.2648 * (double) inBinning.get<0>() * (double) inBinning.get<1>() * pixelSizeEq) / inFocalLength;
+      return arcsecPerPixel * px;
     }
-
-    MAC_AS_TYPE(Type, E, _Count);
+    
+  private:
+    float mXCom, mYCom;
+    vector<float> mImgValues, mFitValues;
+    GaussMatcherT::ParamsT mGaussParms;
+    DirectionT::TypeE mDirection; // TODO: Not sure if this is good design...
+    
+    static const double SIGMA_TO_FWHM;
+    static const size_t MAX_PTS;
+    
+    static float calcGaussValue(const GaussMatcherT::ParamsT & inGaussParms, float x);
+    static void fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::ParamsT * outGaussParms, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
+    
+  public:
+    FwhmT() : mXCom(0), mYCom(0) { }
+    
+    // TODO: Add further constructors... vector<double> ... just row of data...
+    FwhmT(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, double inEpsAbs = 1e-2, double inEpsRel = 1e-2, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
+    void set(const CImg<float> & image, const DirectionT::TypeE & inDirection, double inEpsAbs = 1e-2, double inEpsRel = 1e-2, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
+    
+    inline bool valid() const { return (mImgValues.size() > 0 && mFitValues.size() > 0); }
+    
+    static inline double sigmaToFwhm(double sigma) { return FwhmT::SIGMA_TO_FWHM * sigma; }
+    static inline double fwhmToSigma(double sigma) { return sigma / FwhmT::SIGMA_TO_FWHM; }
+    
+    inline float getValue() const { return sigmaToFwhm(mGaussParms[GaussMatcherT::IdxT::W_IDX]); }
+    inline DirectionT::TypeE getDirection() const { return mDirection; }
+    
+    // TODO: Return PositionT instead...
+    inline void getCentroid(float * x, float * y) const { *x = mXCom; *y = mYCom; }
+    
+    inline const vector<float> & getImgValues() const { return mImgValues; }
+    inline const vector<float> & getFitValues() const { return mFitValues; }
+    inline float calcGaussianValue(float x) const { return calcGaussValue(mGaussParms, x); }
+    
+    float getStandardDeviation() const;
+    
+    ostream & print(ostream & os) const {
+      // TODO: Only print if details requested...
+      os << "Fwhm(" << DirectionT::asStr(mDirection) << ")=" << getValue() << "\"" 
+	 << " [centroid(x,y)=(" << mXCom << ", " << mYCom << ")"
+	 << ", b=" << mGaussParms[GaussMatcherT::IdxT::B_IDX]
+	 << ", p=" << mGaussParms[GaussMatcherT::IdxT::P_IDX]
+	 << ", c=" << mGaussParms[GaussMatcherT::IdxT::C_IDX]
+	 << ", w=" << mGaussParms[GaussMatcherT::IdxT::W_IDX] << "]..." << endl;
+      
+      os << ", Img values: ";
+      for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it) { os << *it << "; "; }
+      os << ", Fit values: ";
+      for (vector<float>::const_iterator it = mFitValues.begin(); it != mFitValues.end(); ++it) { os << *it << "; "; }
+      
+      return os;
+    }
+    
+    friend ostream & operator<<(ostream & os, const FwhmT & inFwhm);
   };
-
-  // TODO: Calc FWHM ["] from FWHM [px] --> Needs F?! --> Move out of here?!--> Diff class?!
-  // See http://www.paulmcgale.co.uk/tech.htm
-  // See http://www.wilmslowastro.com/software/formulae.htm  
-  static double pxToArcsec(double px, double inFocalLength /*mm*/, DimensionT inPixelSize /*um*/, BinningT inBinning) {
-    const double pixelSizeEq = sqrt(inPixelSize.get<0>() * inPixelSize.get<1>());
-    const double arcsecPerPixel = (206.2648 * (double) inBinning.get<0>() * (double) inBinning.get<1>() * pixelSizeEq) / inFocalLength;
-    return arcsecPerPixel * px;
-  }
-
-private:
-  float mXCom, mYCom;
-  vector<float> mImgValues, mFitValues;
-  GaussMatcherT::ParamsT mGaussParms;
-  DirectionT::TypeE mDirection; // TODO: Not sure if this is good design...
   
-  static const double SIGMA_TO_FWHM;
-  static const size_t MAX_PTS;
-
-  static float calcGaussValue(const GaussMatcherT::ParamsT & inGaussParms, float x);
-  static void fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::ParamsT * outGaussParms, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
-
-public:
-  FwhmT() : mXCom(0), mYCom(0) { }
-
-  // TODO: Add further constructors... vector<double> ... just row of data...
-  FwhmT(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, double inEpsAbs = 1e-2, double inEpsRel = 1e-2, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
-  void set(const CImg<float> & image, const DirectionT::TypeE & inDirection, double inEpsAbs = 1e-2, double inEpsRel = 1e-2, float inCenterX = -1, float inCenterY = -1, size_t inSizePx = 0);
-
-  inline bool valid() const { return (mImgValues.size() > 0 && mFitValues.size() > 0); }
-
-  static inline double sigmaToFwhm(double sigma) { return FwhmT::SIGMA_TO_FWHM * sigma; }
-  static inline double fwhmToSigma(double sigma) { return sigma / FwhmT::SIGMA_TO_FWHM; }
-
-  inline float getValue() const { return sigmaToFwhm(mGaussParms[GaussMatcherT::IdxT::W_IDX]); }
-  inline DirectionT::TypeE getDirection() const { return mDirection; }
-
-  // TODO: Return PositionT instead...
-  inline void getCentroid(float * x, float * y) const { *x = mXCom; *y = mYCom; }
-
-  inline const vector<float> & getImgValues() const { return mImgValues; }
-  inline const vector<float> & getFitValues() const { return mFitValues; }
-  inline float calcGaussianValue(float x) const { return calcGaussValue(mGaussParms, x); }
-
-  float getStandardDeviation() const;
-
-  ostream & print(ostream & os) const {
-    // TODO: Only print if details requested...
-    os << "Fwhm(" << DirectionT::asStr(mDirection) << ")=" << getValue() << "\"" 
-       << " [centroid(x,y)=(" << mXCom << ", " << mYCom << ")"
-       << ", b=" << mGaussParms[GaussMatcherT::IdxT::B_IDX]
-       << ", p=" << mGaussParms[GaussMatcherT::IdxT::P_IDX]
-       << ", c=" << mGaussParms[GaussMatcherT::IdxT::C_IDX]
-       << ", w=" << mGaussParms[GaussMatcherT::IdxT::W_IDX] << "]..." << endl;
-
-    os << ", Img values: ";
-    for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it) { os << *it << "; "; }
-    os << ", Fit values: ";
-    for (vector<float>::const_iterator it = mFitValues.begin(); it != mFitValues.end(); ++it) { os << *it << "; "; }
-
-    return os;
-  }
-
-  friend ostream & operator<<(ostream & os, const FwhmT & inFwhm);
-};
-
-void validate(boost::any & v, const vector<string> & values, FwhmT::DirectionT::TypeE * target_type, int);
+  void validate(boost::any & v, const vector<string> & values, FwhmT::DirectionT::TypeE * target_type, int);
+}; // end namespace AT
 
 #endif // _FWHM_HPP_
 

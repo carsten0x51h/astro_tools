@@ -118,6 +118,22 @@ namespace AT {
   typedef VCurveTmplT<int, double> VCurveT;
   typedef vector<VCurveT> VCurveVecT;
 
+  class VCurveAccessorT : public DataAccessorT {
+  public:
+    VCurveAccessorT(const VCurveT & inVCurve) : mVCurve(inVCurve) {}
+    virtual size_t size() const { return mVCurve.size(); }
+    virtual DataPointT operator()(size_t inIdx) const {
+      VCurveT::const_iterator it(mVCurve.begin()); // TODO!! HACK! We need index access!!!
+      std::advance(it, inIdx);                     // TODO!! HACK! We need index access!!!
+      DataPointT dp(it->first, it->second);
+      return dp;
+    }
+
+  private:
+    const VCurveT & mVCurve;
+  };
+
+
   /**
    * Linear interpolation focus finder.
    */
@@ -203,7 +219,7 @@ namespace AT {
      * -Find focus in range.
      * -TODO: Add documentation
      */
-    double findOptimalFocusInRange(int inAbsStartPos, int inAbsEndPos, size_t inNumVCurves, size_t inCurveGranularitySteps, StarDataT * outStarData = 0);
+    double findOptimalFocusInRange(int inAbsStartPos, int inAbsEndPos, size_t inNumVCurves, size_t inCurveGranularitySteps);
 
     /**
      * -Calculate optimal focus position
