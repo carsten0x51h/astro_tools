@@ -118,19 +118,13 @@ namespace AT {
   typedef VCurveTmplT<int, double> VCurveT;
   typedef vector<VCurveT> VCurveVecT;
 
-  class VCurveAccessorT : public DataAccessorT {
+  class VCurveAccessorT {
   public:
-    VCurveAccessorT(const VCurveT & inVCurve) : mVCurve(inVCurve) {}
-    virtual size_t size() const { return mVCurve.size(); }
-    virtual DataPointT operator()(size_t inIdx) const {
-      VCurveT::const_iterator it(mVCurve.begin()); // TODO!! HACK! We need index access!!!
-      std::advance(it, inIdx);                     // TODO!! HACK! We need index access!!!
-      DataPointT dp(it->first, it->second);
+    typedef VCurveT TypeT;
+    static DataPointT getDataPoint(size_t inIdx, TypeT::const_iterator inIt) {
+      DataPointT dp(inIt->first, inIt->second);
       return dp;
     }
-
-  private:
-    const VCurveT & mVCurve;
   };
 
 
@@ -161,6 +155,8 @@ namespace AT {
     size_t mFineFocusRecordNumCurves;
     size_t mFineFocusGranularitySteps;
     size_t mFineSearchRangeSteps;
+
+    bool mStopFlag;
 
     void takePictureCalcStarData(StarDataT * outStarData, CImg<float> * outImg = 0);
 
@@ -253,7 +249,8 @@ namespace AT {
       mRoughFocusGranularitySteps(500),
       mFineFocusRecordNumCurves(3),
       mFineFocusGranularitySteps(50),
-      mFineSearchRangeSteps(2000) {
+      mFineSearchRangeSteps(2000),
+      mStopFlag(false) {
       //mIndiClient->registerNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
     }
     ~FocusFinderLinearInterpolationImplT() {
@@ -261,7 +258,7 @@ namespace AT {
     }
 
     virtual void findFocus();
-
+    inline void stop() { mStopFlag = true; }
 
     /**
      * Configuration options

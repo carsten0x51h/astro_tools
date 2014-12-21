@@ -130,11 +130,11 @@ namespace AT {
 	ffli->setRoughFocusSearchRangePerc(70);
 	ffli->setRoughFocusRecordNumCurves(1);
 	ffli->setRoughFocusGranularitySteps(500);
-	ffli->setFineFocusRecordNumCurves(3);
-	ffli->setFineFocusGranularitySteps(50);
-	ffli->setFineSearchRangeSteps(2000);
-	ffli->setVCurveFitEpsAbs(1e-1);
-	ffli->setVCurveFitEpsRel(1e-1);
+	ffli->setFineFocusRecordNumCurves(3); // was 3
+	ffli->setFineFocusGranularitySteps(100); // was 50
+	ffli->setFineSearchRangeSteps(3000); // was 2000
+	ffli->setVCurveFitEpsAbs(1); // TODO: ok?
+	ffli->setVCurveFitEpsRel(1); // TODO: ok?
 
 	// Find focus
 	ffli->findFocus();

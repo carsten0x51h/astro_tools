@@ -98,14 +98,14 @@ namespace AT {
   private:
     float mXCom, mYCom;
     vector<float> mImgValues, mFitValues;
-    GaussMatcherT::ParamsT mGaussParms;
+    GaussMatcherT::CurveParamsT::TypeT mGaussParms;
     DirectionT::TypeE mDirection; // TODO: Not sure if this is good design...
     
     static const double SIGMA_TO_FWHM;
     static const size_t MAX_PTS;
     
-    static float calcGaussValue(const GaussMatcherT::ParamsT & inGaussParms, float x);
-    static void fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::ParamsT * outGaussParms, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
+    static float calcGaussValue(const GaussMatcherT::CurveParamsT::TypeT & inGaussParms, float x);
+    static void fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::CurveParamsT::TypeT * outGaussParms, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
     
   public:
     FwhmT() : mXCom(0), mYCom(0) { }
@@ -119,7 +119,7 @@ namespace AT {
     static inline double sigmaToFwhm(double sigma) { return FwhmT::SIGMA_TO_FWHM * sigma; }
     static inline double fwhmToSigma(double sigma) { return sigma / FwhmT::SIGMA_TO_FWHM; }
     
-    inline float getValue() const { return sigmaToFwhm(mGaussParms[GaussMatcherT::IdxT::W_IDX]); }
+    inline float getValue() const { return sigmaToFwhm(mGaussParms[GaussMatcherT::CurveParamsT::W_IDX]); }
     inline DirectionT::TypeE getDirection() const { return mDirection; }
     
     // TODO: Return PositionT instead...
@@ -135,10 +135,10 @@ namespace AT {
       // TODO: Only print if details requested...
       os << "Fwhm(" << DirectionT::asStr(mDirection) << ")=" << getValue() << "\"" 
 	 << " [centroid(x,y)=(" << mXCom << ", " << mYCom << ")"
-	 << ", b=" << mGaussParms[GaussMatcherT::IdxT::B_IDX]
-	 << ", p=" << mGaussParms[GaussMatcherT::IdxT::P_IDX]
-	 << ", c=" << mGaussParms[GaussMatcherT::IdxT::C_IDX]
-	 << ", w=" << mGaussParms[GaussMatcherT::IdxT::W_IDX] << "]..." << endl;
+	 << ", b=" << mGaussParms[GaussMatcherT::CurveParamsT::B_IDX]
+	 << ", p=" << mGaussParms[GaussMatcherT::CurveParamsT::P_IDX]
+	 << ", c=" << mGaussParms[GaussMatcherT::CurveParamsT::C_IDX]
+	 << ", w=" << mGaussParms[GaussMatcherT::CurveParamsT::W_IDX] << "]..." << endl;
       
       os << ", Img values: ";
       for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it) { os << *it << "; "; }

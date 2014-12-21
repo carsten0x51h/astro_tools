@@ -95,7 +95,7 @@ indiserver:
 	indiserver -m 500 -v /usr/bin/indi_moonlite_focus /home/devnull/workspace/atik_ccd_src/src/indi_atik_ccd /usr/bin/indi_simulator_ccd /usr/bin/indi_simulator_focus
 
 sim_find_focus:
-	./build/astro_tools focus_find -vv --camera_device="CCD Simulator" --exposure_time=1.5 --focuser_device="Focuser Simulator" --star_select=405,155
+	./build/astro_tools focus_find -v --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=405,155
 
 atik_find_focus:
 	./build/astro_tools focus_find -vvv --camera_device="ATIK CCD Atik 383L+" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --star_select=405,155

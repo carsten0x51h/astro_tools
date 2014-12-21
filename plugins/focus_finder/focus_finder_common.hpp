@@ -47,7 +47,7 @@ namespace AT {
     inline const HfdT & getHfd() const { return mHfd; }
     inline HfdT & getHfd() { return mHfd; }
 
-    static inline bool isValidStar(const CImg<float> & inImg, float inMinPsnr = 70) {
+    static inline bool isValidStar(const CImg<float> & inImg) {
       if (! inImg.size()) {
 	return false;
       }
@@ -63,7 +63,6 @@ namespace AT {
       } catch(CentroidExceptionT & exc) {
 	validStar = false;
       }
-      
       return validStar;
     }
 

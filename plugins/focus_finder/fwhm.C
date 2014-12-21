@@ -24,17 +24,13 @@
 
 namespace AT {
 
-
-  class ImgAccessorT : public DataAccessorT {
+  class ImgAccessorT {
   public:
-    ImgAccessorT(const vector<float> & inImgValues) : mImgValues(inImgValues) {}
-    virtual size_t size() const { return mImgValues.size(); }
-    virtual DataPointT operator()(size_t inIdx) const {
-      DataPointT dp(inIdx, mImgValues.at(inIdx));
+    typedef vector<float> TypeT;
+    static DataPointT getDataPoint(size_t inIdx, TypeT::const_iterator inIt) {
+      DataPointT dp(inIdx, *inIt);
       return dp;
     }
-  private:
-    const vector<float> & mImgValues;
   };
 
 
@@ -136,14 +132,14 @@ namespace AT {
 
 
   void
-  FwhmT::fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::ParamsT * outGaussParms, double inEpsAbs, double inEpsRel) {
+  FwhmT::fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::CurveParamsT::TypeT * outGaussParms, double inEpsAbs, double inEpsRel) {
     AT_ASSERT(Fwhm, outGaussParms, "outGaussParms not set!");
     AT_ASSERT(Fwhm, outFitValues, "outFitValues not set!");
 
     outFitValues->resize(imgValues.size());
 
     // Do the LM fit - TODO: this function should throw if it does not succeed?!
-    int err = GaussMatcherT::fitGslLevenbergMarquart(ImgAccessorT(imgValues), outGaussParms, inEpsAbs, inEpsRel);
+    int err = GaussMatcherT::fitGslLevenbergMarquart<ImgAccessorT>(imgValues, outGaussParms, inEpsAbs, inEpsRel);
   
     if (err) {
       stringstream ss;
@@ -159,7 +155,7 @@ namespace AT {
   }
 
   float
-  FwhmT::calcGaussValue(const GaussMatcherT::ParamsT & inGaussParms, float x) {
+  FwhmT::calcGaussValue(const GaussMatcherT::CurveParamsT::TypeT & inGaussParms, float x) {
     return GaussianFitTraitsT::fx(x, inGaussParms);
   }
 

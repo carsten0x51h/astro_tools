@@ -45,12 +45,23 @@ namespace AT {
    * A VCurve can be divided by a scalar value i.e. each Y value is divided by the same scalar value.
    * The values of a VCurve can be printed to the console.
    * A VCurve is serializable, we may use the boost XML writer or implement a simple (x,y) format.
-   * A VCurve has a method to calculate the mean square linear for down- and up directions (we may use gsl).
-   * A VCurve has a method to calculate the "optimal" focus X position from the given values (requirement: # of values?).
-   * A the data types for X and Y can be suplied by two template parameters.
-   * It is possible to add a value X-Y pair to a VCurve (standard map interface).
+   * The data types for X and Y can be suplied by two template parameters.
+   * It is possible to insert a value X-Y pair to a VCurve (standard map interface).
    * It is possible to remove a value X-Y pair from a VCurve (standard map interface).
+   * TODO: Clarify ! We need index access by x -> no map possible!
+   *
+   * idx    focus pos    fitness
+   *  [0] -> [1234]    -> [1.55]
+   *   .       .           .
+   *   .       .           .
+   *  [9] -> [23444]   -> [2.35]
+   *
+   * vector< pair<x, y> >  -> x can be contained multiple times...
+   * 
+   * Use of boost multi_index_containers http://www.boost.org/doc/libs/1_47_0/libs/multi_index/doc/tutorial/index.html#rationale
+   * We need access from idx 0...n to the fitness value AND from focus pos to the fitness value!
    */
+
   template<typename X, typename Y>
   class VCurveTmplT : public map<X, Y> {
   private:

@@ -1,67 +1,3 @@
-// TODO
-// Test in libreoffice
-// (x, y) = (22850, 19.5919)
-// (x, y) = (23350, 18.7533)
-// (x, y) = (23850, 19.2931)
-// (x, y) = (24350, 18.407)
-// (x, y) = (24850, 18.9501)
-// (x, y) = (25350, 17.0735)
-// (x, y) = (25850, 18.5735)
-// (x, y) = (26350, 16.614)
-// (x, y) = (26850, 17.0103)
-// (x, y) = (27350, 16.3023)
-// (x, y) = (27850, 15.402)
-// (x, y) = (28350, 17.3895)
-// (x, y) = (28850, 15.8039)
-// (x, y) = (29350, 15.8986)
-// (x, y) = (29850, 15.3658)
-// (x, y) = (30350, 13.7889)
-// (x, y) = (30850, 13.4612)
-// (x, y) = (31350, 13.1746)
-// (x, y) = (31850, 15.0217)
-// (x, y) = (32350, 12.9477)
-// (x, y) = (32850, 13.1476)
-// (x, y) = (33350, 12.2441)
-// (x, y) = (33850, 14.4243)
-// (x, y) = (34350, 11.6641)
-// (x, y) = (34850, 12.0535)
-// (x, y) = (35350, 12.258)
-// (x, y) = (35850, 10.8592)
-// (x, y) = (36350, 12.6032)
-// (x, y) = (36850, 13.3219)
-// (x, y) = (37350, 12.9228)
-// (x, y) = (37850, 13.7499)
-// (x, y) = (38350, 12.9885)
-// (x, y) = (38850, 13.0212)
-// (x, y) = (39350, 12.268)
-// (x, y) = (39850, 14.2114)
-// (x, y) = (40350, 14.9318)
-// (x, y) = (40850, 15.5126)
-// (x, y) = (41350, 13.1647)
-// (x, y) = (41850, 14.1658)
-// (x, y) = (42350, 13.6438)
-// (x, y) = (42850, 15.907)
-// (x, y) = (43350, 14.5974)
-// (x, y) = (43850, 14.7542)
-// (x, y) = (44350, 14.0117)
-// (x, y) = (44850, 15.3519)
-// (x, y) = (45350, 15.3365)
-// (x, y) = (45850, 17.5144)
-// (x, y) = (46350, 16.8715)
-// (x, y) = (46850, 16.9312)
-// (x, y) = (47350, 17.7513)
-// (x, y) = (47850, 17.2565)
-// (x, y) = (48350, 17.2912)
-// (x, y) = (48850, 18.6475)
-// (x, y) = (49350, 19.1396)
-// (x, y) = (49850, 19.1723)
-
-
-// xMin: 35850, yMin: 10.8592
-// Guessing a=1, b=-71700, c=1.28522e+09
-// [2014-Dec-19 22:14:10.145044]: Calculated parabel parms - a: 3.80037e-08, b: -0.00278398, c: 63.9065
-
-
 /*****************************************************************************
  *
  *  AstroTools
@@ -86,6 +22,13 @@
 
 #include "focus_finder_linear_interpolation_impl.hpp"
 
+#define FOCUS_FINDER_STOP(inStopFlag)					\
+  if (inStopFlag) {							\
+    LOG(warning) << "Focus finder cancelled!" << endl;			\
+    throw FocusFinderLinearInterpolationExceptionT("Focus finder cancelled."); \
+  }									\
+
+
 namespace AT {
   // TODO: Maybe rename those FocusFinder classes to ...Minimizer - because FocusFinder is too generic - it is the whole thing...
   // but this class only tries to find the minimum HFD and/or Fwhm. In addition we could pass a minimizer policy... which tells the 
@@ -98,6 +41,7 @@ namespace AT {
 
     this->findRoughFocus(direction);
     LOG(info) << dec << "Found rough focus at abs pos: " << mFocuserDevice->getAbsPos() << "..." << endl;
+
 
     int Fmin = this->findExtrema(direction, MinMaxFocusPosT::MIN_FOCUS_POS);
     int Fmax = this->findExtrema(direction, MinMaxFocusPosT::MAX_FOCUS_POS);
@@ -176,6 +120,8 @@ namespace AT {
 	      << (fabs(inAbsEndPos - inAbsStartPos) / inCurveGranularitySteps) << " points each..." << endl;
     
     for (VCurveVecT::iterator it = vcurves.begin(); it != vcurves.end(); ++it) {
+      FOCUS_FINDER_STOP(mStopFlag);
+
       LOG(info) << dec << " > Recording VCurve " << std::distance(vcurves.begin(), it) << "..." << endl;
       
       VCurveT & curVCurve = *it;
@@ -189,14 +135,13 @@ namespace AT {
     LOG(info) << "Optimal focus pos: " << optAbsFocusPos << endl;
     
     // Move to optimal focus position
-    float delta = mFocuserDevice->getAbsPos() - optAbsFocusPos;
-    size_t steps = (size_t) fabs(delta);
-    FocusDirectionT::TypeE finalDirection = (delta < 0 ? FocusDirectionT::OUTWARDS : FocusDirectionT::INWARDS);
-    
-    mFocuserDevice->moveFocusBy(steps, finalDirection); // TODO: We may use setAbsPos instead...
-    
-    LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(finalDirection) << " by "
-	       << steps << " steps, pos: " << mFocuserDevice->getAbsPos() << endl;
+    // float delta = mFocuserDevice->getAbsPos() - optAbsFocusPos;
+    // size_t steps = (size_t) fabs(delta);
+    // FocusDirectionT::TypeE finalDirection = (delta < 0 ? FocusDirectionT::OUTWARDS : FocusDirectionT::INWARDS);    
+    // mFocuserDevice->moveFocusBy(steps, finalDirection); // TODO: We may use setAbsPos instead...
+    mFocuserDevice->setAbsPos(optAbsFocusPos);
+
+    LOG(trace) << dec << "Moved focus to pos: " << mFocuserDevice->getAbsPos() << endl;
     
     return optAbsFocusPos;
   }
@@ -223,12 +168,12 @@ namespace AT {
     LOG(info) << "Master VCurve: " << masterVCurve << endl;
   
     // Do the LM fit - TODO: this function should throw if it does not succeed?!
-    ParabelMatcherT::ParamsT parabelParms;
-    int err = ParabelMatcherT::fitGslLevenbergMarquart(VCurveAccessorT(masterVCurve), & parabelParms, mVCurveFitEpsAbs, mVCurveFitEpsRel);
+    ParabelMatcherT::CurveParamsT::TypeT parabelParms;
+    int err = ParabelMatcherT::fitGslLevenbergMarquart<VCurveAccessorT>(masterVCurve, & parabelParms, mVCurveFitEpsAbs, mVCurveFitEpsRel);
 
-    float a = parabelParms[ParabelMatcherT::IdxT::A_IDX];
-    float b = parabelParms[ParabelMatcherT::IdxT::B_IDX];
-    float c = parabelParms[ParabelMatcherT::IdxT::C_IDX];
+    float a = parabelParms[ParabelMatcherT::CurveParamsT::A_IDX];
+    float b = parabelParms[ParabelMatcherT::CurveParamsT::B_IDX];
+    float c = parabelParms[ParabelMatcherT::CurveParamsT::C_IDX];
   
     if (err) {
       stringstream ss;
@@ -248,7 +193,7 @@ namespace AT {
     // TODO: Adapt...
     // vector<float> & fitValues = (*outFitValues);
     // for(size_t i = 0; i < imgValues.size() && i < FwhmT::MAX_PTS; ++i) {
-    //   fitValues[i] = GaussianFitTraitsT::fx(i, /*TODO: was - still works? dataPoints[i].x*/, *outGaussParms);
+    //   fitValues[i] = ParabelFitTraitsT::fx(i, /*TODO: was - still works? dataPoints[i].x*/, *outGaussParms);
     // }
 
     return xMin;
@@ -265,12 +210,14 @@ namespace AT {
     // Calc star values, throws if star could not be determined
     size_t retryCnt = 0;
     while(retryCnt < mTakePictureFitGaussCurveMaxRetryCnt) {
+      FOCUS_FINDER_STOP(mStopFlag);
+
       try {
 	// Take a picture, throws if not connected or problem with device
 	mCameraDevice->takePicture(& img, mExposureTimeSec, imgFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
 
 	// Calc PSNR to decide if valid star was selected
-	if (! StarDataT::isValidStar(img, 70 /* TODO: as parm?! */)) {
+	if (! StarDataT::isValidStar(img)) {
 	  // Too much noise - no star detected / star too weak....
 	  throw FocusFinderLinearInterpolationExceptionT("No valid star selected.");
 	}
@@ -318,6 +265,7 @@ namespace AT {
     this->callFocusFinderUpdateListener(& focusFinderData);
 
     // Move mNumStepsToDetermineDirection inwards
+    FOCUS_FINDER_STOP(mStopFlag);
     mFocuserDevice->moveFocusBy(mNumStepsToDetermineDirection, FocusDirectionT::INWARDS);
     LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::INWARDS) << " by "
 	       << mNumStepsToDetermineDirection << " steps, pos: " << mFocuserDevice->getAbsPos() << endl;
@@ -333,6 +281,7 @@ namespace AT {
     this->callFocusFinderUpdateListener(& focusFinderDataNew);
 
     // Move focus back -> mNumStepsToDetermineDirection outwards
+    FOCUS_FINDER_STOP(mStopFlag);
     mFocuserDevice->moveFocusBy(mNumStepsToDetermineDirection, FocusDirectionT::OUTWARDS);
     LOG(trace) << dec << "Moved focus back " << FocusDirectionT::asStr(FocusDirectionT::OUTWARDS)
 	       << " by " << mNumStepsToDetermineDirection << " steps. "
@@ -379,8 +328,8 @@ namespace AT {
     do {
       starDataPrev = starDataNew;
       
-      //FOCUS_FINDER_STOP();
-      
+      FOCUS_FINDER_STOP(mStopFlag);
+	  
       // Move focus
       mFocuserDevice->moveFocusBy(mStepsToReachRoughFocus, inDirectionToImproveFocus);
       LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(inDirectionToImproveFocus)
@@ -457,17 +406,16 @@ namespace AT {
     FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
     this->callFocusFinderUpdateListener(& focusFinderData);
 
-
     // Loop until max. fitness has been reached
     while(mExtremaFitnessBoundary > starData.getFitness()) {
       LOG(debug) << dec << "Not yet reached mExtremaFitnessBoundary " << mExtremaFitnessBoundary
 		 << ", measured fitness: " << starData.getFitness()
 		 << ", current pos: " << mFocuserDevice->getAbsPos() << endl;
 
-      //FOCUS_FINDER_STOP();
+      FOCUS_FINDER_STOP(mStopFlag);
 
       // Move focuser
-      mFocuserDevice->moveFocusBy(mStepsToReachRoughFocus /* TODO: Is this step size ok?! */, direction);
+      mFocuserDevice->moveFocusBy(mStepsToReachRoughFocus, direction);
       LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(direction) << " by " << mStepsToReachRoughFocus << " steps. " << endl;
 
       // Take picture
@@ -486,12 +434,12 @@ namespace AT {
 
     LOG(debug) << "Ok, found " << MinMaxFocusPosT::asStr(inMinMaxFocusPos) << ": " << extremaPos << ", moving back to start position..." << endl;
 
-    double delta = fabs(startFocusPos - extremaPos);
-
     // Move focuser back to start
-    FocusDirectionT::TypeE backDirection = FocusDirectionT::invert(direction);
-    mFocuserDevice->moveFocusBy(delta, backDirection);
-    LOG(trace) << dec << "Moved focus back " << FocusDirectionT::asStr(backDirection) << " to start by " << delta << " steps." << endl;
+    // double delta = fabs(startFocusPos - extremaPos);
+    // FocusDirectionT::TypeE backDirection = FocusDirectionT::invert(direction);
+    // mFocuserDevice->moveFocusBy(delta, backDirection);
+    mFocuserDevice->setAbsPos(startFocusPos);
+    LOG(trace) << dec << "Moved focus back to start position " << startFocusPos << "." << endl;
 
     // Take picture
     takePictureCalcStarData(& starData);
@@ -525,6 +473,7 @@ namespace AT {
     int oldFocusPos = mFocuserDevice->getAbsPos();
 
     // Move focuser to start position
+    // TODO: Replace moveBy to setAbsPos...
     int relMinDelta = mFocuserDevice->getAbsPos() - inAbsStartPos;
     mFocuserDevice->moveFocusBy(relMinDelta, FocusDirectionT::INWARDS);
     LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::INWARDS) << " by " << relMinDelta << " steps. " << endl;
@@ -534,9 +483,8 @@ namespace AT {
     
     StarDataT starData;
 
-    // TODO: STOP-CONDITION?!... --> Use bool member which can be set from outside...asynchronously.......
     while (curPos < inAbsEndPos) {
-      //   FOCUS_FINDER_STOP();
+      FOCUS_FINDER_STOP(mStopFlag);
       
       // Take picture
       takePictureCalcStarData(& starData);
@@ -550,6 +498,7 @@ namespace AT {
       outVCurve->insert(make_pair(curPos, starData.getFitness()));
 
       // Move focuser
+      // TODO: Replace moveBy to setAbsPos...
       mFocuserDevice->moveFocusBy(delta, FocusDirectionT::OUTWARDS);
       LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::OUTWARDS) << " by " << delta << " steps. " << endl;
       
@@ -557,6 +506,7 @@ namespace AT {
     }
     
     if (inMoveBackToOldPos) {
+      // TODO: Replace moveBy to setAbsPos...
       size_t deltaBack = fabs(curPos - oldFocusPos);
       mFocuserDevice->moveFocusBy(deltaBack, FocusDirectionT::INWARDS);
       LOG(trace) << dec << "Moved focus back " << FocusDirectionT::asStr(FocusDirectionT::OUTWARDS)

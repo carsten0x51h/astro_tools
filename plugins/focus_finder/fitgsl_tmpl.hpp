@@ -28,13 +28,14 @@
 #include <stdio.h>
 #include <string.h> // memset
 #include <math.h>
+#include <array>
+
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_multifit_nlin.h>
 
-#include <array>
 
 using namespace std;
 
@@ -60,13 +61,6 @@ namespace AT {
 
   typedef vector<GslMultiFitDataT> GslMultiFitParmsT;
 
-  class DataAccessorT {
-  public:
-    virtual size_t size() const = 0;
-    virtual DataPointT operator()(size_t inIdx) const = 0;
-  };
-
-
 
 
   template <class FitTraitsT>
@@ -74,30 +68,33 @@ namespace AT {
   private:
 
   public:
-    typedef typename FitTraitsT::ParamsT ParamsT;
-    typedef typename FitTraitsT::ParamsIdxT IdxT;
+    typedef typename FitTraitsT::CurveParamsT CurveParamsT;
 
     /**
      * Fits the specified data to the function, storing the coefficients in 'results'.
      *
      * See http://en.wikipedia.org/wiki/Approximation_error for expl. of rel and abs errors.
      */
-    static int fitGslLevenbergMarquart(const DataAccessorT & inDataAccessor, ParamsT * outResults, double epsabs, double epsrel) {
+    template<typename DataAccessorT>
+    static int fitGslLevenbergMarquart(const typename DataAccessorT::TypeT & inData, typename CurveParamsT::TypeT * outResults, double epsabs, double epsrel) {
       AT_ASSERT(CurveFit, outResults, "Result vector not set!");
 
+      cerr << "epsabs: " << epsabs << ", epsrel: " << epsrel << endl;
+
       // Fill the params
-      const size_t numDataPoints = inDataAccessor.size();
+      const size_t numDataPoints = inData.size();
       GslMultiFitParmsT gslMultiFitParms(numDataPoints);
       
       LOG(trace) << "fitGslLevenbergMarquart... numDataPoints: " << numDataPoints << endl;
 
-      for(size_t i = 0; i < numDataPoints; ++i) {
-	DataPointT dataPoint = inDataAccessor(i);
-	gslMultiFitParms[i].y     = dataPoint.y;
-	gslMultiFitParms[i].sigma = 0.1f;
-	gslMultiFitParms[i].pt    = dataPoint; // TODO: we pass a copy here... we may improve this...
+      for (typename DataAccessorT::TypeT::const_iterator it = inData.begin(); it != inData.end(); ++it) {
+	size_t idx = std::distance(inData.begin(), it);
+	DataPointT dataPoint = DataAccessorT::getDataPoint(idx, it);
+	gslMultiFitParms[idx].y     = dataPoint.y;
+	gslMultiFitParms[idx].sigma = 0.1f;
+	gslMultiFitParms[idx].pt    = dataPoint; // TODO: we pass a copy here... we may improve this...
 
-	LOG(trace) << " > dataPoint i=" << i << ", x: " << dataPoint.x << ", y: " << dataPoint.y << endl;
+	LOG(trace) << " > dataPoint idx=" << idx << ", x: " << dataPoint.x << ", y: " << dataPoint.y << endl;
       }
 
       // Fill in function info
@@ -106,18 +103,18 @@ namespace AT {
       f.df     = FitTraitsT::gslDfx;
       f.fdf    = FitTraitsT::gslFdfx;
       f.n      = numDataPoints;
-      f.p      = FitTraitsT::ParamsIdxT::_Count;
+      f.p      = FitTraitsT::CurveParamsT::_Count;
       f.params = & gslMultiFitParms;
     
       // Allocate the guess vector
-      gsl_vector * guess = gsl_vector_alloc(FitTraitsT::ParamsIdxT::_Count);
+      gsl_vector * guess = gsl_vector_alloc(FitTraitsT::CurveParamsT::_Count);
     
       // Make initial guesses based on the data
-      FitTraitsT::makeGuess(inDataAccessor, guess);
+      FitTraitsT::makeGuess(gslMultiFitParms, guess);
     
       // Create a Levenberg-Marquardt solver with n data points and m parameters
       const gsl_multifit_fdfsolver_type * solverType = gsl_multifit_fdfsolver_lmsder;
-      gsl_multifit_fdfsolver * solver = gsl_multifit_fdfsolver_alloc(solverType, numDataPoints, FitTraitsT::ParamsIdxT::_Count);
+      gsl_multifit_fdfsolver * solver = gsl_multifit_fdfsolver_alloc(solverType, numDataPoints, FitTraitsT::CurveParamsT::_Count);
 
       AT_ASSERT(CurveFit, solver, "Solver is NULL!");
 
@@ -143,8 +140,8 @@ namespace AT {
       } while (status == GSL_CONTINUE && i < 500);
     
       // Store the results to be returned to the user (copy from gsl_vector to result structure)
-      for (size_t i=0; i < FitTraitsT::ParamsIdxT::_Count; ++i) {
-	typename FitTraitsT::ParamsIdxT::TypeE idx = static_cast<typename FitTraitsT::ParamsIdxT::TypeE>(i);
+      for (size_t i=0; i < FitTraitsT::CurveParamsT::_Count; ++i) {
+	typename FitTraitsT::CurveParamsT::TypeE idx = static_cast<typename FitTraitsT::CurveParamsT::TypeE>(i);
 	(*outResults)[idx] = gsl_vector_get(solver->x, idx);
       }
 
@@ -152,6 +149,8 @@ namespace AT {
       gsl_multifit_fdfsolver_free(solver);
       gsl_vector_free(guess);
     
+      cerr << "----> status: " << status << endl;
+
       return (status == 0 ? 0 : -1);
     }
   };
@@ -165,60 +164,57 @@ namespace AT {
   private:
   
   public:
-    struct ParamsIdxT {
-      enum TypeE {
-	B_IDX = 0, // base
-	P_IDX,     // peak (in y direction) ? - TODO: ~area...
-	C_IDX,     // center (in x direction)
-	W_IDX,     // mean width (FWHM) 
-	_Count
-      };
-
-      static const char * asStr(const TypeE & inType) {
-	switch (inType) {
-	case B_IDX: return "B_IDX";
-	case P_IDX: return "P_IDX";
-	case C_IDX: return "C_IDX";
-	case W_IDX: return "W_IDX";
-	default: return "<?>";
+    // TODO: Put this to a macro, just supply list if enum! / Or create a template and supply enum type as T!
+    struct CurveParamsT {
+      // b = base, p = peak, c = center in x, w = mean width (FWHM)
+      enum TypeE { B_IDX = 0, P_IDX, C_IDX, W_IDX, _Count };
+      struct TypeT : public std::array<float, TypeE::_Count> {
+	TypeT(const gsl_vector * inVec = 0) {
+	  for (size_t i = 0; i < TypeE::_Count; ++i) {
+	    TypeE idx = static_cast<TypeE>(i);
+	    (*this)[i] = (inVec ? gsl_vector_get(inVec, idx) : 0);
+	  }
 	}
-      }
+      };
     };
-    typedef std::array<float, ParamsIdxT::_Count> ParamsT;
 
 
     /* Makes a guess for b, p, c and w based on the supplied data */
-    static void makeGuess(const DataAccessorT & inDataAccessor, gsl_vector * guess) {
-      AT_ASSERT(CurveFit, inDataAccessor.size() > 1, "inDataAccessor.size() <= 1!");
-      size_t numDataPoints = inDataAccessor.size();
+    //static void makeGuess(const DataAccessorT & inDataAccessor, gsl_vector * guess) {
+    static void makeGuess(const GslMultiFitParmsT & inData, gsl_vector * guess) {
+      AT_ASSERT(CurveFit, inData.size() > 1, "inData.size() <= 1!");
+
+      size_t numDataPoints = inData.size();
       float y_mean = 0;
-      float y_max = inDataAccessor(0).y;
-      float c = inDataAccessor(0).x;
+      float y_max = inData.at(0).pt.y;
+      float c = inData.at(0).pt.x;
     
       for(size_t i = 0; i < numDataPoints; ++i) {
-	y_mean += inDataAccessor(i).y;
+	const DataPointT & dataPoint = inData.at(i).pt;
+
+	y_mean += dataPoint.y;
       
-	if(y_max < inDataAccessor(i).y) {
-	  y_max = inDataAccessor(i).y;
-	  c = inDataAccessor(i).x;
+	if(y_max < dataPoint.y) {
+	  y_max = dataPoint.y;
+	  c = dataPoint.x;
 	}
       }
 
       y_mean /= (float) numDataPoints;
-      float w = (inDataAccessor(numDataPoints - 1).x - inDataAccessor(0).x) / 10.0;
+      float w = (inData.at(numDataPoints - 1).pt.x - inData.at(0).pt.x) / 10.0;
     
-      gsl_vector_set(guess, ParamsIdxT::B_IDX, y_mean);
-      gsl_vector_set(guess, ParamsIdxT::P_IDX, y_max);
-      gsl_vector_set(guess, ParamsIdxT::C_IDX, c);
-      gsl_vector_set(guess, ParamsIdxT::W_IDX, w);
+      gsl_vector_set(guess, CurveParamsT::B_IDX, y_mean);
+      gsl_vector_set(guess, CurveParamsT::P_IDX, y_max);
+      gsl_vector_set(guess, CurveParamsT::C_IDX, c);
+      gsl_vector_set(guess, CurveParamsT::W_IDX, w);
     }
   
     /* y = b + p * exp(-0.5f * ((t - c) / w) * ((t - c) / w)) */
-    static float fx(float x, const ParamsT & inParms) {
-      float b = inParms[ParamsIdxT::B_IDX];
-      float p = inParms[ParamsIdxT::P_IDX];
-      float c = inParms[ParamsIdxT::C_IDX];
-      float w = inParms[ParamsIdxT::W_IDX];
+    static float fx(float x, const CurveParamsT::TypeT & inParms) {
+      float b = inParms[CurveParamsT::B_IDX];
+      float p = inParms[CurveParamsT::P_IDX];
+      float c = inParms[CurveParamsT::C_IDX];
+      float w = inParms[CurveParamsT::W_IDX];
       float t = ((x - c) / w);
       t *= t;
       return (b + p * exp(-0.5f * t));
@@ -231,11 +227,7 @@ namespace AT {
       const GslMultiFitParmsT * gslParams = ((GslMultiFitParmsT*) params);
     
       /* Store the current coefficient values */
-      ParamsT resParams; // TODO: We may create a constructor which takes a gsl_vector for init!
-      for (size_t i=0; i < ParamsIdxT::_Count; ++i) {
-	ParamsIdxT::TypeE idx = static_cast<ParamsIdxT::TypeE>(i);
-	resParams[i] = gsl_vector_get(x, idx);
-      }
+      CurveParamsT::TypeT resParams(x);
 
       /* Execute Levenberg-Marquart on f(x) */
       for(size_t i = 0; i < gslParams->size(); ++i) {
@@ -258,9 +250,9 @@ namespace AT {
       const GslMultiFitParmsT * gslParams = ((GslMultiFitParmsT*) params);
     
       /* Store current coefficients */
-      float p = gsl_vector_get(x, ParamsIdxT::P_IDX);
-      float c = gsl_vector_get(x, ParamsIdxT::C_IDX);
-      float w = gsl_vector_get(x, ParamsIdxT::W_IDX);
+      float p = gsl_vector_get(x, CurveParamsT::P_IDX);
+      float c = gsl_vector_get(x, CurveParamsT::C_IDX);
+      float w = gsl_vector_get(x, CurveParamsT::W_IDX);
     
       /*  Store non-changing calculations */
       float w2 = w * w;
@@ -271,10 +263,10 @@ namespace AT {
 	float x_minus_c = (gslData.pt.x - c);
 	float e = exp(-0.5f * (x_minus_c / w) * (x_minus_c / w));
       
-	gsl_matrix_set(J, i, ParamsIdxT::B_IDX, 1 / gslData.sigma);
-	gsl_matrix_set(J, i, ParamsIdxT::P_IDX, e / gslData.sigma);
-	gsl_matrix_set(J, i, ParamsIdxT::C_IDX, (p * e * x_minus_c) / (gslData.sigma * w2));
-	gsl_matrix_set(J, i, ParamsIdxT::W_IDX, (p * e * x_minus_c * x_minus_c) / (gslData.sigma * w3));
+	gsl_matrix_set(J, i, CurveParamsT::B_IDX, 1 / gslData.sigma);
+	gsl_matrix_set(J, i, CurveParamsT::P_IDX, e / gslData.sigma);
+	gsl_matrix_set(J, i, CurveParamsT::C_IDX, (p * e * x_minus_c) / (gslData.sigma * w2));
+	gsl_matrix_set(J, i, CurveParamsT::W_IDX, (p * e * x_minus_c * x_minus_c) / (gslData.sigma * w3));
       }
     
       return GSL_SUCCESS;
@@ -297,77 +289,77 @@ namespace AT {
   private:
   
   public:
-    struct ParamsIdxT {
-      enum TypeE {
-	A_IDX = 0,
-	B_IDX,
-	C_IDX,
-	_Count
-      };
-
-      static const char * asStr(const TypeE & inType) {
-	switch (inType) {
-	case A_IDX: return "A_IDX";
-	case B_IDX: return "B_IDX";
-	case C_IDX: return "C_IDX";
-	default: return "<?>";
+    struct CurveParamsT {
+      enum TypeE { A_IDX = 0, B_IDX, C_IDX, _Count };
+      struct TypeT : public std::array<float, TypeE::_Count> {
+	TypeT(const gsl_vector * inVec = 0) {
+	  for (size_t i = 0; i < TypeE::_Count; ++i) {
+	    TypeE idx = static_cast<TypeE>(i);
+	    (*this)[i] = (inVec ? gsl_vector_get(inVec, idx) : 0);
+	  }
 	}
-      }
+      };
     };
-    typedef std::array<float, ParamsIdxT::_Count> ParamsT;
-
 
     /* Makes a guess for a, b and c based on the supplied data */
-    static void makeGuess(const DataAccessorT & inDataAccessor, gsl_vector * guess) {
-      AT_ASSERT(CurveFit, inDataAccessor.size(), "inDataAccessor.size() == 0!");
+    static void makeGuess(const GslMultiFitParmsT & inData, gsl_vector * guess) {
+      AT_ASSERT(CurveFit, inData.size(), "inData.size() == 0!");
 
-      float xMin = inDataAccessor(0).x;
-      float yMin = inDataAccessor(0).y;
+      float xMin = inData.at(0).pt.x;
+      float yMin = inData.at(0).pt.y;
 
       // Find minimum y value...
-      for (size_t i = 0; i < inDataAccessor.size(); ++i) {
-	const DataPointT & dataPoint = inDataAccessor(i);
+      for (size_t i = 0; i < inData.size(); ++i) {
+	const DataPointT & dataPoint = inData.at(i).pt;
 	if (dataPoint.y < yMin) {
 	  xMin = dataPoint.x;
 	  yMin = dataPoint.y;
 	}
       }
 
-      cerr << "xMin: " << xMin << ", yMin: " << yMin << endl;
+      LOG(debug) << "xMin: " << xMin << ", yMin: " << yMin << endl;
 
-      // TODO: Improve guess!
-      float aGuess = 1;
-      float bGuess = -2.0 * aGuess * xMin;
-      float cGuess = yMin + aGuess * xMin * xMin;
+      // Guessing of parameters a,b and c using prominent coordinates of the curve
+      const float x1 = inData.at(0).pt.x; // Left value
+      const float y1 = inData.at(0).pt.y;
+      const float x2 = xMin;
+      const float y2 = yMin;
+      const float x3 = inData.back().pt.x; // Right value
+      const float y3 = inData.back().pt.y;
 
-      cerr << "Guessing a=" << aGuess << ", b=" << bGuess << ", c=" << cGuess << endl;
+      const float x1x2sq = x1 * x1 - x2 * x2;
+      const float x1x3sq = x1 * x1 - x3 * x3;
 
-      gsl_vector_set(guess, ParamsIdxT::A_IDX, aGuess);
-      gsl_vector_set(guess, ParamsIdxT::B_IDX, bGuess);
-      gsl_vector_set(guess, ParamsIdxT::C_IDX, cGuess);
+      const float bNumerator = (y1 - y2) * x1x3sq - y1 * (x1 * x1 - x2 * x2) + y3 * x1x2sq;
+      const float bDenominator = (x1 - x3) * x1x2sq - (x1 - x2) * x1x3sq;
+
+      const float bGuess = -bNumerator / bDenominator;
+      const float aGuess = (y1 - y2 - bGuess * (x1 - x2)) / x1x2sq;
+      const float cGuess = y2 - aGuess * x2 * x2 - bGuess * x2;
+
+      LOG(debug) << "Guessing a=" << aGuess << ", b=" << bGuess << ", c=" << cGuess << endl;
+
+      gsl_vector_set(guess, CurveParamsT::A_IDX, aGuess);
+      gsl_vector_set(guess, CurveParamsT::B_IDX, bGuess);
+      gsl_vector_set(guess, CurveParamsT::C_IDX, cGuess);
     }
   
     /* y = a * x^2 + b * x + c */
-    static float fx(float x, const ParamsT & inParms) {
-      float a = inParms[ParamsIdxT::A_IDX];
-      float b = inParms[ParamsIdxT::B_IDX];
-      float c = inParms[ParamsIdxT::C_IDX];
+    static float fx(float x, const CurveParamsT::TypeT & inParms) {
+      float a = inParms[CurveParamsT::A_IDX];
+      float b = inParms[CurveParamsT::B_IDX];
+      float c = inParms[CurveParamsT::C_IDX];
       float x2 = x * x;
       return (a * x2 + b * x + c);
     }
 
     /* Calculates f(x) = a*x^2 + b*x + c for each data point */
-    // TODO: Stupid naming - parms vs resParms...
     static int gslFx(const gsl_vector * x, void * params, gsl_vector * f) {    
       /* Store the parameter data */
       const GslMultiFitParmsT * gslParams = ((GslMultiFitParmsT*) params);
     
       /* Store the current coefficient values */
-      ParamsT resParams; // TODO: We may create a constructor which takes a gsl_vector for init!
-      for (size_t i = 0; i < ParamsIdxT::_Count; ++i) {
-	ParamsIdxT::TypeE idx = static_cast<ParamsIdxT::TypeE>(i);
-	resParams[i] = gsl_vector_get(x, idx);
-      }
+      CurveParamsT::TypeT resParams(x);
 
       /* Execute Levenberg-Marquart on f(x) */
       for(size_t i = 0; i < gslParams->size(); ++i) {
@@ -393,18 +385,18 @@ namespace AT {
       const GslMultiFitParmsT * gslParams = ((GslMultiFitParmsT*) params);
 
       /* Store current coefficients */
-      float a = gsl_vector_get(x, ParamsIdxT::A_IDX);
-      float b = gsl_vector_get(x, ParamsIdxT::B_IDX);
-      float c = gsl_vector_get(x, ParamsIdxT::C_IDX);
+      float a = gsl_vector_get(x, CurveParamsT::A_IDX);
+      float b = gsl_vector_get(x, CurveParamsT::B_IDX);
+      float c = gsl_vector_get(x, CurveParamsT::C_IDX);
     
       for(size_t i = 0; i < gslParams->size(); ++i) {
 	const GslMultiFitDataT & gslData = gslParams->at(i);
 	const float oneBySigma = 1.0f / gslData.sigma;
 	const float x = gslData.pt.x;
 
-	gsl_matrix_set(J, i, ParamsIdxT::A_IDX, oneBySigma * x * x);
-	gsl_matrix_set(J, i, ParamsIdxT::B_IDX, oneBySigma * x);
-	gsl_matrix_set(J, i, ParamsIdxT::C_IDX, oneBySigma);
+	gsl_matrix_set(J, i, CurveParamsT::A_IDX, oneBySigma * x * x);
+	gsl_matrix_set(J, i, CurveParamsT::B_IDX, oneBySigma * x);
+	gsl_matrix_set(J, i, CurveParamsT::C_IDX, oneBySigma);
       }
     
       return GSL_SUCCESS;
