@@ -79,8 +79,6 @@ namespace AT {
     static int fitGslLevenbergMarquart(const typename DataAccessorT::TypeT & inData, typename CurveParamsT::TypeT * outResults, double epsabs, double epsrel) {
       AT_ASSERT(CurveFit, outResults, "Result vector not set!");
 
-      cerr << "epsabs: " << epsabs << ", epsrel: " << epsrel << endl;
-
       // Fill the params
       const size_t numDataPoints = inData.size();
       GslMultiFitParmsT gslMultiFitParms(numDataPoints);
@@ -149,8 +147,6 @@ namespace AT {
       gsl_multifit_fdfsolver_free(solver);
       gsl_vector_free(guess);
     
-      cerr << "----> status: " << status << endl;
-
       return (status == 0 ? 0 : -1);
     }
   };

@@ -58,7 +58,7 @@ namespace AT {
       try {
 	PositionT centerPos(inImg.width() / 2, inImg.height() / 2);
 	PositionT centroid = CentroidCalcT::starCentroid(inImg, centerPos, inImg.width(), CoordTypeT::ABSOLUTE);
-	cout << dec << "Centroid: " << centroid << endl;
+	LOG(trace) << dec << "isValidStar() - centroid: " << centroid << endl;
 	validStar = true;
       } catch(CentroidExceptionT & exc) {
 	validStar = false;

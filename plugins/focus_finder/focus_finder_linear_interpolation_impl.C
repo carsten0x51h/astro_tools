@@ -135,10 +135,6 @@ namespace AT {
     LOG(info) << "Optimal focus pos: " << optAbsFocusPos << endl;
     
     // Move to optimal focus position
-    // float delta = mFocuserDevice->getAbsPos() - optAbsFocusPos;
-    // size_t steps = (size_t) fabs(delta);
-    // FocusDirectionT::TypeE finalDirection = (delta < 0 ? FocusDirectionT::OUTWARDS : FocusDirectionT::INWARDS);    
-    // mFocuserDevice->moveFocusBy(steps, finalDirection); // TODO: We may use setAbsPos instead...
     mFocuserDevice->setAbsPos(optAbsFocusPos);
 
     LOG(trace) << dec << "Moved focus to pos: " << mFocuserDevice->getAbsPos() << endl;
@@ -349,9 +345,6 @@ namespace AT {
 		 << ", Fwhm_horz_prev=" << starDataPrev.getFwhmHorz().getValue() << ", Fwhm_horz_new=" << starDataNew.getFwhmHorz().getValue() << endl
 		 << ", Fwhm_vert_prev=" << starDataPrev.getFwhmVert().getValue() << ", Fwhm_vert_new=" << starDataNew.getFwhmVert().getValue() << endl;
       
-      // Record VCurve..?!
-      //mVCurve[inFocuserClient.getAbsPos()] = fwhmVertNew.getValue() + fwhmHorzNew.getValue(); // TODO: ok?! TODO: maybe pass mVCurve as param as well?!
-      //mVCurve[inFocuserClient.getAbsPos()] = hfdNew.getValue(); // TODO: ok?!
       ++iterCounter;
       
     } while (iterCounter < mRoughFocusMaxIterCnt && starDataNew.getFitness() < starDataPrev.getFitness()); // end while
@@ -435,9 +428,6 @@ namespace AT {
     LOG(debug) << "Ok, found " << MinMaxFocusPosT::asStr(inMinMaxFocusPos) << ": " << extremaPos << ", moving back to start position..." << endl;
 
     // Move focuser back to start
-    // double delta = fabs(startFocusPos - extremaPos);
-    // FocusDirectionT::TypeE backDirection = FocusDirectionT::invert(direction);
-    // mFocuserDevice->moveFocusBy(delta, backDirection);
     mFocuserDevice->setAbsPos(startFocusPos);
     LOG(trace) << dec << "Moved focus back to start position " << startFocusPos << "." << endl;
 
@@ -448,8 +438,6 @@ namespace AT {
     // Send update to listeners
     FocusFinderDataT focusFinderData2(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
     this->callFocusFinderUpdateListener(& focusFinderData2);      
-
-    //mVCurve[inFocuserClient.getAbsPos()] = inQualityMeasureStrategy->calculate(& fwhmHorz1, & fwhmVert1, & hfd1);
 
     LOG(info) << dec << "Reached extrema (boundary is " << mExtremaFitnessBoundary
 	      << "), looking for " << MinMaxFocusPosT::asStr(inMinMaxFocusPos)
@@ -473,11 +461,10 @@ namespace AT {
     int oldFocusPos = mFocuserDevice->getAbsPos();
 
     // Move focuser to start position
-    // TODO: Replace moveBy to setAbsPos...
-    int relMinDelta = mFocuserDevice->getAbsPos() - inAbsStartPos;
-    mFocuserDevice->moveFocusBy(relMinDelta, FocusDirectionT::INWARDS);
-    LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::INWARDS) << " by " << relMinDelta << " steps. " << endl;
+    mFocuserDevice->setAbsPos(inAbsStartPos);
+    LOG(trace) << dec << "Moved focus to start position " << inAbsStartPos << "." << endl;
     
+
     int curPos = mFocuserDevice->getAbsPos();
     int delta = inGranularitySteps;
     
@@ -498,19 +485,14 @@ namespace AT {
       outVCurve->insert(make_pair(curPos, starData.getFitness()));
 
       // Move focuser
-      // TODO: Replace moveBy to setAbsPos...
-      mFocuserDevice->moveFocusBy(delta, FocusDirectionT::OUTWARDS);
-      LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::OUTWARDS) << " by " << delta << " steps. " << endl;
-      
       curPos += delta;
+      mFocuserDevice->setAbsPos(curPos);
+      LOG(trace) << dec << "Moved focus to abs pos " << curPos << endl;
     }
     
     if (inMoveBackToOldPos) {
-      // TODO: Replace moveBy to setAbsPos...
-      size_t deltaBack = fabs(curPos - oldFocusPos);
-      mFocuserDevice->moveFocusBy(deltaBack, FocusDirectionT::INWARDS);
-      LOG(trace) << dec << "Moved focus back " << FocusDirectionT::asStr(FocusDirectionT::OUTWARDS)
-		 << " to old position " << oldFocusPos << " by " << deltaBack << " steps. " << endl;
+      mFocuserDevice->setAbsPos(oldFocusPos);
+      LOG(trace) << dec << "Moved focus back to start pos " << oldFocusPos << endl;
     }
   }
 }; // end AT namespace
