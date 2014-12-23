@@ -41,6 +41,17 @@ namespace AT {
 
   class FocusFinderActionT {
   public:
+    static void focusFinderStatusUpdates(const FocusFinderDataT * inFfUpdData) {
+      // TODO: Improve output ... 001%,... always same number of , places... or use \t...
+      cout << "\r" << setw(5) << (int) (100.0f * inFfUpdData->getProgress()) << "%" << setw(40)
+	   << inFfUpdData->getUpdMsg() << setw(10)
+	   << "POS=" << inFfUpdData->getAbsPos() << setw(14)
+	   << "FWHM_horz=" << inFfUpdData->getStarData().getFwhmHorz().getValue() << "\"" << setw(14)
+	   << "FWHM_vert=" << inFfUpdData->getStarData().getFwhmVert().getValue() << "\"" << setw(10)
+	   << "HFD=" << inFfUpdData->getStarData().getHfd().getValue() << "px" << setw(14)
+	   << "Fitness=" << inFfUpdData->getStarData().getFitness() << flush;
+    }
+
     static void performAction(void) {
       const po::variables_map & cmdLineMap = CommonAstroToolsAppT::getCmdLineOptionsMap();
       
@@ -117,27 +128,35 @@ namespace AT {
 
 	LOG(info) << "Star center pos: " << starCenterPos << endl;
 
-	FocusFinderLinearInterpolationImplT * ffli = new FocusFinderLinearInterpolationImplT(cameraDevice, focuserDevice, starCenterPos, exposureTimeSec, binning);	
-	// Set further configurations
-	ffli->setWindowSize(31);
-	ffli->setNumStepsToDetermineDirection(3000);
-	ffli->setStepsToReachFocus(3000);
-	ffli->setExtremaFitnessBoundary(25);
-	ffli->setOuterHfdRadiusPx(5);
-	ffli->setRoughFocusMaxIterCnt(20);
-	ffli->setTakePictureFitGaussCurveMaxRetryCnt(5);
-	ffli->setDebugShowTakePictureImage(false);
-	ffli->setRoughFocusSearchRangePerc(70);
-	ffli->setRoughFocusRecordNumCurves(1);
-	ffli->setRoughFocusGranularitySteps(500);
-	ffli->setFineFocusRecordNumCurves(3); // was 3
-	ffli->setFineFocusGranularitySteps(100); // was 50
-	ffli->setFineSearchRangeSteps(3000); // was 2000
-	ffli->setVCurveFitEpsAbs(1); // TODO: ok?
-	ffli->setVCurveFitEpsRel(1); // TODO: ok?
+	FocusFinderLinearInterpolationImplT ffli(cameraDevice, focuserDevice, starCenterPos, exposureTimeSec, binning);
 
-	// Find focus
-	ffli->findFocus();
+	// TODO: Introduce typedef for signals2::connection!, do we need x?!
+	signals2::connection focusFinderUpdateHandle = ffli.registerFocusFinderUpdateListener(boost::bind(& FocusFinderActionT::focusFinderStatusUpdates, _1));
+
+	// Set further configurations
+	// TODO: Question is - do we pass this as optional cmd line parms? or do we provide an additional cfg file with focus finder settings?
+	//       If so, whee do we store the file?
+	ffli.setWindowSize(31);
+	ffli.setNumStepsToDetermineDirection(3000);
+	ffli.setStepsToReachFocus(3000);
+	ffli.setExtremaFitnessBoundary(25);
+	ffli.setOuterHfdRadiusPx(5);
+	ffli.setRoughFocusMaxIterCnt(20);
+	ffli.setTakePictureFitGaussCurveMaxRetryCnt(5);
+	ffli.setDebugShowTakePictureImage(false);
+	ffli.setRoughFocusSearchRangePerc(70);
+	ffli.setRoughFocusRecordNumCurves(1);
+	ffli.setRoughFocusGranularitySteps(500);
+	ffli.setFineFocusRecordNumCurves(3); // was 3
+	ffli.setFineFocusGranularitySteps(100); // was 50
+	ffli.setFineSearchRangeSteps(3000); // was 2000
+	ffli.setVCurveFitEpsAbs(1); // TODO: ok?
+	ffli.setVCurveFitEpsRel(1); // TODO: ok?
+
+	// Find focus - TODO: Catch anything here?!
+	ffli.findFocus();
+
+	ffli.unregisterFocusFinderUpdateListener(focusFinderUpdateHandle);
 
       } else {
 	stringstream ss;

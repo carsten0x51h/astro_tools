@@ -33,6 +33,8 @@ namespace AT {
   // TODO: Maybe rename those FocusFinder classes to ...Minimizer - because FocusFinder is too generic - it is the whole thing...
   // but this class only tries to find the minimum HFD and/or Fwhm. In addition we could pass a minimizer policy... which tells the 
   // minimizer which star values should be taken into account.
+
+  // TODO: We may finally calculate the variance of the collected curve data with respect to the calculated parameter curve
   void FocusFinderLinearInterpolationImplT::findFocus() {
     LOG(trace) << dec << "FocusFinderLinearInterpolationImplT::findFocus() - Entering..." << endl;
     
@@ -88,21 +90,30 @@ namespace AT {
     // Determine final seeing (average)
     const size_t _numSingleFrames = 5;
     float fineStarDataFitnessSum = 0;
+    StarDataT fineStarData;
 
     for (size_t i = 0; i < _numSingleFrames; ++i) {
       // Take picture, calc star values and send update
-      StarDataT fineStarData;
       takePictureCalcStarData(& fineStarData);
       LOG(info) << dec << "Took picture - resulting star data: " << fineStarData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
 
       fineStarDataFitnessSum += fineStarData.getFitness();
       
       // Send update to listeners
-      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), fineStarData /*, TODO: mVCurve*/);
+      // TODO: Rename to FocusFinderUpdateDataT?!
+      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), fineStarData, (float) i / (float) _numSingleFrames,
+				       "Determining final seeing (average)..." /*, TODO: mVCurve*/);
+
       this->callFocusFinderUpdateListener(& focusFinderData);
     }
 
     float meanFineStarDataFitness = fineStarDataFitnessSum / (float) _numSingleFrames;
+
+    // Send update to listeners
+    ostringstream ossUpdMsg;
+    ossUpdMsg << "Done. Final average fitness: " << meanFineStarDataFitness << flush;
+    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), fineStarData, 1.0f, ossUpdMsg.str() /*, TODO: mVCurve*/);
+    this->callFocusFinderUpdateListener(& focusFinderData);
 
     // Logging summary
     LOG(info) << dec << "Rough focus found at: " << roughOptAbsFocusPos << ", starData: " << roughStarData << endl;
@@ -200,8 +211,15 @@ namespace AT {
     AT_ASSERT(FocusFinderLinearInterpolation, outStarData, "outStarData expected to be set!");
     CImg<float> img;
     
-    // Calc frameSize from inStarCenterPos
-    FrameT imgFrame = centerPosToFrame(mStarCenterPos, mWindowSize);
+    /** 
+     * Calc frameSize from inStarCenterPos and mWindowSize.
+     *
+     * NOTE: We multiply window size by 3 because we want to recenter the star window within the area.
+     *       This is required since the star may will move due to seeing effects. Multiplying by 3
+     *       allows moving the window in all directions depending on the new star position always
+     *       having enough pixels around.
+     */
+    FrameT imgFrame = centerPosToFrame(mStarCenterPos, 3.0 * mWindowSize);
 
     // Calc star values, throws if star could not be determined
     size_t retryCnt = 0;
@@ -212,15 +230,35 @@ namespace AT {
 	// Take a picture, throws if not connected or problem with device
 	mCameraDevice->takePicture(& img, mExposureTimeSec, imgFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
 
-	// Calc PSNR to decide if valid star was selected
-	if (! StarDataT::isValidStar(img)) {
-	  // Too much noise - no star detected / star too weak....
-	  throw FocusFinderLinearInterpolationExceptionT("No valid star selected.");
-	}
+	// Determine centroid to determine if valid star was selected
+	// if (! StarDataT::isValidStar(img)) {
+	//   // Too much noise - no star detected / star too weak....
+	//   throw FocusFinderLinearInterpolationExceptionT("No valid star selected.");
+	// }
 
-	outStarData->getFwhmHorz().set(img, FwhmT::DirectionT::HORZ);
-	outStarData->getFwhmVert().set(img, FwhmT::DirectionT::VERT);
-	outStarData->getHfd().set(img, mOuterHfdRadiusPx);
+	// Determine centroid (-> recenter), throws in case of failure -> no valid star detected
+	PositionT centerPos(img.width() / 2, img.height() / 2);
+
+	// Centroid coordinates are determined absolute to img which is 3 * mWindowSize in width and height.
+	PositionT centroid = CentroidCalcT::starCentroid(img, centerPos, img.width(), CoordTypeT::ABSOLUTE);	
+	FrameT subImgFrame = centerPosToFrame(centroid, mWindowSize);
+
+	LOG(debug) << "Recentering to centroid - (x,y)=(" << centroid.get<0>() << ", " << centroid.get<1>() << ")..." << endl;
+
+	const CImg <float> & subImg = img.get_crop(subImgFrame.get<0>() /*x*/,
+						   subImgFrame.get<1>() /*y*/,
+						   subImgFrame.get<0>() /*x*/ + subImgFrame.get<2>() /*w*/,
+						   subImgFrame.get<1>() /*y*/ + subImgFrame.get<3>() /*h*/);
+
+	// DEBUG START
+	// CImgDisplay disp1(subImg, "dbg image");
+	// while(! disp1.is_closed()) { CImgDisplay::wait(disp1); }
+	// DEBUG END
+
+	// Extract image window
+	outStarData->getFwhmHorz().set(subImg, FwhmT::DirectionT::HORZ);
+	outStarData->getFwhmVert().set(subImg, FwhmT::DirectionT::VERT);
+	outStarData->getHfd().set(subImg, mOuterHfdRadiusPx);
 	break; // success
 
       } catch (CurveFitExceptionT & exc) {
@@ -257,7 +295,7 @@ namespace AT {
     LOG(trace) << dec << "Took first picture - resulting star data: " << starData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
 
     // Send update to listeners
-    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
+    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData, 0.5f, "Determining initial focuser direction..."  /*, TODO: mVCurve*/);
     this->callFocusFinderUpdateListener(& focusFinderData);
 
     // Move mNumStepsToDetermineDirection inwards
@@ -273,7 +311,7 @@ namespace AT {
 	       << ", pos: " << mFocuserDevice->getAbsPos() << endl;
 
     // Send update to listeners
-    FocusFinderDataT focusFinderDataNew(mFocuserDevice->getAbsPos(), starDataNew /*, TODO: mVCurve*/);
+    FocusFinderDataT focusFinderDataNew(mFocuserDevice->getAbsPos(), starDataNew, 0.5f, "Determining initial focuser direction..." /*, TODO: mVCurve*/);
     this->callFocusFinderUpdateListener(& focusFinderDataNew);
 
     // Move focus back -> mNumStepsToDetermineDirection outwards
@@ -307,16 +345,16 @@ namespace AT {
    */
   void
   FocusFinderLinearInterpolationImplT::findRoughFocus(FocusDirectionT::TypeE inDirectionToImproveFocus) {
-
+    static const char * updMsg = "Looking for rough focus...";
     LOG(info) << "Looking for rough focus in direction " << FocusDirectionT::asStr(inDirectionToImproveFocus) << "..." << endl;
-    
+
     // Take picture
     StarDataT starDataNew, starDataPrev;
     takePictureCalcStarData(& starDataNew);
     LOG(trace) << dec << "Took picture - resulting star data: " << starDataNew << ", pos: " << mFocuserDevice->getAbsPos() << endl;
     
     // Send update to listeners
-    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starDataNew /*, TODO: mVCurve*/);
+    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starDataNew, 0.0f, updMsg /*, TODO: mVCurve*/);
     this->callFocusFinderUpdateListener(& focusFinderData);
     
     size_t iterCounter = 0;
@@ -336,8 +374,10 @@ namespace AT {
       LOG(trace) << dec << "Took picture - resulting star data new: " << starDataNew << ", pos: " << mFocuserDevice->getAbsPos() << endl;
       
       // Send update to listeners
-      FocusFinderDataT focusFinderDataNew(mFocuserDevice->getAbsPos(), starDataNew /*, TODO: mVCurve*/);
-      this->callFocusFinderUpdateListener(& focusFinderDataNew);
+      FocusFinderDataT focusFinderDataNew(mFocuserDevice->getAbsPos(), starDataNew, (float) iterCounter / (float) mRoughFocusMaxIterCnt,
+					  updMsg /*, TODO: mVCurve*/);
+ 
+     this->callFocusFinderUpdateListener(& focusFinderDataNew);
       
       // Print results to better compare it....
       LOG(debug) << dec << "Iteration: " << iterCounter << ", pos: " << mFocuserDevice->getAbsPos()
@@ -364,7 +404,7 @@ namespace AT {
 		 << ", pos: " << mFocuserDevice->getAbsPos() << endl;
       
       // Send update to listeners
-      FocusFinderDataT focusFinderDataFinal(mFocuserDevice->getAbsPos(), starDataFinal /*, TODO: mVCurve*/);
+      FocusFinderDataT focusFinderDataFinal(mFocuserDevice->getAbsPos(), starDataFinal, 1.0f, updMsg /*, TODO: mVCurve*/);
       this->callFocusFinderUpdateListener(& focusFinderDataFinal);
       
       // Just logging...
@@ -380,9 +420,10 @@ namespace AT {
     }
   }
   
-
   int
   FocusFinderLinearInterpolationImplT::findExtrema(FocusDirectionT::TypeE inDirectionToImproveFocus, MinMaxFocusPosT::TypeE inMinMaxFocusPos) {
+    ostringstream ossUpdMsg;
+    ossUpdMsg << "Finding " << MinMaxFocusPosT::asStr(inMinMaxFocusPos) << " boundary...";
 
     FocusDirectionT::TypeE direction = (inMinMaxFocusPos == MinMaxFocusPosT::MIN_FOCUS_POS ? FocusDirectionT::INWARDS : FocusDirectionT::OUTWARDS);
     LOG(info) << "Looking for " << MinMaxFocusPosT::asStr(inMinMaxFocusPos) << " in direction " << FocusDirectionT::asStr(direction) << "..." << endl;
@@ -396,10 +437,11 @@ namespace AT {
     LOG(trace) << dec << "Took picture - resulting star data: " << starData << endl;
 
     // Send update to listeners
-    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
+    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData, 0.0f, ossUpdMsg.str() /*, TODO: mVCurve*/);
     this->callFocusFinderUpdateListener(& focusFinderData);
 
     // Loop until max. fitness has been reached
+    float progress = 0.0f;
     while(mExtremaFitnessBoundary > starData.getFitness()) {
       LOG(debug) << dec << "Not yet reached mExtremaFitnessBoundary " << mExtremaFitnessBoundary
 		 << ", measured fitness: " << starData.getFitness()
@@ -416,10 +458,12 @@ namespace AT {
       LOG(trace) << dec << "Took picture - resulting star data: " << starData << endl;
       
       // Send update to listeners
-      FocusFinderDataT focusFinderData2(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
+      float newProgress = ((mExtremaFitnessBoundary > starData.getFitness()) ? starData.getFitness() / mExtremaFitnessBoundary : 1.0f);
+      if (progress <= newProgress) {
+	progress = newProgress;
+      }
+      FocusFinderDataT focusFinderData2(mFocuserDevice->getAbsPos(), starData, progress, ossUpdMsg.str() /*, TODO: mVCurve*/);
       this->callFocusFinderUpdateListener(& focusFinderData2);
-      
-      //mVCurve[inFocuserClient.getAbsPos()] = inQualityMeasureStrategy->calculate(& fwhmHorz1, & fwhmVert1, & hfd1);
     }
     
     int extremaPos = mFocuserDevice->getAbsPos();
@@ -436,7 +480,7 @@ namespace AT {
     LOG(trace) << dec << "Took picture - resulting star data: " << starData << endl;
     
     // Send update to listeners
-    FocusFinderDataT focusFinderData2(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
+    FocusFinderDataT focusFinderData2(mFocuserDevice->getAbsPos(), starData, 1.0f, ossUpdMsg.str() /*, TODO: mVCurve*/);
     this->callFocusFinderUpdateListener(& focusFinderData2);      
 
     LOG(info) << dec << "Reached extrema (boundary is " << mExtremaFitnessBoundary
@@ -449,6 +493,7 @@ namespace AT {
   }
 
   void FocusFinderLinearInterpolationImplT::recordVCurve(int inAbsStartPos, int inAbsEndPos, size_t inGranularitySteps, VCurveT * outVCurve, bool inMoveBackToOldPos) {
+    static const char * updMsg = "Recording V-Curve...";
 
     if (! outVCurve) {
       throw FocusFinderLinearInterpolationExceptionT("No vcurve passed.");
@@ -464,10 +509,7 @@ namespace AT {
     mFocuserDevice->setAbsPos(inAbsStartPos);
     LOG(trace) << dec << "Moved focus to start position " << inAbsStartPos << "." << endl;
     
-
     int curPos = mFocuserDevice->getAbsPos();
-    int delta = inGranularitySteps;
-    
     StarDataT starData;
 
     while (curPos < inAbsEndPos) {
@@ -478,14 +520,16 @@ namespace AT {
       LOG(trace) << dec << "Took picture - resulting star data: " << starData << endl;
       
       // Send update to listeners
-      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData /*, TODO: mVCurve*/);
-      this->callFocusFinderUpdateListener(& focusFinderData);      
+      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData, 1.0f - (fabs(inAbsEndPos - curPos) / fabs(inAbsEndPos - inAbsStartPos)),
+				       updMsg /*, TODO: mVCurve*/);
+
+      this->callFocusFinderUpdateListener(& focusFinderData);
       
       // Add position + fitness to VCurve
       outVCurve->insert(make_pair(curPos, starData.getFitness()));
 
       // Move focuser
-      curPos += delta;
+      curPos += inGranularitySteps;
       mFocuserDevice->setAbsPos(curPos);
       LOG(trace) << dec << "Moved focus to abs pos " << curPos << endl;
     }
@@ -493,6 +537,10 @@ namespace AT {
     if (inMoveBackToOldPos) {
       mFocuserDevice->setAbsPos(oldFocusPos);
       LOG(trace) << dec << "Moved focus back to start pos " << oldFocusPos << endl;
+
+      // Send update to listeners
+      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData, 1.0f, updMsg /*, TODO: mVCurve*/);
+      this->callFocusFinderUpdateListener(& focusFinderData);      
     }
   }
 }; // end AT namespace

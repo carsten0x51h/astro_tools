@@ -94,9 +94,15 @@ namespace AT {
   private:
     int mAbsPos;
     StarDataT mStarData;
+    float mProgress;
+    string mUpdMsg;
 
   public:
-    FocusFinderDataT(int inAbsPos, const StarDataT & inStarData /*, TODO: mVCurve*/) : mAbsPos(inAbsPos), mStarData(inStarData) { }
+    FocusFinderDataT(int inAbsPos, const StarDataT & inStarData, float inProgress, const string & inUpdMsg /*, TODO: mVCurve*/) : mAbsPos(inAbsPos), mStarData(inStarData), mProgress(inProgress), mUpdMsg(inUpdMsg) { }
+    inline int getAbsPos() const { return mAbsPos; };
+    inline const StarDataT & getStarData() const { return mStarData; };
+    inline float getProgress() const { return mProgress; }
+    inline const string & getUpdMsg() const { return mUpdMsg; }
   };
 
 

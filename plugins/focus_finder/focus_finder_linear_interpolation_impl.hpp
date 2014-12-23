@@ -104,13 +104,6 @@
 #include "indi/indi_camera.hpp"
 #include "indi/indi_focuser.hpp"
 
-// #define FOCUS_FINDER_STOP()			\
-//   if (mStop) {				\
-//     if (outUserStop)				\
-//       *outUserStop = true;			\
-//     return false;				\
-//   }						\
-
 namespace AT {
 
   DEF_Exception(FocusFinderLinearInterpolation);
@@ -251,10 +244,8 @@ namespace AT {
       mFineFocusGranularitySteps(50),
       mFineSearchRangeSteps(2000),
       mStopFlag(false) {
-      //mIndiClient->registerNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
     }
     ~FocusFinderLinearInterpolationImplT() {
-//     mIndiClient->unregisterNumberListener(boost::bind(& FocusFinderT::numberChangeHandler, this, _1));
     }
 
     virtual void findFocus();
@@ -315,7 +306,6 @@ namespace AT {
     inline double getVCurveFitEpsRel() { return mVCurveFitEpsRel; }
 
     DEFINE_PROP_LISTENER(FocusFinderUpdate, const FocusFinderDataT *);
-
   };
 
 } // end AT namespace
