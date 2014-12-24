@@ -138,14 +138,8 @@ namespace AT {
 
     outFitValues->resize(imgValues.size());
 
-    // Do the LM fit - TODO: this function should throw if it does not succeed?!
-    int err = GaussMatcherT::fitGslLevenbergMarquart<ImgAccessorT>(imgValues, outGaussParms, inEpsAbs, inEpsRel);
-  
-    if (err) {
-      stringstream ss;
-      ss << "FwhmT::fitValues - fitgsl_lm() returned non-zero status: " << err << endl; 
-      throw CurveFitExceptionT(ss.str().c_str());
-    }
+    // Do the LM fit, throws CurveFitExceptionT if error boundaries are specified and NOT satisfied
+    GaussMatcherT::fitGslLevenbergMarquart<ImgAccessorT>(imgValues, outGaussParms, inEpsAbs, inEpsRel);
   
     // Transfer over the data to the global storage. Plot the true points onto the graph as well.
     vector<float> & fitValues = (*outFitValues);

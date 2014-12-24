@@ -298,10 +298,10 @@ namespace AT {
 
     inline void setFineSearchRangeSteps(size_t inFineSearchRangeSteps) { mFineSearchRangeSteps = inFineSearchRangeSteps; }
     inline size_t getFineSearchRangeSteps() const { return mFineSearchRangeSteps; }
-
+    
     inline void setVCurveFitEpsAbs(double inVCurveFitEpsAbs) { mVCurveFitEpsAbs = inVCurveFitEpsAbs; }
     inline double getVCurveFitEpsAbs() { return mVCurveFitEpsAbs; }
-
+    
     inline void setVCurveFitEpsRel(double inVCurveFitEpsRel) { mVCurveFitEpsRel = inVCurveFitEpsRel; }
     inline double getVCurveFitEpsRel() { return mVCurveFitEpsRel; }
 

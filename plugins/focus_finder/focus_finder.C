@@ -43,13 +43,13 @@ namespace AT {
   public:
     static void focusFinderStatusUpdates(const FocusFinderDataT * inFfUpdData) {
       // TODO: Improve output ... 001%,... always same number of , places... or use \t...
-      cout << "\r" << setw(5) << (int) (100.0f * inFfUpdData->getProgress()) << "%" << setw(40)
+      cout << "\r" << setw(5) << (int) (100.0f * inFfUpdData->getProgress()) << "%" << std::fixed << setw(40)
 	   << inFfUpdData->getUpdMsg() << setw(10)
 	   << "POS=" << inFfUpdData->getAbsPos() << setw(14)
-	   << "FWHM_horz=" << inFfUpdData->getStarData().getFwhmHorz().getValue() << "\"" << setw(14)
-	   << "FWHM_vert=" << inFfUpdData->getStarData().getFwhmVert().getValue() << "\"" << setw(10)
-	   << "HFD=" << inFfUpdData->getStarData().getHfd().getValue() << "px" << setw(14)
-	   << "Fitness=" << inFfUpdData->getStarData().getFitness() << flush;
+	   << "FWHM_horz=" << std::setprecision(5) << inFfUpdData->getStarData().getFwhmHorz().getValue() << "\"" << setw(14)
+	   << "FWHM_vert=" << std::setprecision(5) << inFfUpdData->getStarData().getFwhmVert().getValue() << "\"" << setw(10)
+	   << "HFD=" << std::setprecision(5) << inFfUpdData->getStarData().getHfd().getValue() << "px" << setw(14)
+	   << "Fitness=" << std::setprecision(5) << inFfUpdData->getStarData().getFitness() << flush;
     }
 
     static void performAction(void) {

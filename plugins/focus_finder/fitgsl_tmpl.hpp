@@ -76,7 +76,7 @@ namespace AT {
      * See http://en.wikipedia.org/wiki/Approximation_error for expl. of rel and abs errors.
      */
     template<typename DataAccessorT>
-    static int fitGslLevenbergMarquart(const typename DataAccessorT::TypeT & inData, typename CurveParamsT::TypeT * outResults, double epsabs, double epsrel) {
+    static void fitGslLevenbergMarquart(const typename DataAccessorT::TypeT & inData, typename CurveParamsT::TypeT * outResults, double inEpsAbs, double inEpsRel, bool inExOnError = true) {
       AT_ASSERT(CurveFit, outResults, "Result vector not set!");
 
       // Fill the params
@@ -125,20 +125,17 @@ namespace AT {
       // Iterate to to find results
       do {
 	i++;
-	status = gsl_multifit_fdfsolver_iterate(solver);
-      
-	// TODO: use print from fitgsl.C....
+	status = gsl_multifit_fdfsolver_iterate(solver); // returns 0 in case of success
+	if (status) {  break; }
+
+	// TODO: use print
 	//print_state(i, solver);
-      
-	if (status != 0) {
-	  break;
-	}
-	status = gsl_multifit_test_delta(solver->dx, solver->x, epsabs, epsrel);
-      
+
+	status = gsl_multifit_test_delta(solver->dx, solver->x, inEpsAbs, inEpsRel);
       } while (status == GSL_CONTINUE && i < 500);
     
       // Store the results to be returned to the user (copy from gsl_vector to result structure)
-      for (size_t i=0; i < FitTraitsT::CurveParamsT::_Count; ++i) {
+      for (size_t i = 0; i < FitTraitsT::CurveParamsT::_Count; ++i) {
 	typename FitTraitsT::CurveParamsT::TypeE idx = static_cast<typename FitTraitsT::CurveParamsT::TypeE>(i);
 	(*outResults)[idx] = gsl_vector_get(solver->x, idx);
       }
@@ -146,9 +143,29 @@ namespace AT {
       // Free GSL memory
       gsl_multifit_fdfsolver_free(solver);
       gsl_vector_free(guess);
-    
-      return (status == 0 ? 0 : -1);
+
+      // Throw if fit was not successful but only if throwing is enabled
+      if (status != 0 && inExOnError) {
+	ostringstream oss;
+	oss << "fitGslLevenbergMarquart did not succeed. Reason: " << gsl_strerror(status) << " (code=" << status
+	    << "), Could not fit within error boundaries (epsAbs=" << inEpsAbs << ", epsRel=" << inEpsRel << ")." << endl;
+	throw CurveFitExceptionT(oss.str());
+      }
     }
+    
+    // int print_state(size_t iter, gsl_multifit_fdfsolver * s) {
+    //   printf ("iter: %3u x = % 15.8f % 15.8f % 15.8f %15.8f "
+    // 	      "|f(x)| = %g\n",
+    // 	      iter,
+    // 	      gsl_vector_get (s->x, 0),
+    // 	      gsl_vector_get (s->x, 1),
+    // 	      gsl_vector_get (s->x, 2),
+    // 	      gsl_vector_get (s->x, 3),
+    // 	      gsl_blas_dnrm2 (s->f));
+    //   return 0;
+    // }
+
+
   };
 
 

@@ -30,10 +30,6 @@
 
 
 namespace AT {
-  // TODO: Maybe rename those FocusFinder classes to ...Minimizer - because FocusFinder is too generic - it is the whole thing...
-  // but this class only tries to find the minimum HFD and/or Fwhm. In addition we could pass a minimizer policy... which tells the 
-  // minimizer which star values should be taken into account.
-
   // TODO: We may finally calculate the variance of the collected curve data with respect to the calculated parameter curve
   void FocusFinderLinearInterpolationImplT::findFocus() {
     LOG(trace) << dec << "FocusFinderLinearInterpolationImplT::findFocus() - Entering..." << endl;
@@ -57,8 +53,7 @@ namespace AT {
       throw FocusFinderLinearInterpolationExceptionT(tmpStr.c_str());
     }
 
-    // Rough focus search
-    // From Fmin and Fmax calculate start and end position
+    // Rough focus search - from Fmin and Fmax calculate start and end position.
     float centerPos = Fmin + fabs(Fmax - Fmin) / 2;
     float halfLength = fabs(Fmax - centerPos);
     float percLength = halfLength * 0.01 * (float) mRoughFocusSearchRangePerc;
@@ -66,19 +61,19 @@ namespace AT {
     int roughAbsStartPos = centerPos - percLength;
     int roughAbsEndPos = centerPos + percLength;
 
-    LOG(debug) << dec << "centerPos: " << centerPos << ", halfLength: " << halfLength << ", mRoughFocusSearchRangePerc: " << mRoughFocusSearchRangePerc << "%, percLength: " << percLength << endl;
+    LOG(debug) << dec << "centerPos: " << centerPos << ", halfLength: " << halfLength << ", mRoughFocusSearchRangePerc: "
+	       << mRoughFocusSearchRangePerc << "%, percLength: " << percLength << endl;
 
     double roughOptAbsFocusPos = this->findOptimalFocusInRange(roughAbsStartPos, roughAbsEndPos, mRoughFocusRecordNumCurves, mRoughFocusGranularitySteps);
 
     StarDataT roughStarData;
     takePictureCalcStarData(& roughStarData);
-    LOG(info) << dec << "Took picture - resulting star data: " << roughStarData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
 
+    LOG(info) << dec << "Took picture - resulting star data: " << roughStarData << ", pos: " << mFocuserDevice->getAbsPos() << endl;
     LOG(debug) << dec << "Rough focus determined: " << roughOptAbsFocusPos << ", starData: " << roughStarData << endl;
 
 
-    // Fine focus search
-    // From roughOptAbsFocusPos calc start and end pos.
+    // Fine focus search - from roughOptAbsFocusPos calc start and end pos.
     int fineAbsStartPos = roughOptAbsFocusPos - mFineSearchRangeSteps;
     int fineAbsEndPos = roughOptAbsFocusPos + mFineSearchRangeSteps;
 
@@ -100,7 +95,6 @@ namespace AT {
       fineStarDataFitnessSum += fineStarData.getFitness();
       
       // Send update to listeners
-      // TODO: Rename to FocusFinderUpdateDataT?!
       FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), fineStarData, (float) i / (float) _numSingleFrames,
 				       "Determining final seeing (average)..." /*, TODO: mVCurve*/);
 
@@ -124,8 +118,8 @@ namespace AT {
   FocusFinderLinearInterpolationImplT::findOptimalFocusInRange(int inAbsStartPos, int inAbsEndPos, size_t inNumVCurves, size_t inCurveGranularitySteps) {
     LOG(info) << dec << "Calculated start/end positions [start, end]=[" << inAbsStartPos << ", " << inAbsEndPos << "]" << endl;
     
-    // Record VCurves
-    VCurveVecT vcurves(inNumVCurves); // Contains empty VCurves
+    // Record VCurves - vector contains empty VCurves
+    VCurveVecT vcurves(inNumVCurves);
     
     LOG(info) << dec << "Recording " << inNumVCurves << " VCurves with "
 	      << (fabs(inAbsEndPos - inAbsStartPos) / inCurveGranularitySteps) << " points each..." << endl;
@@ -156,10 +150,6 @@ namespace AT {
 
   double
   FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos(const VCurveVecT & inVCurves) {
-    // TODO: Implement retry... if fitting does not work - but how?!
-    //-> take another picture?!?! or just increase possible error by *2 ?!
-    //-> Maybe there is a better solution by just still using the results?? ...
-    //   Because the results will be the same if data does not change!! Maybe add "noExIfErrorCondNotFulfilled" ??!
     typedef CurveFitTmplT<ParabelFitTraitsT> ParabelMatcherT;
 
     AT_ASSERT(FocusFinderLinearInterpolation, inVCurves.size(), "VCurve vector is empty!");
@@ -174,21 +164,14 @@ namespace AT {
 
     LOG(info) << "Master VCurve: " << masterVCurve << endl;
   
-    // Do the LM fit - TODO: this function should throw if it does not succeed?!
+    // Do the LM fit, throws CurveFitExceptionT if error boundaries are specified and NOT satisfied
     ParabelMatcherT::CurveParamsT::TypeT parabelParms;
-    int err = ParabelMatcherT::fitGslLevenbergMarquart<VCurveAccessorT>(masterVCurve, & parabelParms, mVCurveFitEpsAbs, mVCurveFitEpsRel);
+    ParabelMatcherT::fitGslLevenbergMarquart<VCurveAccessorT>(masterVCurve, & parabelParms, mVCurveFitEpsAbs, mVCurveFitEpsRel, false /* no ex */);
 
     float a = parabelParms[ParabelMatcherT::CurveParamsT::A_IDX];
     float b = parabelParms[ParabelMatcherT::CurveParamsT::B_IDX];
     float c = parabelParms[ParabelMatcherT::CurveParamsT::C_IDX];
-  
-    if (err) {
-      stringstream ss;
-      ss << "FocusFinderLinearInterpolationImplT::calcOptimalAbsFocusPos - fitgsl_lm() returned non-zero status: " << err
-	 << ", a: " << a << ", b: " << b << ", c: " << c << endl;
-      throw CurveFitExceptionT(ss.str().c_str());
-    }
-    
+      
     LOG(debug) << "Calculated parabel parms - a: " << a << ", b: " << b << ", c: " << c << endl;
     
     // Calculate xmin, ymin
@@ -230,12 +213,6 @@ namespace AT {
 	// Take a picture, throws if not connected or problem with device
 	mCameraDevice->takePicture(& img, mExposureTimeSec, imgFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
 
-	// Determine centroid to determine if valid star was selected
-	// if (! StarDataT::isValidStar(img)) {
-	//   // Too much noise - no star detected / star too weak....
-	//   throw FocusFinderLinearInterpolationExceptionT("No valid star selected.");
-	// }
-
 	// Determine centroid (-> recenter), throws in case of failure -> no valid star detected
 	PositionT centerPos(img.width() / 2, img.height() / 2);
 
@@ -249,11 +226,6 @@ namespace AT {
 						   subImgFrame.get<1>() /*y*/,
 						   subImgFrame.get<0>() /*x*/ + subImgFrame.get<2>() /*w*/,
 						   subImgFrame.get<1>() /*y*/ + subImgFrame.get<3>() /*h*/);
-
-	// DEBUG START
-	// CImgDisplay disp1(subImg, "dbg image");
-	// while(! disp1.is_closed()) { CImgDisplay::wait(disp1); }
-	// DEBUG END
 
 	// Extract image window
 	outStarData->getFwhmHorz().set(subImg, FwhmT::DirectionT::HORZ);
