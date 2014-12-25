@@ -1,3 +1,5 @@
+//TODO: Test all constructors / set methods with existing test data!
+
 /*****************************************************************************
  *
  *  AstroTools
@@ -24,6 +26,7 @@
 
 namespace AT {
 
+  // Class which provides access to image vector values by curve fit algorithm.
   class ImgAccessorT {
   public:
     typedef vector<float> TypeT;
@@ -34,102 +37,39 @@ namespace AT {
   };
 
 
+  // DirectionT validator for boost cmd line parser
+  void validate(boost::any & v, const vector<string> & values, DirectionT::TypeE * target_type, int) {
+    using namespace boost::program_options;
+    
+    validators::check_first_occurrence(v);
+    string s = validators::get_single_string(values);
+    boost::to_upper(s);
+    DirectionT::TypeE type = DirectionT::asType(s.c_str());
+
+    if (type != DirectionT::_Count) {
+      v = any(type);
+    } else {
+      throw validation_error(validation_error::invalid_option_value);
+    }
+  }
 
 
   const double FwhmT::SIGMA_TO_FWHM = 1.66510922; // 2.0 * sqrt(ln(2.0))
-  const size_t FwhmT::MAX_PTS = 1000; // Max number of data points
+  const size_t FwhmT::MAX_PTS = 1000;             // Max number of data points
 
 
   ostream & operator<<(ostream & os, const FwhmT & inFwhm) {
     return inFwhm.print(os);
   }
 
-  FwhmT::FwhmT(const CImg<float> & image, const DirectionT::TypeE & inDirection, double inEpsAbs, double inEpsRel, float inCenterX, float inCenterY, /*TODO: use PositionT */size_t inSizePx) {
-    this->set(image, inDirection, inEpsAbs, inEpsRel, inCenterX, inCenterY, inSizePx);
+  FwhmT::FwhmT(const vector<float> & inValues, double inEpsAbs, double inEpsRel) {
+    this->set(inValues, inEpsAbs, inEpsRel);
   }
 
-
-  void FwhmT::set(const CImg<float> & image, const DirectionT::TypeE & inDirection, double inEpsAbs, double inEpsRel, float inCenterX, float inCenterY, size_t inSizePx) {
-    //cout << "FwhmT - direction: " << DirectionT::asStr(inDirection) << endl;
-
-    mDirection = inDirection;
-  
-    // TODO: Can we avoid image copy??!
-    CImg<float> resImage;
-  
-    if (inCenterX < 0 || inCenterY < 0) {
-      // Calculate centroid
-      //CentroidCalcT::starCentroid(image, & mXCom, & mYCom, & resImage);
-      mXCom = image.width() / 2;
-      mYCom = image.height() / 2;
-      resImage = image;
-      //cout << "FWHM Centroid - x: " << mXCom << ", y: " << mYCom << endl;
-    } else {
-      if (! inSizePx) {
-	// TODO: Require any longer?
-	throw FwhmExceptionT("Specify size.");
-      }
-    
-      const int BACK = ceil(inSizePx / 2.0) - 1;
-      int startX = (int)inCenterX - BACK, startY = (int)inCenterY - BACK;
-    
-      //cout << "inSizePx: " << inSizePx << "--> BACK: " << BACK << ", inCenterX: " << inCenterX << ", inCenterY: " << inCenterY << ", startX: " << startX << ", startY: " << startY << endl;
-    
-      resImage = image.get_crop(startX+1, startY+1, startX + inSizePx, startY + inSizePx);
-    
-      //cerr << "resImage - width(): " << resImage.width() << ", height: " << resImage.width() << endl;
-    
-      // DGB START
-      // CImgDisplay disp1(resImage, "fwhm-image" );
-      // while(! disp1.is_closed()) { CImgDisplay::wait(disp1); }
-      // DGB END
-    
-    
-      // TODO: Improve?!
-      mXCom = BACK;
-      mYCom = BACK;
-    }
-    
-    // Subtract median image
-    double med = resImage.median();
-    cimg_forXY(resImage, x, y) {
-      resImage(x, y) = (resImage(x, y) > med ? resImage(x, y) - med : 0);
-    }
-
-
-    // TODO / FIXME!!!!!!!!!!!!!!!!!!!! centroid should be returned with respect to passed image - not to result image!!!!
-
-    // Extract slices through centroid for profiles
-    switch(inDirection) {
-    case DirectionT::HORZ: {
-      mImgValues.resize(resImage.width());
-      LOG(trace) << "DirectionT::HORZ sliced values - width: " << resImage.width() << ": " << endl;
-      cimg_forX(resImage, x) { 
-	LOG(trace) << "x: " << x << ", mYCom: " << (int)mYCom << " -> value: " << resImage(x, mYCom) << endl;
-	mImgValues[x] = resImage(x, (int)mYCom);
-      }
-      break;
-    }
-    case DirectionT::VERT: {
-      mImgValues.resize(resImage.height());
-      LOG(trace) << "DirectionT::VERT sliced values - height: " << resImage.height() << ": " << endl;
-      cimg_forY(resImage, y) {
-	LOG(trace) << "y: " << y << ", mXCom: " << (int)mXCom << " -> value: " << resImage(mXCom, y) << endl;
-	mImgValues[y] = resImage((int)mXCom, y);
-      }
-      break;
-    }
-    default: {
-      return;
-    }
-    }
-    
-    // TODO: Calculate the SNR?!?!?!!! Values from Fwhm do not seem to be suitable to recognize what kind of region is selected ... ^^ strange!
-    
-    // Fit horz. & vert. values
-    FwhmT::fitValues(mImgValues, & mFitValues, & mGaussParms, inEpsAbs, inEpsRel);
+  void
+  FwhmT::set(const vector<float> & inValues, double inEpsAbs, double inEpsRel) {
+    FwhmT::fitValues(inValues, & mFitValues, & mGaussParms, inEpsAbs, inEpsRel);
   }
-
 
   void
   FwhmT::fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::CurveParamsT::TypeT * outGaussParms, double inEpsAbs, double inEpsRel) {
@@ -149,49 +89,44 @@ namespace AT {
   }
 
   float
-  FwhmT::calcGaussValue(const GaussMatcherT::CurveParamsT::TypeT & inGaussParms, float x) {
+  FwhmT::calcGaussianValue(const GaussMatcherT::CurveParamsT::TypeT & inGaussParms, float x) {
     return GaussianFitTraitsT::fx(x, inGaussParms);
   }
 
-
   /**
-     Method to calculate the standrard deviation from values on the curve
-     to values measured values (image values).
-
-     See http://de.wikipedia.org/wiki/Mittlere_quadratische_Abweichung
-  */
-
-  // TODO / FIXME: Seems to give wrong values!!
+   *  Method to calculate the standrard deviation from values on the curve
+   *  to values measured values (image values).
+   *
+   * See http://de.wikipedia.org/wiki/Mittlere_quadratische_Abweichung
+   */
   float
   FwhmT::getStandardDeviation() const {
     float mse = 0;
     size_t x = 0;
     for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it, ++x) {
-      //cout << "x: " << x << ", Calculated value: " << calcGaussianValue(x) << ", measured value: " << *it << ", square error: " << pow(calcGaussianValue(x) - *it, 2.0) << endl;
-
-      mse += pow(calcGaussianValue(x) - *it, 2.0);
+      mse += pow(this->calcGaussianValue(x) - *it, 2.0);
     }
-
+    
     mse = sqrt(mse / ((float) mImgValues.size() - 1.0));
     return mse;
   }
 
-
-
-
-  void validate(boost::any & v, const vector<string> & values, FwhmT::DirectionT::TypeE * target_type, int) {
-    using namespace boost::program_options;
+  ostream &
+  FwhmT::print(ostream & os) const {
+    // TODO: Only print if details requested...
+    os << "Fwhm(" << getValue() << "\"" 
+       << ", b=" << mGaussParms[GaussMatcherT::CurveParamsT::B_IDX]
+       << ", p=" << mGaussParms[GaussMatcherT::CurveParamsT::P_IDX]
+       << ", c=" << mGaussParms[GaussMatcherT::CurveParamsT::C_IDX]
+       << ", w=" << mGaussParms[GaussMatcherT::CurveParamsT::W_IDX] << "]..." << endl;
     
-    validators::check_first_occurrence(v);
-    string s = validators::get_single_string(values);
-    boost::to_upper(s);
-    FwhmT::DirectionT::TypeE type = FwhmT::DirectionT::asType(s.c_str());
-
-    if (type != FwhmT::DirectionT::_Count) {
-      v = any(type);
-    } else {
-      throw validation_error(validation_error::invalid_option_value);
-    }
+    os << ", Img values: ";
+    for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it) { os << *it << "; "; }
+    os << ", Fit values: ";
+    for (vector<float>::const_iterator it = mFitValues.begin(); it != mFitValues.end(); ++it) { os << *it << "; "; }
+    
+    return os;
   }
+
 
 }; // end namespace AT

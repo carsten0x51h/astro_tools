@@ -262,8 +262,8 @@ namespace AT {
       const size_t sHfdOuterRadiusPx = 15; // TODO: Pass as argunment?!
 
       HfdT hfd(inImage, sHfdOuterRadiusPx, centroid.get<0>(), centroid.get<1>(), sWindowSize);
-      FwhmT fwhmHorz(inImage, FwhmT::DirectionT::HORZ, centroid.get<0>(), centroid.get<1>(), sWindowSize);
-      FwhmT fwhmVert(inImage, FwhmT::DirectionT::VERT, centroid.get<0>(), centroid.get<1>(), sWindowSize);
+      FwhmT fwhmHorz(extractLine(inImage, DirectionT::HORZ, centroid, sWindowSize));
+      FwhmT fwhmVert(extractLine(inImage, DirectionT::VERT, centroid, sWindowSize));
 
       double hfdArcSec = 0, fwhmHorzArcSec = 0, fwhmVertArcSec = 0;
 
@@ -286,12 +286,12 @@ namespace AT {
 
       stringstream fwhmHorzArcSecSs;
       fwhmHorzArcSecSs << "=" << fwhmHorzArcSec << "\"";
-      cout << "Fwhm(" << FwhmT::DirectionT::asStr(FwhmT::DirectionT::HORZ) << ")=" << fwhmHorz.getValue() << "px"
+      cout << "Fwhm(" << DirectionT::asStr(DirectionT::HORZ) << ")=" << fwhmHorz.getValue() << "px"
 	   << (fwhmHorzArcSec ? fwhmHorzArcSecSs.str() : "") << endl;
 
       stringstream fwhmVertArcSecSs;
       fwhmVertArcSecSs << "=" << fwhmVertArcSec << "\"";
-      cout << "Fwhm(" << FwhmT::DirectionT::asStr(FwhmT::DirectionT::VERT) << ")=" << fwhmVert.getValue() << "px"
+      cout << "Fwhm(" << DirectionT::asStr(DirectionT::VERT) << ")=" << fwhmVert.getValue() << "px"
 	   << (fwhmVertArcSec ? fwhmVertArcSecSs.str() : "") << endl;
     }
   };

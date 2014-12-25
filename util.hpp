@@ -173,7 +173,8 @@ static bool intersect(const DimensionT & inDimension, const FrameT & inFrame, Fr
 }
 
 static FrameT centerPosToFrame(PositionT inCentroid, unsigned int inWindowSize) {
-  const unsigned int halfWindowSize = inWindowSize / 2; // TODO: use >> 1 operator instead?! What if windowSize is even?
+  // TODO: Check if -1 is correct...
+  const unsigned int halfWindowSize = ceil(inWindowSize / 2.0f) - 1;
   return FrameT(inCentroid.get<0>() - halfWindowSize /*x*/, inCentroid.get<1>() - halfWindowSize /*y*/, inWindowSize /*w*/, inWindowSize /*h*/);
 }
 

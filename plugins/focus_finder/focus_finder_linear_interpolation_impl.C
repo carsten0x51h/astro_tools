@@ -228,8 +228,8 @@ namespace AT {
 						   subImgFrame.get<1>() /*y*/ + subImgFrame.get<3>() /*h*/);
 
 	// Extract image window
-	outStarData->getFwhmHorz().set(subImg, FwhmT::DirectionT::HORZ);
-	outStarData->getFwhmVert().set(subImg, FwhmT::DirectionT::VERT);
+	outStarData->getFwhmHorz().set(extractLine(subImg, DirectionT::HORZ));
+	outStarData->getFwhmVert().set(extractLine(subImg, DirectionT::VERT));
 	outStarData->getHfd().set(subImg, mOuterHfdRadiusPx);
 	break; // success
 
