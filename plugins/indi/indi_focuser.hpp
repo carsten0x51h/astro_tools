@@ -297,7 +297,7 @@ public:
   inline void abortMotion(int inTimeoutMs = sDefaultTimeoutMs) {
     if (this->isMovementInProgess()) {
       this->sendSwitchVal<FocuserTraitsT>(VecPropsT::FOCUS_ABORT_MOTION, PropsT::ABORT, true, inTimeoutMs);
-      WAIT_MAX_FOR(! this->isMovementInProgess(), inTimeoutMs, "Hit timeout setting while setting value.");
+      WAIT_MAX_FOR(! this->isMovementInProgess(), inTimeoutMs, "IndiFocuserT::abortMotion - Hit timeout while setting value.");
     }
   }
 
@@ -306,7 +306,7 @@ public:
       throw IndiFocuserIsBusyExceptionT("Cannot reset focuser position - focuser is currently moving.");
 
     this->sendSwitchVal<FocuserTraitsT>(VecPropsT::RESET, PropsT::ZERO, true, inTimeoutMs);
-    WAIT_MAX_FOR(this->getAbsPos() == 0, inTimeoutMs, "Hit timeout setting while setting value.");
+    WAIT_MAX_FOR(this->getAbsPos() == 0, inTimeoutMs, "IndiFocuserT::resetPosition - Hit timeout while setting value.");
   }
 
 

@@ -202,7 +202,7 @@ namespace AT {
      *  -6. Continue at 2.
      *  -7. Bring focus back to start pos. (Decrease focus by f_rightFmax)
      */
-    void recordVCurve(int inAbsStartPos, int inAnsEndPos, size_t inGranularitySteps, VCurveT * outVCurve, bool inMoveBackToOldPos = true);
+    void recordVCurve(int inAbsStartPos, int inAbsEndPos, size_t inGranularitySteps, VCurveT * outVCurve, size_t inVCurveNum, size_t inVCurveNumTotal, bool inMoveBackToOldPos = true);
 
     /**
      * -Find focus in range.

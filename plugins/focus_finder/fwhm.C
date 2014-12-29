@@ -112,21 +112,21 @@ namespace AT {
   }
 
   ostream &
-  FwhmT::print(ostream & os) const {
-    // TODO: Only print if details requested...
-    os << "Fwhm(" << getValue() << "\"" 
+  FwhmT::print(ostream & os, bool inPrintDetails) const {
+    os << "FWHM=" << this->getValue() << "\"" 
        << ", b=" << mGaussParms[GaussMatcherT::CurveParamsT::B_IDX]
        << ", p=" << mGaussParms[GaussMatcherT::CurveParamsT::P_IDX]
        << ", c=" << mGaussParms[GaussMatcherT::CurveParamsT::C_IDX]
        << ", w=" << mGaussParms[GaussMatcherT::CurveParamsT::W_IDX] << "]..." << endl;
     
-    os << ", Img values: ";
-    for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it) { os << *it << "; "; }
-    os << ", Fit values: ";
-    for (vector<float>::const_iterator it = mFitValues.begin(); it != mFitValues.end(); ++it) { os << *it << "; "; }
-    
+    if (inPrintDetails) {
+      os << ", Img values: ";
+      for (vector<float>::const_iterator it = mImgValues.begin(); it != mImgValues.end(); ++it) { os << *it << "; "; }
+      os << ", Fit values: ";
+      for (vector<float>::const_iterator it = mFitValues.begin(); it != mFitValues.end(); ++it) { os << *it << "; "; }
+    }
+
     return os;
   }
-
 
 }; // end namespace AT

@@ -71,7 +71,11 @@ namespace AT {
      * like to minimize. Later we might make this configurable by for example
      * just using FWHM or HFD or something else...
      */
-    inline double getFitness() const { return mFwhmHorz.getValue() + mFwhmVert.getValue() + mHfd.getValue(); }
+    // TODO / FIXME! HFD sometines returns NAN!!! Can happen if outer radius is too small?!?!?
+    //inline double getFitness() const { return mFwhmHorz.getValue() + mFwhmVert.getValue() + mHfd.getValue(); }
+    //inline double getFitness() const { return mFwhmHorz.getValue() + mFwhmVert.getValue(); }
+    // TODO / FIXME: Even worse... FWHM values are better (smaller) if almost only noise and worse (bigger) if star looks good!!!! --> only HFD!
+    inline double getFitness() const { return mHfd.getValue(); }
 
     ostream & print(ostream & os) const {
       // TODO: pass printDetail?! Or remove mFwhmHorz.getValue()... and just call mFwhmHorz.print(detail)?

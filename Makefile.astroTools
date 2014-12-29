@@ -94,11 +94,33 @@ py:
 indiserver:
 	indiserver -m 500 -v /usr/bin/indi_moonlite_focus /home/devnull/workspace/atik_ccd_src/src/indi_atik_ccd /usr/bin/indi_simulator_ccd /usr/bin/indi_simulator_focus
 
+atik_indiserver:
+	indiserver -m 500 -v /usr/bin/indi_moonlite_focus /home/devnull/workspace/atik_ccd_src/src/indi_atik_ccd
+
 sim_find_focus:
-	./build/astro_tools focus_find --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=405,155
+	./build/astro_tools focus_find -vv --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=405,155
 
 atik_find_focus:
-	./build/astro_tools focus_find -vvv --camera_device="ATIK CCD Atik 383L+" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --star_select=405,155
+	./build/astro_tools focus_find -v --camera_device="ATIK CCD Atik 383L+" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --star_select=2390,1267 --num_steps_to_determine_direction=300 --steps_to_reach_focus=300 --extrema_fitness_boundary=16 --rough_focus_granularity_steps=50 --fine_focus_granularity_steps=10 --fine_search_range_steps=150 --outer_hfd_radius_px=15 --fine_focus_record_num_curves=1
 
 atik_take_picture:
 	./build/astro_tools take_picture -v --device_name="ATIK CCD Atik 383L+" --exposure_time=1
+
+
+
+# window_size"].as<unsigned int>();
+# num_steps_to_determine_direction"].as<unsigned int>();
+# steps_to_reach_focus"].as<unsigned int>();
+# extrema_fitness_boundary"].as<unsigned int>();
+# outer_hfd_radius_px"].as<unsigned int>();
+# rough_focus_max_iter_cnt"].as<unsigned int>();
+# etryCnt = cmdLineMap["take_picture_fit_gauss_curve_max_retry_cnt"].as<unsigned int>();
+# eMap["debug_show_take_picture_image"].as<unsigned int>();
+# cmdLineMap["rough_focus_search_range_perc"].as<unsigned int>();
+# cmdLineMap["rough_focus_record_num_curves"].as<unsigned int>();
+#  cmdLineMap["rough_focus_granularity_steps"].as<unsigned int>();
+# mdLineMap["fine_focus_record_num_curves"].as<unsigned int>();
+# cmdLineMap["fine_focus_granularity_steps"].as<unsigned int>();
+# neMap["fine_search_range_steps"].as<unsigned int>();
+# ["vcurve_fit_eps_abs"].as<unsigned int>();
+# ["vcurve_fit_eps_rel"].as<unsigned int>();

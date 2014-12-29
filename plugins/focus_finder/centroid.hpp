@@ -23,8 +23,11 @@
 /** 
  * The star centroid algorithm is based on the code from: http://aladin.u-strasbg.fr/java/Plugins/Centroid.java
  * Further information on image moments can be found on wikipedia: http://de.wikipedia.org/wiki/Moment_%28Bildverarbeitung%29
+ *
  * Also see http://www.isprs.org/proceedings/XXXV/congress/comm3/papers/341.pdf
-*/
+ *
+ * TODO: cleanup centroid New constructor (?), remove old code, duplicated code,...
+ */
 #ifndef _CENTROID_HPP_
 #define _CENTROID_HPP_ _CENTROID_HPP_
 

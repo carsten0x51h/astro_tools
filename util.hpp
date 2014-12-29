@@ -32,14 +32,18 @@
 
 #include <boost/tuple/tuple.hpp>
 #include <boost/tuple/tuple_io.hpp>
-#include "boost/tuple/tuple_comparison.hpp"
+#include <boost/tuple/tuple_comparison.hpp>
+
+#include <CImg.h>
 
 #include "at_exception.hpp"
+#include "at_logging.hpp"
 
 // TODO: Put everything to AT namespace?!?!?!?! -> at_util::
 
 using namespace std;
 using namespace boost;
+using namespace cimg_library;
 
 #define START_MEASURE(__name__)			\
   struct timeval __name__##start;		\
@@ -196,5 +200,92 @@ static bool isWindowInBounds(DimensionT inImgSize, PositionT inCentroid, unsigne
 	}							\
 	return Count;						\
     }
+
+
+  /**
+   * Helper class - horizontal and vertical- 
+   */
+  struct DirectionT {
+    enum TypeE {
+      HORZ,
+      VERT,
+      _Count
+    };
+      
+    static const char * asStr(const TypeE & inType) {
+      switch(inType) {
+      case HORZ: return "HORZ";
+      case VERT: return "VERT";
+      default: return "<?>";
+      }
+    }
+      
+    MAC_AS_TYPE(Type, E, _Count);
+  };
+
+
+DEF_Exception(ExtractLine);
+
+static vector<float>
+extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection) {
+  CImg<float> img(inImage); // Make a copy
+  PositionT center(img.width() / 2, img.height() / 2);
+  vector<float> values;
+
+  // Subtract median image
+  double med = img.median();
+  cimg_forXY(img, x, y) {
+    img(x, y) = (img(x, y) > med ? img(x, y) - med : 0);
+  }
+
+  // Extract slices through centroid for profiles
+  switch(inDirection) {
+  case DirectionT::HORZ: {
+    values.resize(img.width());
+    LOG(trace) << "DirectionT::HORZ sliced values - width: " << img.width() << ": " << endl;
+    cimg_forX(img, x) { 
+      LOG(trace) << "x: " << x << ", y: " << (int) center.get<1>() << " -> value: " << img(x, center.get<1>()) << endl;
+      values[x] = img(x, (int) center.get<1>());
+    }
+    break;
+  }
+  case DirectionT::VERT: {
+    values.resize(img.height());
+    LOG(trace) << "DirectionT::VERT sliced values - height: " << img.height() << ": " << endl;
+    cimg_forY(img, y) {
+      LOG(trace) << "x: " << (int) center.get<0>() << ", y: " << y << " -> value: " << img(center.get<0>(), y) << endl;
+      values[y] = img((int) center.get<0>(), y);
+    }
+    break;
+  }
+  default: {
+    AT_ASSERT(ExtractLine, false, "Invalid direction.");
+  }
+  }
+  return values;
+}
+
+static vector<float>
+extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, const FrameT & inFrame) {
+  // TODO: Check if in bounds?!
+  // TODO: is +1 correct?!
+  CImg<float> resImage = inImage.get_crop(inFrame.get<0>() + 1 /* x */, inFrame.get<1>() + 1 /* y */,
+					  inFrame.get<1>() /* x */ + inFrame.get<2>() /* w */,
+					  inFrame.get<1>() /* y */ + inFrame.get<3>() /* h */);
+
+  return extractLine(resImage, inDirection);
+}
+
+// TODO: Do not pass back vector as copy!
+// TODO: Move to utils?!
+static vector<float>
+extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, PositionT inCenter, size_t inWindowSizePx) {
+  AT_ASSERT(ExtractLine, inWindowSizePx > 0, "Specify inWindowSizePx > 0.");
+    
+  // TODO: Check if in bounds?!
+  FrameT imgWindow = centerPosToFrame(inCenter, inWindowSizePx);
+  return extractLine(inImage, inDirection, imgWindow);
+}
+
 
 #endif /* _UTIL_HPP_ */

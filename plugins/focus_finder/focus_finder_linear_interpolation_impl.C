@@ -31,6 +31,7 @@
 
 namespace AT {
   // TODO: We may finally calculate the variance of the collected curve data with respect to the calculated parameter curve
+  // TODO: This function may finally return the "Master VCurve"... and parameters??!
   void FocusFinderLinearInterpolationImplT::findFocus() {
     LOG(trace) << dec << "FocusFinderLinearInterpolationImplT::findFocus() - Entering..." << endl;
     
@@ -121,16 +122,16 @@ namespace AT {
     // Record VCurves - vector contains empty VCurves
     VCurveVecT vcurves(inNumVCurves);
     
-    LOG(info) << dec << "Recording " << inNumVCurves << " VCurves with "
+    LOG(info) << dec << "Recording " << inNumVCurves << " VCurves with (size of vector " << vcurves.size() << ") with "
 	      << (fabs(inAbsEndPos - inAbsStartPos) / inCurveGranularitySteps) << " points each..." << endl;
     
     for (VCurveVecT::iterator it = vcurves.begin(); it != vcurves.end(); ++it) {
       FOCUS_FINDER_STOP(mStopFlag);
-
-      LOG(info) << dec << " > Recording VCurve " << std::distance(vcurves.begin(), it) << "..." << endl;
+      const size_t vCurveNum = std::distance(vcurves.begin(), it);
+      LOG(info) << dec << " > Recording VCurve " << vCurveNum << "..." << endl;
       
       VCurveT & curVCurve = *it;
-      this->recordVCurve(inAbsStartPos, inAbsEndPos, inCurveGranularitySteps, & curVCurve, false /*do not move back to old pos*/);
+      this->recordVCurve(inAbsStartPos, inAbsEndPos, inCurveGranularitySteps, & curVCurve, vCurveNum, vcurves.size(), false /*do not move back to old pos*/);
       
       LOG(info) << dec << "-> VCurve " << std::distance(vcurves.begin(), it) << " recorded: " << curVCurve << endl;
     }
@@ -271,9 +272,10 @@ namespace AT {
     this->callFocusFinderUpdateListener(& focusFinderData);
 
     // Move mNumStepsToDetermineDirection inwards
+    // TODO!!!! FIXME!!! What if current focus pos < mNumStepsToDetermineDirection!!! HANDLE!
     FOCUS_FINDER_STOP(mStopFlag);
-    mFocuserDevice->moveFocusBy(mNumStepsToDetermineDirection, FocusDirectionT::INWARDS);
-    LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::INWARDS) << " by "
+    mFocuserDevice->moveFocusBy(mNumStepsToDetermineDirection, FocusDirectionT::OUTWARDS);
+    LOG(trace) << dec << "Moved focus " << FocusDirectionT::asStr(FocusDirectionT::OUTWARDS) << " by "
 	       << mNumStepsToDetermineDirection << " steps, pos: " << mFocuserDevice->getAbsPos() << endl;
 
     // Take another picture, calc star values and send update
@@ -288,13 +290,13 @@ namespace AT {
 
     // Move focus back -> mNumStepsToDetermineDirection outwards
     FOCUS_FINDER_STOP(mStopFlag);
-    mFocuserDevice->moveFocusBy(mNumStepsToDetermineDirection, FocusDirectionT::OUTWARDS);
-    LOG(trace) << dec << "Moved focus back " << FocusDirectionT::asStr(FocusDirectionT::OUTWARDS)
+    mFocuserDevice->moveFocusBy(mNumStepsToDetermineDirection, FocusDirectionT::INWARDS);
+    LOG(trace) << dec << "Moved focus back " << FocusDirectionT::asStr(FocusDirectionT::INWARDS)
 	       << " by " << mNumStepsToDetermineDirection << " steps. "
 	       << ", pos: " << mFocuserDevice->getAbsPos() << endl;
 
     // TODO: fitness means here: the greater the worse... the smaller the better... this is counter intuitive!
-    FocusDirectionT::TypeE directionToImproveFocus = (starData.getFitness() > starDataNew.getFitness() ? FocusDirectionT::INWARDS : FocusDirectionT::OUTWARDS);
+    FocusDirectionT::TypeE directionToImproveFocus = (starData.getFitness() > starDataNew.getFitness() ? FocusDirectionT::OUTWARDS : FocusDirectionT::INWARDS);
 
     LOG(info) << dec << "Direction which improves focus is: " << FocusDirectionT::asStr(directionToImproveFocus) << endl;
     LOG(debug) << dec << "StarData1: " << starData << endl << "StartData2: " << starDataNew  << ", pos: " << mFocuserDevice->getAbsPos() << endl;
@@ -346,8 +348,7 @@ namespace AT {
       LOG(trace) << dec << "Took picture - resulting star data new: " << starDataNew << ", pos: " << mFocuserDevice->getAbsPos() << endl;
       
       // Send update to listeners
-      FocusFinderDataT focusFinderDataNew(mFocuserDevice->getAbsPos(), starDataNew, (float) iterCounter / (float) mRoughFocusMaxIterCnt,
-					  updMsg /*, TODO: mVCurve*/);
+      FocusFinderDataT focusFinderDataNew(mFocuserDevice->getAbsPos(), starDataNew, (float) iterCounter / (float) mRoughFocusMaxIterCnt, updMsg);
  
      this->callFocusFinderUpdateListener(& focusFinderDataNew);
       
@@ -376,7 +377,7 @@ namespace AT {
 		 << ", pos: " << mFocuserDevice->getAbsPos() << endl;
       
       // Send update to listeners
-      FocusFinderDataT focusFinderDataFinal(mFocuserDevice->getAbsPos(), starDataFinal, 1.0f, updMsg /*, TODO: mVCurve*/);
+      FocusFinderDataT focusFinderDataFinal(mFocuserDevice->getAbsPos(), starDataFinal, 1.0f, updMsg);
       this->callFocusFinderUpdateListener(& focusFinderDataFinal);
       
       // Just logging...
@@ -409,7 +410,7 @@ namespace AT {
     LOG(trace) << dec << "Took picture - resulting star data: " << starData << endl;
 
     // Send update to listeners
-    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData, 0.0f, ossUpdMsg.str() /*, TODO: mVCurve*/);
+    FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData, 0.0f, ossUpdMsg.str());
     this->callFocusFinderUpdateListener(& focusFinderData);
 
     // Loop until max. fitness has been reached
@@ -434,7 +435,7 @@ namespace AT {
       if (progress <= newProgress) {
 	progress = newProgress;
       }
-      FocusFinderDataT focusFinderData2(mFocuserDevice->getAbsPos(), starData, progress, ossUpdMsg.str() /*, TODO: mVCurve*/);
+      FocusFinderDataT focusFinderData2(mFocuserDevice->getAbsPos(), starData, progress, ossUpdMsg.str());
       this->callFocusFinderUpdateListener(& focusFinderData2);
     }
     
@@ -452,7 +453,7 @@ namespace AT {
     LOG(trace) << dec << "Took picture - resulting star data: " << starData << endl;
     
     // Send update to listeners
-    FocusFinderDataT focusFinderData2(mFocuserDevice->getAbsPos(), starData, 1.0f, ossUpdMsg.str() /*, TODO: mVCurve*/);
+    FocusFinderDataT focusFinderData2(mFocuserDevice->getAbsPos(), starData, 1.0f, ossUpdMsg.str());
     this->callFocusFinderUpdateListener(& focusFinderData2);      
 
     LOG(info) << dec << "Reached extrema (boundary is " << mExtremaFitnessBoundary
@@ -464,8 +465,9 @@ namespace AT {
     return extremaPos; // focuser pos
   }
 
-  void FocusFinderLinearInterpolationImplT::recordVCurve(int inAbsStartPos, int inAbsEndPos, size_t inGranularitySteps, VCurveT * outVCurve, bool inMoveBackToOldPos) {
-    static const char * updMsg = "Recording V-Curve...";
+  void FocusFinderLinearInterpolationImplT::recordVCurve(int inAbsStartPos, int inAbsEndPos, size_t inGranularitySteps, VCurveT * outVCurve, size_t inVCurveNum, size_t inVCurveNumTotal, bool inMoveBackToOldPos) {
+    ostringstream oss;
+    oss << "Recording V-Curve " << (inVCurveNum + 1) << "/" << inVCurveNumTotal << "...";
 
     if (! outVCurve) {
       throw FocusFinderLinearInterpolationExceptionT("No vcurve passed.");
@@ -492,8 +494,8 @@ namespace AT {
       LOG(trace) << dec << "Took picture - resulting star data: " << starData << endl;
       
       // Send update to listeners
-      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData, 1.0f - (fabs(inAbsEndPos - curPos) / fabs(inAbsEndPos - inAbsStartPos)),
-				       updMsg /*, TODO: mVCurve*/);
+      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData,
+				       1.0f - (fabs(inAbsEndPos - curPos) / fabs(inAbsEndPos - inAbsStartPos)), oss.str());
 
       this->callFocusFinderUpdateListener(& focusFinderData);
       
@@ -511,7 +513,7 @@ namespace AT {
       LOG(trace) << dec << "Moved focus back to start pos " << oldFocusPos << endl;
 
       // Send update to listeners
-      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData, 1.0f, updMsg /*, TODO: mVCurve*/);
+      FocusFinderDataT focusFinderData(mFocuserDevice->getAbsPos(), starData, 1.0f, oss.str());
       this->callFocusFinderUpdateListener(& focusFinderData);      
     }
   }

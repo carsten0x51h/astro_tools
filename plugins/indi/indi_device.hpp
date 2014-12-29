@@ -145,9 +145,13 @@ using namespace boost::serialization;
     AT_ASSERT(IndiDevice, mBaseDevice, "Expected mBaseDevice to be set."); \
     if (! inVec)							\
       return;								\
-    WAIT_MAX_FOR(inVec->s == IPS_OK || inVec->s == IPS_IDLE, inTimeoutMs, "Hit timeout setting while setting value."); \
+    ostringstream __oss;						\
+    __oss << "Hit timeout (" << inTimeoutMs << ") while sending property vector '" << string(inVec->name) << "', (waiting for inVec->s == IPS_OK || inVec->s == IPS_IDLE)."; \
+    WAIT_MAX_FOR(inVec->s == IPS_OK || inVec->s == IPS_IDLE, inTimeoutMs, __oss.str()); \
     mIndiClient->sendNew##__type__(inVec);				\
-    WAIT_MAX_FOR(inVec->s != IPS_BUSY, inTimeoutMs, "Hit timeout setting while setting value."); \
+    ostringstream __oss2;						\
+    __oss2 << "Hit timeout (" << inTimeoutMs << ") while sending property vector '" << string(inVec->name) << "', (waiting for inVec->s != IPS_BUSY)."; \
+    WAIT_MAX_FOR(inVec->s != IPS_BUSY, inTimeoutMs, __oss2.str());	\
     if (IPS_ALERT == inVec->s) {					\
       const string exStr = "Problem setting vector '" + string(inVec->name) + "' (ALERT state)."; \
       throw SetPropValueFailedExceptionT(exStr.c_str());		\

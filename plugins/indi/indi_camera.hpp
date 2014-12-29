@@ -484,7 +484,9 @@ public:
       this->sendSwitchVal<CameraTraitsT>(VecPropsT::CCD_ABORT_EXPOSURE, PropsT::ABORT, true, inTimeoutMs);
 
       // Since state of ABORT seems to leave busy state before exposure has been actually stopped, we wait here until it finally happens.
-      WAIT_MAX_FOR(! this->isExposureInProgress(), inTimeoutMs, "Hit timeout setting while setting value.");
+      ostringstream oss;
+      oss << "abortExposure - Hit timeout (" << inTimeoutMs << "ms) setting while setting value.";
+      WAIT_MAX_FOR(! this->isExposureInProgress(), inTimeoutMs, oss.str());
     }
   }
 

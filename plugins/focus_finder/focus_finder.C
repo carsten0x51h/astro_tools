@@ -63,6 +63,24 @@ namespace AT {
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("binning") > 0, "Expecting binning option being set.");
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("star_select") > 0, "Expecting star_select option being set.");
 
+      // Additional focus finder options
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("window_size") > 0, "Expecting option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("num_steps_to_determine_direction") > 0, "Expecting num_steps_to_determine_direction option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("steps_to_reach_focus") > 0, "Expecting steps_to_reach_focus option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("extrema_fitness_boundary") > 0, "Expecting extrema_fitness_boundary option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("outer_hfd_radius_px") > 0, "Expecting outer_hfd_radius_px option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("rough_focus_max_iter_cnt") > 0, "Expecting rough_focus_max_iter_cnt option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("take_picture_fit_gauss_curve_max_retry_cnt") > 0, "Expecting take_picture_fit_gauss_curve_max_retry_cnt option being set.");
+      //AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("debug_show_take_picture_image") > 0, "Expecting debug_show_take_picture_image option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("rough_focus_search_range_perc") > 0, "Expecting rough_focus_search_range_perc option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("rough_focus_record_num_curves") > 0, "Expecting rough_focus_record_num_curves option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("rough_focus_granularity_steps") > 0, "Expecting rough_focus_granularity_steps option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("fine_focus_record_num_curves") > 0, "Expecting fine_focus_record_num_curves option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("fine_focus_granularity_steps") > 0, "Expecting fine_focus_granularity_steps option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("fine_search_range_steps") > 0, "Expecting fine_search_range_steps option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("vcurve_fit_eps_abs") > 0, "Expecting vcurve_fit_eps_abs option being set.");
+      AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("vcurve_fit_eps_rel") > 0, "Expecting vcurve_fit_eps_rel option being set.");
+
       const HostnameAndPortT & hostnameAndPort = cmdLineMap["indi_server"].as<HostnameAndPortT>();
       const string & cameraDeviceName = cmdLineMap["camera_device"].as<string>();
       const string & focuserDeviceName = cmdLineMap["focuser_device"].as<string>();
@@ -71,10 +89,35 @@ namespace AT {
       const BinningT & binning = cmdLineMap["binning"].as<BinningT>();
       const string & starSelect = cmdLineMap["star_select"].as<string>();
 
+      const unsigned int windowSize = cmdLineMap["window_size"].as<unsigned int>();
+      const unsigned int numStepsToDetermineDirection = cmdLineMap["num_steps_to_determine_direction"].as<unsigned int>();
+      const unsigned int stepsToReachFocus = cmdLineMap["steps_to_reach_focus"].as<unsigned int>();
+      const unsigned int extremaFitnessBoundary = cmdLineMap["extrema_fitness_boundary"].as<unsigned int>();
+      const unsigned int outerHfdRadiusPx = cmdLineMap["outer_hfd_radius_px"].as<unsigned int>();
+      const unsigned int roughFocusMaxIterCnt = cmdLineMap["rough_focus_max_iter_cnt"].as<unsigned int>();
+      const unsigned int takePictureFitGaussCurveMaxRetryCnt = cmdLineMap["take_picture_fit_gauss_curve_max_retry_cnt"].as<unsigned int>();
+      //const bool debugShowTakePictureImage = cmdLineMap["debug_show_take_picture_image"].as<unsigned int>();
+      const unsigned int roughFocusSearchRangePerc = cmdLineMap["rough_focus_search_range_perc"].as<unsigned int>();
+      const unsigned int roughFocusRecordNumCurves = cmdLineMap["rough_focus_record_num_curves"].as<unsigned int>();
+      const unsigned int roughFocusGranularitySteps = cmdLineMap["rough_focus_granularity_steps"].as<unsigned int>();
+      const unsigned int fineFocusRecordNumCurves = cmdLineMap["fine_focus_record_num_curves"].as<unsigned int>();
+      const unsigned int fineFocusGranularitySteps = cmdLineMap["fine_focus_granularity_steps"].as<unsigned int>();
+      const unsigned int fineSearchRangeSteps = cmdLineMap["fine_search_range_steps"].as<unsigned int>();
+      const unsigned int vcurveFitEpsAbs = cmdLineMap["vcurve_fit_eps_abs"].as<unsigned int>();
+      const unsigned int vcurveFitEpsRel = cmdLineMap["vcurve_fit_eps_rel"].as<unsigned int>();
+
       LOG(info) << "Indi server: " << hostnameAndPort
 		<< ", cameraDeviceName: " << cameraDeviceName << ", focuserDeviceName: " << focuserDeviceName
 		<< ", focuserDevicePort: " << focuserDevicePort << ", exposureTimeSec: " << exposureTimeSec
-		<< ", binning: " << binning << ", starSelect: " << starSelect << endl;
+		<< ", binning: " << binning << ", starSelect: " << starSelect
+		<< ", windowSize: " << windowSize << ", numStepsToDetermineDirection: " << numStepsToDetermineDirection
+		<< ", stepsToReachFocus: " << stepsToReachFocus << ", extremaFitnessBoundary: " << extremaFitnessBoundary
+		<< ", outerHfdRadiusPx: " << outerHfdRadiusPx << ", roughFocusMaxIterCnt: " << roughFocusMaxIterCnt
+		<< ", takePictureFitGaussCurveMaxRetryCnt: " << takePictureFitGaussCurveMaxRetryCnt
+		<< ", roughFocusSearchRangePerc: " << roughFocusSearchRangePerc << ", roughFocusRecordNumCurves: " << roughFocusRecordNumCurves
+		<< ", roughFocusGranularitySteps: " << fineFocusRecordNumCurves << ", fineFocusGranularitySteps: " << fineFocusGranularitySteps
+		<< ", fineSearchRangeSteps: " << fineSearchRangeSteps << ", vcurveFitEpsAbs: " << vcurveFitEpsAbs
+		<< ", vcurveFitEpsRel: " << vcurveFitEpsRel << endl;
 
       IndiClientT indiClient(hostnameAndPort.getHostname(), hostnameAndPort.getPort(), true /* autoconnect*/);
 
@@ -136,23 +179,23 @@ namespace AT {
 	// Set further configurations
 	// TODO: Question is - do we pass this as optional cmd line parms? or do we provide an additional cfg file with focus finder settings?
 	//       If so, whee do we store the file?
-	ffli.setWindowSize(31);
-	ffli.setNumStepsToDetermineDirection(3000);
-	ffli.setStepsToReachFocus(3000);
-	ffli.setExtremaFitnessBoundary(25);
-	ffli.setOuterHfdRadiusPx(5);
-	ffli.setRoughFocusMaxIterCnt(20);
-	ffli.setTakePictureFitGaussCurveMaxRetryCnt(5);
-	ffli.setDebugShowTakePictureImage(false);
-	ffli.setRoughFocusSearchRangePerc(70);
-	ffli.setRoughFocusRecordNumCurves(1);
-	ffli.setRoughFocusGranularitySteps(500);
-	ffli.setFineFocusRecordNumCurves(3); // was 3
-	ffli.setFineFocusGranularitySteps(100); // was 50
-	ffli.setFineSearchRangeSteps(3000); // was 2000
-	ffli.setVCurveFitEpsAbs(1); // TODO: ok?
-	ffli.setVCurveFitEpsRel(1); // TODO: ok?
-
+	ffli.setWindowSize(windowSize);
+	ffli.setNumStepsToDetermineDirection(numStepsToDetermineDirection);
+	ffli.setStepsToReachFocus(stepsToReachFocus);
+	ffli.setExtremaFitnessBoundary(extremaFitnessBoundary);
+	ffli.setOuterHfdRadiusPx(outerHfdRadiusPx);
+	ffli.setRoughFocusMaxIterCnt(roughFocusMaxIterCnt);
+	ffli.setTakePictureFitGaussCurveMaxRetryCnt(takePictureFitGaussCurveMaxRetryCnt);
+	//ffli.setDebugShowTakePictureImage(debugShowTakePictureImage);
+	ffli.setRoughFocusSearchRangePerc(roughFocusSearchRangePerc);
+	ffli.setRoughFocusRecordNumCurves(roughFocusRecordNumCurves);
+	ffli.setRoughFocusGranularitySteps(roughFocusGranularitySteps);
+	ffli.setFineFocusRecordNumCurves(fineFocusRecordNumCurves);
+	ffli.setFineFocusGranularitySteps(fineFocusGranularitySteps);
+	ffli.setFineSearchRangeSteps(fineSearchRangeSteps);
+	ffli.setVCurveFitEpsAbs(vcurveFitEpsAbs);
+	ffli.setVCurveFitEpsRel(vcurveFitEpsRel);
+	
 	// Find focus - TODO: Catch anything here?!
 	ffli.findFocus();
 
@@ -306,7 +349,7 @@ namespace AT {
     DEFINE_OPTION(optInput, "input", po::value<string>(), "Input file.");
     DEFINE_OPTION(optSelectionCenterPos, "position", po::value<PositionT>(), "Selection center (X x Y) px.");
     DEFINE_OPTION(optFocalDistance, "focal_distance", po::value<unsigned int>(), "Telescope focal distance in mm."); 
-    DEFINE_OPTION(optPixelSize, "pixel_size", po::value<DimensionT>(), "Pixel size (W x H) um."); 
+    DEFINE_OPTION(optPixelSize, "pixel_size", po::value<DimensionT>(), "Pixel size (W x H) um.");
 
     // Camera
     DEFINE_OPTION(optCameraDeviceName, "camera_device", po::value<string>()->required(), "INDI camera device name.");
@@ -321,6 +364,24 @@ namespace AT {
     // Filter wheel
     DEFINE_OPTION(optFilterDeviceName, "filter_device", po::value<string>(), "INDI filter device name.");
     DEFINE_OPTION(optFilter, "filter", po::value<string>(), "Filter to be selected for focusing (position number or name).");
+
+    // Focus finder
+    DEFINE_OPTION(optWindowSize, "window_size", po::value<unsigned int>()->default_value(31), "Star evaluation window size in px.");
+    DEFINE_OPTION(optNumStepsToDetermineDirection, "num_steps_to_determine_direction", po::value<unsigned int>()->default_value(3000), "Star evaluation window size in px.");
+    DEFINE_OPTION(optStepsToReachFocus, "steps_to_reach_focus", po::value<unsigned int>()->default_value(3000), "Steps to reach focus.");
+    DEFINE_OPTION(optExtremaFitnessBoundary, "extrema_fitness_boundary", po::value<unsigned int>()->default_value(25), "Extrema fitness boundary.");
+    DEFINE_OPTION(optOuterHfdRadiusPx, "outer_hfd_radius_px", po::value<unsigned int>()->default_value(5), "Outer HFD radius px.");
+    DEFINE_OPTION(optRoughFocusMaxIterCnt, "rough_focus_max_iter_cnt", po::value<unsigned int>()->default_value(20), "Rough focus max iter cnt.");
+    DEFINE_OPTION(optTakePictureFitGaussCurveMaxRetryCnt, "take_picture_fit_gauss_curve_max_retry_cnt", po::value<unsigned int>()->default_value(5), "Take picture fit gauss curve max retry cnt.");
+    //DEFINE_OPTION(optDebugShowTakePictureImage, "debug_show_take_picture_image", po::value<bool>()->default_value(false), "Show each taken picture (debug).");
+    DEFINE_OPTION(optRoughFocusSearchRangePerc, "rough_focus_search_range_perc", po::value<unsigned int>()->default_value(70), "Rough focus search range percentage.");
+    DEFINE_OPTION(optRoughFocusRecordNumCurves, "rough_focus_record_num_curves", po::value<unsigned int>()->default_value(2), "Rough focus record num curves.");
+    DEFINE_OPTION(optRoughFocusGranularitySteps, "rough_focus_granularity_steps", po::value<unsigned int>()->default_value(500), "Rough focus granularity steps.");
+    DEFINE_OPTION(optFineFocusRecordNumCurves, "fine_focus_record_num_curves", po::value<unsigned int>()->default_value(3), "Fine focus record num curves.");
+    DEFINE_OPTION(optFineFocusGranularitySteps, "fine_focus_granularity_steps", po::value<unsigned int>()->default_value(100), "Fine focus granularity steps.");
+    DEFINE_OPTION(optFineSearchRangeSteps, "fine_search_range_steps", po::value<unsigned int>()->default_value(3000), "Fine search range steps.");
+    DEFINE_OPTION(optVCurveFitEpsAbs, "vcurve_fit_eps_abs", po::value<unsigned int>()->default_value(1), "VCurve fit eps abs.");
+    DEFINE_OPTION(optVCurveFitEpsRel, "vcurve_fit_eps_rel", po::value<unsigned int>()->default_value(1), "VCurve fit eps rel.");
 
 
     /**
@@ -337,6 +398,25 @@ namespace AT {
     focusFindDescr.add(optFilterDeviceName);
     focusFindDescr.add(optFilter);
     focusFindDescr.add(optTimeout);
+
+    // Additional focus finder parameter
+    focusFindDescr.add(optWindowSize);
+    focusFindDescr.add(optNumStepsToDetermineDirection);
+    focusFindDescr.add(optStepsToReachFocus);
+    focusFindDescr.add(optExtremaFitnessBoundary);
+    focusFindDescr.add(optOuterHfdRadiusPx);
+    focusFindDescr.add(optRoughFocusMaxIterCnt);
+    focusFindDescr.add(optTakePictureFitGaussCurveMaxRetryCnt);
+    //focusFindDescr.add(optDebugShowTakePictureImage);
+    focusFindDescr.add(optRoughFocusSearchRangePerc);
+    focusFindDescr.add(optRoughFocusRecordNumCurves);
+    focusFindDescr.add(optRoughFocusGranularitySteps);
+    focusFindDescr.add(optFineFocusRecordNumCurves);
+    focusFindDescr.add(optFineFocusGranularitySteps);
+    focusFindDescr.add(optFineSearchRangeSteps);
+    focusFindDescr.add(optVCurveFitEpsAbs);
+    focusFindDescr.add(optVCurveFitEpsRel);
+
     //focusFindDescr.add_options()("display_picture", "Display picture.");
     REGISTER_CONSOLE_CMD_LINE_COMMAND("focus_find", focusFindDescr, (& FocusFinderActionT::performAction));
 

@@ -21,30 +21,30 @@
  ****************************************************************************/
 
 /**
-   http://www.astro-imaging.com/Tutorial/MatchingCCD.html --> FWHM = 1.02 * (wavelength) * (Focal Ratio)
-   http://www.stanmooreastro.com/pixel_size.htm
-   --> As theory predicts, there is actually slight resolution degradation when FWHM = 3.0 pixels and significant degradation when FWHM = 1.5 pixels.
-   --> As discussed above, typical amateur equipment and conditions can be expected to produce images with FWHM between 2.0 and 3.5 arcsec. 
-   --> Thus a pixel size of 0.5 to 1.5 arcsec can be considered ideal for optimizing resolution.
-
-   This is the full width of the image at half maximum value, or full-width half-maximum, or FWHM.
-   It is a simple and well-defined number which can be used to compare the quality of images obtained
-   under different observing conditions. In the usual sort of astronomical image, the FWHM is measured
-   for a selection of stars in the frame and the "seeing" or image quality is reported as the mean value. 
-   
-   Calculating FWHM:
-   FWHM = sigma * 1.66510922; // 1.66510922 = 2*sqrt(ln(2)) -- WHY? Similar proof but factor of sqrt(2) (?): http://mathworld.wolfram.com/GaussianFunction.html
-
-   -Non-Linear-Curve Fitting! --> gsl
-   See http://en.wikipedia.org/wiki/Levenberg%E2%80%93Marquardt_algorithm
-*/
-
-// TODOs: Remove DirectionT from Fwhm?!, cleanup centroid and Fwhm class!! New constructor, remove old code, duplicated code,...
+ * Use of non-linear-curve fitting to calculaze parameters of the gaussian curve.
+ * We use the gsl (GNU scientific library) to do the curve fitting with the
+ * Marquart-Levenberg algorithm.
+ *
+ * See http://en.wikipedia.org/wiki/Levenberg%E2%80%93Marquardt_algorithm
+ *
+ * Additional notes:
+ *
+ *  http://www.astro-imaging.com/Tutorial/MatchingCCD.html --> FWHM = 1.02 * (wavelength) * (Focal Ratio)
+ *  http://www.stanmooreastro.com/pixel_size.htm
+ *  --> As theory predicts, there is actually slight resolution degradation when FWHM = 3.0 pixels and significant degradation when FWHM = 1.5 pixels.
+ *  --> As discussed above, typical amateur equipment and conditions can be expected to produce images with FWHM between 2.0 and 3.5 arcsec. 
+ *  --> Thus a pixel size of 0.5 to 1.5 arcsec can be considered ideal for optimizing resolution.
+ *
+ *  This is the full width of the image at half maximum value, or full-width half-maximum, or FWHM.
+ *  It is a simple and well-defined number which can be used to compare the quality of images obtained
+ *  under different observing conditions. In the usual sort of astronomical image, the FWHM is measured
+ *  for a selection of stars in the frame and the "seeing" or image quality is reported as the mean value. 
+ *  
+ */
 
 #ifndef _FWHM_HPP_
 #define _FWHM_HPP_ _FWHM_HPP_
 
-#include <CImg.h>
 #include <vector>
 #include <math.h>
 #include <iostream>
@@ -54,106 +54,26 @@
 #include "centroid.hpp"
 #include "at_exception.hpp"
 #include "fitgsl_tmpl.hpp"
+#include "util.hpp"
 
 
 using namespace std;
-using namespace cimg_library;
 
 DEF_Exception(Fwhm);
 
 namespace AT {
-  struct DirectionT {
-    enum TypeE {
-      HORZ,
-      VERT,
-      _Count
-    };
-      
-    static const char * asStr(const TypeE & inType) {
-      switch(inType) {
-      case HORZ: return "HORZ";
-      case VERT: return "VERT";
-      default: return "<?>";
-      }
-    }
-      
-    MAC_AS_TYPE(Type, E, _Count);
-  };
-
-
-
-
-  static vector<float>
-  extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection) {
-    CImg<float> img(inImage); // Make a copy
-    PositionT center(img.width() / 2, img.height() / 2);
-    vector<float> values;
-
-    // Subtract median image
-    double med = img.median();
-    cimg_forXY(img, x, y) {
-      img(x, y) = (img(x, y) > med ? img(x, y) - med : 0);
-    }
-
-    // Extract slices through centroid for profiles
-    switch(inDirection) {
-    case DirectionT::HORZ: {
-      values.resize(img.width());
-      LOG(trace) << "DirectionT::HORZ sliced values - width: " << img.width() << ": " << endl;
-      cimg_forX(img, x) { 
-	LOG(trace) << "x: " << x << ", y: " << (int) center.get<1>() << " -> value: " << img(x, center.get<1>()) << endl;
-	values[x] = img(x, (int) center.get<1>());
-      }
-      break;
-    }
-    case DirectionT::VERT: {
-      values.resize(img.height());
-      LOG(trace) << "DirectionT::VERT sliced values - height: " << img.height() << ": " << endl;
-      cimg_forY(img, y) {
-	LOG(trace) << "x: " << (int) center.get<0>() << ", y: " << y << " -> value: " << img(center.get<0>(), y) << endl;
-	values[y] = img((int) center.get<0>(), y);
-      }
-      break;
-    }
-    default: {
-      AT_ASSERT(Fwhm, false, "Invalid direction.");
-    }
-    }
-    return values;
-  }
-
-  static vector<float>
-  extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, const FrameT & inFrame) {
-    // TODO: Check if in bounds?!
-    // TODO: is +1 correct?!
-    CImg<float> resImage = inImage.get_crop(inFrame.get<0>() + 1 /* x */, inFrame.get<1>() + 1 /* y */,
-					    inFrame.get<1>() /* x */ + inFrame.get<2>() /* w */,
-					    inFrame.get<1>() /* y */ + inFrame.get<3>() /* h */);
-
-    return extractLine(resImage, inDirection);
-  }
-
-  // TODO: Do not pass back vector as copy!
-  // TODO: Move to utils?!
-  static vector<float>
-  extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, PositionT inCenter, size_t inWindowSizePx) {
-    AT_ASSERT(Fwhm, inWindowSizePx > 0, "Specify inWindowSizePx > 0.");
-    
-    // TODO: Check if in bounds?!
-    FrameT imgWindow = centerPosToFrame(inCenter, inWindowSizePx);
-    return extractLine(inImage, inDirection, imgWindow);
-  }
-
-
 
   class FwhmT {  
   private:
     typedef CurveFitTmplT<GaussianFitTraitsT> GaussMatcherT;
     
-  public:    
-    // TODO: Calc FWHM ["] from FWHM [px] --> Needs F?! --> Move out of here?!--> Diff class?!
-    // See http://www.paulmcgale.co.uk/tech.htm
-    // See http://www.wilmslowastro.com/software/formulae.htm  
+  public:
+    /**
+     * Convert number of pixels to arcsec.
+     *
+     * See http://www.paulmcgale.co.uk/tech.htm
+     * See http://www.wilmslowastro.com/software/formulae.htm
+     */
     static double pxToArcsec(double px, double inFocalLength /*mm*/, DimensionT inPixelSize /*um*/, BinningT inBinning) {
       const double pixelSizeEq = sqrt(inPixelSize.get<0>() * inPixelSize.get<1>());
       const double arcsecPerPixel = (206.2648 * (double) inBinning.get<0>() * (double) inBinning.get<1>() * pixelSizeEq) / inFocalLength;
@@ -176,7 +96,14 @@ namespace AT {
     void set(const vector<float> & inValues, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
     
     inline bool valid() const { return (mImgValues.size() > 0 && mFitValues.size() > 0); }
-    
+
+    /**
+     * Calc FWHM ["] from FWHM [px]
+     * FWHM = sigma * 1.66510922 (=2*sqrt(ln(2)))
+     *
+     * See http://mathworld.wolfram.com/GaussianFunction
+     * TODO: --> Needs F?! --> Move out of here?!--> Diff class?!
+     */
     static inline double sigmaToFwhm(double sigma) { return FwhmT::SIGMA_TO_FWHM * sigma; }
     static inline double fwhmToSigma(double sigma) { return sigma / FwhmT::SIGMA_TO_FWHM; }
     
@@ -187,7 +114,7 @@ namespace AT {
     inline float calcGaussianValue(float x) const { return calcGaussianValue(mGaussParms, x); }
     float getStandardDeviation() const;
 
-    ostream & print(ostream & os) const;
+    ostream & print(ostream & os, bool inPrintDetails = false) const;
     friend ostream & operator<<(ostream & os, const FwhmT & inFwhm);
   };
   
