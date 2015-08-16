@@ -337,13 +337,13 @@ public:
   /**
    * Get camera chip info
    */
-  inline DimensionT getMaxResolution() const {
+  inline DimensionT<unsigned int> getMaxResolution() const {
     INumberVectorProperty * vec = this->getNumberVec<CameraTraitsT>(VecPropsT::CCD_INFO);
     return boost::make_tuple(this->getNumberVal<CameraTraitsT>(vec, PropsT::CCD_MAX_X),
 			     this->getNumberVal<CameraTraitsT>(vec, PropsT::CCD_MAX_Y));
   }
 
-  inline DimensionT getPixelSize() const {
+  inline DimensionT<float> getPixelSize() const {
     INumberVectorProperty * vec = this->getNumberVec<CameraTraitsT>(VecPropsT::CCD_INFO);
     return boost::make_tuple(this->getNumberVal<CameraTraitsT>(vec, PropsT::CCD_PIXEL_SIZE_X),
 			     this->getNumberVal<CameraTraitsT>(vec, PropsT::CCD_PIXEL_SIZE_Y));
@@ -356,7 +356,7 @@ public:
   /**
    * Frame
    */
-  inline FrameT getFrame() const {
+  inline FrameT<int> getFrame() const {
     INumberVectorProperty * vec = this->getNumberVec<CameraTraitsT>(VecPropsT::CCD_FRAME);
     return boost::make_tuple(this->getNumberVal<CameraTraitsT>(vec, PropsT::X), 
 			     this->getNumberVal<CameraTraitsT>(vec, PropsT::Y),
@@ -373,7 +373,7 @@ public:
     this->sendNumberVec(nVec, inTimeout);
   }
 
-  inline void setFrame(const FrameT & inFrame, int inTimeout = sDefaultTimeoutMs) {
+  inline void setFrame(const FrameT<int> & inFrame, int inTimeout = sDefaultTimeoutMs) {
     this->setFrame(inFrame.get<0>(), inFrame.get<1>(), inFrame.get<2>(), inFrame.get<3>(), inTimeout);
   }
 
@@ -574,7 +574,7 @@ public:
       
       // Read file
       LOG(debug) << "Reading TMP file '" << sfn << "'..." << flush;
-      readFile(*outImg, sfn, false /* no debug */);
+      readFile(*outImg, sfn);
       LOG(debug) << "DONE." << endl;
       
       // Removing tmp file
@@ -598,7 +598,7 @@ public:
    *       Which algo? zip?
    * TODO: Additionally save image to a file... -> pass image path.
    */
-  void takePicture(CImg<float> * outImg, double inExpTimeSec, const FrameT & inFrame, FrameTypeT::TypeE inFrameType = FrameTypeT::LIGHT, const BinningT & inBinning = BinningT(1, 1), bool inCompressed = false) {
+  void takePicture(CImg<float> * outImg, double inExpTimeSec, const FrameT<int> & inFrame, FrameTypeT::TypeE inFrameType = FrameTypeT::LIGHT, const BinningT & inBinning = BinningT(1, 1), bool inCompressed = false) {
 
     if (! this->isConnected())
       throw IndiCameraNotConnectedExceptionT();

@@ -20,14 +20,6 @@
  *
  ****************************************************************************/
 
-/** 
- * The star centroid algorithm is based on the code from: http://aladin.u-strasbg.fr/java/Plugins/Centroid.java
- * Further information on image moments can be found on wikipedia: http://de.wikipedia.org/wiki/Moment_%28Bildverarbeitung%29
- *
- * Also see http://www.isprs.org/proceedings/XXXV/congress/comm3/papers/341.pdf
- *
- * TODO: cleanup centroid New constructor (?), remove old code, duplicated code,...
- */
 #ifndef _CENTROID_HPP_
 #define _CENTROID_HPP_ _CENTROID_HPP_
 
@@ -41,267 +33,445 @@
 using namespace std;
 using namespace cimg_library;
 
-struct CoordTypeT {
-  enum TypeE {
-    RELATIVE,
-    ABSOLUTE,
-    _Count
-  };
-    
-  static const char * asStr(const TypeE & inType) {
-    switch (inType) {
-    case RELATIVE: return "RELATIVE";
-    case ABSOLUTE: return "ABSOLUTE";
-    default: return "<?>";
-    }
-  }
-};
+namespace AT {
+  DEF_Exception(Centroid);
 
-DEF_Exception(Centroid);
+  class CentroidT {
+  private:  
 
+    /** 
+     * The star centroid algorithm is based on the code from: http://aladin.u-strasbg.fr/java/Plugins/Centroid.java
+     * Further information on image moments can be found on wikipedia: http://de.wikipedia.org/wiki/Moment_%28Bildverarbeitung%29
+     *
+     * Also see http://www.isprs.org/proceedings/XXXV/congress/comm3/papers/341.pdf
+     */
+    static void
+    calcCentroid2ndMoment(const CImg<float> & inImg, PointT<float> * outCentroidPos)
+    {
+      AT_ASSERT(Centroid, outCentroidPos, "outCentroidPos expected to be set.");
 
-class CentroidCalcT {
-public:
+      LOG(trace) << "starCentroid - image dimension (w h)=(" << inImg.width() << " " << inImg.height() << ")" << endl;
 
-  static void getMaxValueAndPosInRegion(const CImg<float> & inImg, int inX, int inY, int inW, int inH, int * outX, int * outY, double * outMaxValue, CoordTypeT::TypeE inCoordType) {
-    if (! outX && ! outY && ! outMaxValue)
-      return;
-    
-    // Crop the selection window if at boundary
-    int x = (inX < 0 ? 0 : (inX > inImg.width() ? inImg.width() : inX));
-    int y = (inY < 0 ? 0 : (inY > inImg.height() ? inImg.height() : inY));
-    int w = ((inImg.width() >= inX + inW) ? inW : inImg.width() - inX);
-    int h = ((inImg.height() >= inY + inH) ? inH : inImg.height() - inY);
-    const CImg <float> & subImage = inImg.get_crop(x, y, x + w, y + h); // TODO: Reference possible?!
-    
-    // Find max pixel value and position
-    // TODO: We may use min_max function instead!?
-    double maxValue = 0;
-    int maxX, maxY;
-    cimg_forXY(subImage, x, y) {
-      if (maxValue < subImage(x,y)) {
-	maxValue = subImage(x,y);
-	maxX = x; maxY = y;
+      // Find max pixel value and position
+      // TODO: We may use min_max function instead!?
+      double maxValue = 0;
+      int xPosMax, yPosMax;
+
+      // TODO: Use CImg max() function?
+      cimg_forXY(inImg, x, y) {
+	if (maxValue < inImg(x,y)) {
+	  maxValue = inImg(x,y);
+	  xPosMax = x;
+	  yPosMax = y;
+	}
       }
-    }
-
-    if (CoordTypeT::ABSOLUTE == inCoordType) {
-      maxX += x;
-      maxY += y;
-    }
-
-    if (outX) *outX = maxX;
-    if (outY) *outY = maxY;
-    if (outMaxValue) *outMaxValue = maxValue;
-  }
-
-
-  static PositionT starCentroid(const CImg<float> & inImg, PositionT inSelectionCenter, unsigned int inWindowSize, CoordTypeT::TypeE inCoordType) {
-    // TODO: Later this one is by default...
-    return starCentroid(inImg,
-			inSelectionCenter.get<0>() - (inWindowSize / 2),
-			inSelectionCenter.get<1>() - (inWindowSize / 2),
-			inWindowSize, inWindowSize, inCoordType);
-  }
-
-  static PositionT starCentroid(const CImg<float> & inImg, int inX, int inY, int inW, int inH, CoordTypeT::TypeE inCoordType) {
-    LOG(trace) << "starCentroid - image dimension (w h)=(" << inImg.width() << " " << inImg.height() << ")" << endl;
-
-    int xPosMax = 0, yPosMax = 0;
-    double maxValue = 0;
-    getMaxValueAndPosInRegion(inImg, inX, inY, 2.0 * inW, 2.0 * inH, & xPosMax, & yPosMax, & maxValue, CoordTypeT::ABSOLUTE);
-
-    // // 0. Crop image
-    // const CImg <float> & subImg = inImg.get_crop(inX, inY, inX + inW, inY + inH);
-
-    // // 1. Find max in delivered subImg
-    // int xPosMax = 0, yPosMax = 0;
-    // float maxValue = 0;
-    // cimg_forXY(subImg, x, y) {
-    //   if (maxValue < subImg(x,y)) {
-    // 	maxValue = subImg(x,y);
-    // 	xPosMax = x;
-    // 	yPosMax = y;
-    //   }
-    // }
-
-    LOG(trace) << "starCentroid - subImg maxValue: " << maxValue << ", xPosMax: " << xPosMax << ", yPosMax: " << yPosMax << endl;
     
-    // HACK: We only need one size since it is always squared! inW ...
-
-    // 2. Create information arrays for grid pixels
-    // TODO: Parametrize?!
-    // const int SIZE = 41; // TODO: How to determine?!
-    // const int BACK = 20; // TODO: How to determine?!
-    const int SIZE = inW; // TODO: How to determine?!
-    //cerr << "SIZE: " << SIZE << endl;
-
-    //const int BACK = 30; // TODO: How to determine?!
-    const int BACK = ceil(SIZE / 2.0) - 1; // TODO: How to determine?!
-    //cerr << "BACK: " << BACK << endl;
-
-    std::valarray<float> vals(SIZE * SIZE);  // this array will contain all the intensities of the pixels in the SIZE*SIZE grid
-    std::valarray<float> dist(SIZE * SIZE);  // contains all distances for each pixel to the central pixel
-    std::valarray<float> distX(SIZE * SIZE); // contains the X distance for each pixel to the central pixel
-    std::valarray<float> distY(SIZE * SIZE); // contains the Y distance for each pixel to the central pixel
-
-    // X and Y are now central brightest pixel in SIZExSIZE grid
-    int startX = xPosMax - BACK, startY = yPosMax - BACK;
-    const CImg <float> & subInImg = inImg.get_crop(startX+1, startY+1, startX + SIZE, startY + SIZE);
-
-    LOG(trace) << "starCentroid - subInImg size (w h)=(" << subInImg.width() << " " << subInImg.height() << ")" << endl;
+      LOG(trace) << "starCentroid - subImg maxValue: " << maxValue << ", xPosMax: " << xPosMax << ", yPosMax: " << yPosMax << endl;
 
 
-    cimg_forXY(subInImg, x, y) {
-      const long off = subInImg.offset(x, y);
-      vals[off] = subInImg(x, y); // save pixel intensity
-      distX[off] = (double)x - (double)xPosMax; // x distance of pixel from top left
-      distY[off] = (double)y - (double)yPosMax; // y distance of pixel from top left
-      dist[off] = sqrt(pow((double) distX[off], 2.0) + pow((double) distY[off], 2.0)); // distance of pixel from top-left, uses x and y to find hypotenuse
-    }
+      // TODO: The cropping below is probably nor required!!!
+      const int SIZE = inImg.width();
+      const int BACK = ceil(inImg.width() / 2.0) - 1;
 
-    // 3. Find valueLow and valueHigh in grid
-    float levelLow = vals[0], levelHigh = vals[0];
+      std::valarray<float> vals(SIZE * SIZE);  // this array will contain all the intensities of the pixels in the SIZE*SIZE grid
+      std::valarray<float> dist(SIZE * SIZE);  // contains all distances for each pixel to the central pixel
+      std::valarray<float> distX(SIZE * SIZE); // contains the X distance for each pixel to the central pixel
+      std::valarray<float> distY(SIZE * SIZE); // contains the Y distance for each pixel to the central pixel
 
-    for (size_t i = 0; i < vals.size(); ++i) {
-      if(vals[i] < levelLow)
-	levelLow = vals[i];
-      if(vals[i] > levelHigh)
-	levelHigh = vals[i];
-    }
+      // X and Y are now central brightest pixel in SIZExSIZE grid
+      int startX = xPosMax - BACK, startY = yPosMax - BACK;
+      const CImg <float> & subInImg = inImg.get_crop(startX+1, startY+1, startX + SIZE, startY + SIZE);
 
-    LOG(trace) << "starCentroid - subInImg levelLow: " << levelLow << ", levelHigh: " << levelHigh << endl;
+      LOG(trace) << "starCentroid - subInImg size (w h)=(" << subInImg.width() << " " << subInImg.height() << ")" << endl;
 
-    // 4. Create secondMoment array
-    // TODO: Simply code - once it works and does what it should!
-    typedef vector<double> MomentValuesT;
-    MomentValuesT secondMoment; // Do we know size before?!
-    double levelCurrHighest = levelHigh;
-    double levelNextHighest = 0;
-    double currentSum = 0;
-
-    // Find the second moment for levelHigh - for every pixel in the grid, check if intesity = current intensity level, find next highest intensity in grid
-    for (size_t i = 0; i < vals.size(); ++i) {
-      if(vals[i] == levelCurrHighest) {
-	currentSum += sqrt((double) dist[i]); //sum the squares of the distances of the pixel from the center
+      cimg_forXY(subInImg, x, y) {
+	const long off = subInImg.offset(x, y);
+	vals[off] = subInImg(x, y); // save pixel intensity
+	distX[off] = (double)x - (double)xPosMax; // x distance of pixel from top left
+	distY[off] = (double)y - (double)yPosMax; // y distance of pixel from top left
+	dist[off] = sqrt(pow((double) distX[off], 2.0) + pow((double) distY[off], 2.0)); // distance of pixel from top-left, uses x and y to find hypotenuse
       }
-      if(vals[i] < levelCurrHighest && vals[i] > levelNextHighest){
-	levelNextHighest = vals[i]; // next highest intensity in grid, used for iterations
+
+      // 3. Find valueLow and valueHigh in grid
+      float levelLow = vals[0], levelHigh = vals[0];
+
+      for (size_t i = 0; i < vals.size(); ++i) {
+	if(vals[i] < levelLow)
+	  levelLow = vals[i];
+	if(vals[i] > levelHigh)
+	  levelHigh = vals[i];
       }
-    }
 
-    levelCurrHighest = levelNextHighest; // Set for next iteration
-    secondMoment.push_back(currentSum); // Add currentSum to the secondMoment array    
+      LOG(trace) << "starCentroid - subInImg levelLow: " << levelLow << ", levelHigh: " << levelHigh << endl;
 
-    // Find second moment for all remaining levels
-    int count = 1; // Keep track of level
+      // 4. Create secondMoment array
+      // TODO: Simply code - once it works and does what it should!
+      typedef vector<double> MomentValuesT;
+      MomentValuesT secondMoment; // Do we know size before?!
+      double levelCurrHighest = levelHigh;
+      double levelNextHighest = 0;
+      double currentSum = 0;
 
-    // FIXME / TODO: Here we had while(levelCurrHighest >= levelLow) {.... which lead to an endless loop (levelCurrHighest == levelLow == 0...)
-    while(levelCurrHighest > levelLow) {
-      currentSum = 0;
-      levelNextHighest = 0;
+      // Find the second moment for levelHigh - for every pixel in the grid, check if intesity = current intensity level, find next highest intensity in grid
+      for (size_t i = 0; i < vals.size(); ++i) {
+	if(vals[i] == levelCurrHighest) {
+	  currentSum += sqrt((double) dist[i]); //sum the squares of the distances of the pixel from the center
+	}
+	if(vals[i] < levelCurrHighest && vals[i] > levelNextHighest){
+	  levelNextHighest = vals[i]; // next highest intensity in grid, used for iterations
+	}
+      }
 
-      // For every pixel in the grid, check if intesity = current intensity level, find next highest intensity in grid
+      levelCurrHighest = levelNextHighest; // Set for next iteration
+      secondMoment.push_back(currentSum); // Add currentSum to the secondMoment array    
+
+      // Find second moment for all remaining levels
+      int count = 1; // Keep track of level
+
+      // FIXME / TODO: Here we had while(levelCurrHighest >= levelLow) {.... which lead to an endless loop (levelCurrHighest == levelLow == 0...)
+      while(levelCurrHighest > levelLow) {
+	currentSum = 0;
+	levelNextHighest = 0;
+
+	// For every pixel in the grid, check if intesity = current intensity level, find next highest intensity in grid
+	for (size_t i = 0; i < vals.size(); i++) {
+	  if(vals[i] == levelCurrHighest)
+	    currentSum += sqrt((double) dist[i]); // Sum the squares of the distances of the pixel from the center
+	  if(vals[i] < levelCurrHighest && vals[i] > levelNextHighest)
+	    levelNextHighest = vals[i]; // Next highest intensity in grid, used for iterations
+	}
+	currentSum += secondMoment.at(count - 1);
+	secondMoment.push_back(currentSum);
+	count++;
+
+	levelCurrHighest = levelNextHighest;
+      } // end while
+
+      LOG(trace) << "starCentroid - List of 2nd moments:" << endl;
+      for (MomentValuesT::const_iterator it = secondMoment.begin(); it != secondMoment.end(); ++it) {
+	LOG(trace) << "Level: " << std::distance<MomentValuesT::const_iterator>(secondMoment.begin(), it) << " - value: " << *it << endl;
+      }
+    
+
+      // 5. Create filteredSecondMoment array
+      MomentValuesT filteredSecondMoment(secondMoment);
+
+      // For each value in second moment array, compute a normalized moving 5 point center weighted filter
+      // (weights of 1,2,3,2,1, Normalization factor = 9) does not compute the first two or last two values of second moment.
+      for (size_t i = 2; i < secondMoment.size() - 2; ++i) {
+	filteredSecondMoment[i] = ((secondMoment[i - 2] + secondMoment[i - 1] * 2.0 + secondMoment[i] * 3.0 + secondMoment[i + 1] * 2.0 + secondMoment[i + 2]) / 9.0);
+      }
+
+      LOG(trace) << "starCentroid - List of filtered 2nd moments:" << endl;
+      for (MomentValuesT::const_iterator it = filteredSecondMoment.begin(); it != filteredSecondMoment.end(); ++it) {
+	LOG(trace) << "Level: " << std::distance<MomentValuesT::const_iterator>(filteredSecondMoment.begin(), it) << " - Filtered 2nd-Moment: " << *it << endl;
+      }
+
+
+      // 6. Find the Threshold
+      int threshInt = 0; // Holds the threshold pixel
+      bool check = true;
+      int level = filteredSecondMoment.size() - 3; // Set search index to the levelLow and begin search there
+
+      while (check) {
+	// If the difference between level and lower level is < 100, threshold has been found
+	double checkVal = fabs(filteredSecondMoment[level] - filteredSecondMoment[level - 1]);
+	if (checkVal < 100) {
+	  threshInt = level;
+	  check = false;
+	}
+	level--;
+	if (level <= 1) {
+	  throw CentroidExceptionT("Threshold could not be found!");
+	  check = false;
+	}
+      }         
+      double threshold = vals[threshInt];
+
+      LOG(trace) << "starCentroid - threshInt: " << threshInt << ", threshold: " << threshold << endl;
+    
+      // 7. Sum of all intensities, xSum, ySum, Threshold & Calculate Centroid
+      double sum = 0; // Sum of all of the intensities in the grid
+      double xSum = 0; // Sum of the product of the intensity of a pixel times it's x-distance from the center of the grid
+      double ySum = 0; // Sum of the product of the intensity of a pixel times it's y-distance from the center of the grid
+
+      // Threshold data and calculate the sums
       for (size_t i = 0; i < vals.size(); i++) {
-	if(vals[i] == levelCurrHighest)
-	  currentSum += sqrt((double) dist[i]); // Sum the squares of the distances of the pixel from the center
-	if(vals[i] < levelCurrHighest && vals[i] > levelNextHighest)
-	  levelNextHighest = vals[i]; // Next highest intensity in grid, used for iterations
+	if(vals[i] <= threshold) {
+	  vals[i] = 0; // Pix intensity <= thres, set to 0
+	} else {
+	  vals[i] = vals[i] - threshold; // Pix intensity > thres, calc subtraction
+	}
+	sum += vals[i]; // Sum of intensities
+	xSum += vals[i] * (double) distX[i]; // Sum of intensities * distance X
+	ySum += vals[i] * (double) distY[i]; // Sum of intensities * distance Y
       }
-      currentSum += secondMoment.at(count - 1);
-      secondMoment.push_back(currentSum);
-      count++;
 
-      levelCurrHighest = levelNextHighest;
-    } // end while
-
-    LOG(trace) << "starCentroid - List of 2nd moments:" << endl;
-    for (MomentValuesT::const_iterator it = secondMoment.begin(); it != secondMoment.end(); ++it) {
-      LOG(trace) << "Level: " << std::distance<MomentValuesT::const_iterator>(secondMoment.begin(), it) << " - value: " << *it << endl;
-    }
+      // Calculate centroid
+      if (! sum) {
+	throw CentroidExceptionT("Unable to determine centroid.");
+      }
     
-
-    // 5. Create filteredSecondMoment array
-    MomentValuesT filteredSecondMoment(secondMoment);
-
-    // For each value in second moment array, compute a normalized moving 5 point center weighted filter
-    // (weights of 1,2,3,2,1, Normalization factor = 9) does not compute the first two or last two values of second moment.
-    for (size_t i = 2; i < secondMoment.size() - 2; ++i) {
-      filteredSecondMoment[i] = ((secondMoment[i - 2] + secondMoment[i - 1] * 2.0 + secondMoment[i] * 3.0 + secondMoment[i + 1] * 2.0 + secondMoment[i + 2]) / 9.0);
+      get<0>(*outCentroidPos) = xPosMax + xSum / sum;
+      get<1>(*outCentroidPos) = yPosMax + ySum / sum;
     }
 
-    LOG(trace) << "starCentroid - List of filtered 2nd moments:" << endl;
-    for (MomentValuesT::const_iterator it = filteredSecondMoment.begin(); it != filteredSecondMoment.end(); ++it) {
-      LOG(trace) << "Level: " << std::distance<MomentValuesT::const_iterator>(filteredSecondMoment.begin(), it) << " - Filtered 2nd-Moment: " << *it << endl;
-    }
+    static void
+    calcCentroidSubPixel(const CImg<float> & inImg, PointT<float> inCenter, PointT<float> * outSubPixelCenter, size_t inNumIterations = 10)
+    {
+      AT_ASSERT(Centroid, outSubPixelCenter, "outSubPixelCenter expected to be set.");
 
+      // 2. Round to nearest integer and then iteratively improve.
+      int xi = floor(get<0>(inCenter) + 0.5);
+      int yi = floor(get<1>(inCenter) + 0.5);
+  
+      CImg<float> img3x3 = inImg.get_crop(xi - 1 /*x0*/, yi - 1 /*y0*/, xi + 1 /*x1*/, yi + 1 /*y1*/);
+    
+      // 3. Interpolate using sub-pixel algorithm
+      float xsc = xi, ysc = yi;
 
-    // 6. Find the Threshold
-    int threshInt = 0; // Holds the threshold pixel
-    bool check = true;
-    int level = filteredSecondMoment.size() - 3; // Set search index to the levelLow and begin search there
-
-    while (check) {
-      // If the difference between level and lower level is < 100, threshold has been found
-      double checkVal = fabs(filteredSecondMoment[level] - filteredSecondMoment[level - 1]);
-      if (checkVal < 100) {
-	threshInt = level;
-	check = false;
+      // Sub pixel interpolation
+      float c, a1, a2, a3, a4, b1, b2, b3, b4;
+      float a1n, a2n, a3n, a4n, b1n, b2n, b3n, b4n;
+    
+      AT_ASSERT(Centroid, img3x3.width() == 3 && img3x3.height() == 3, "Expected image for sub-pixel calculation being 3x3.");
+ 
+      b1 = img3x3(0, 0); a2 = img3x3(1, 0); b2 = img3x3(2, 0);
+      a1 = img3x3(0, 1);  c = img3x3(1, 1); a3 = img3x3(2, 1);
+      b4 = img3x3(0, 2); a4 = img3x3(1, 2); b3 = img3x3(2, 2);
+ 
+      for (size_t i = 0; i < inNumIterations; ++i) {
+	float c2 = 2 * c;
+	float sp1 = (a1 + a2 + c2) / 4;
+	float sp2 = (a2 + a3 + c2) / 4;
+	float sp3 = (a3 + a4 + c2) / 4;
+	float sp4 = (a4 + a1 + c2) / 4;
+    
+	// New maximum is center
+	float newC = std::max({ sp1, sp2, sp3, sp4 });
+    
+	// Calc position of new center
+	float ad = pow(2.0, -((float) i + 1));
+ 
+	if (newC == sp1) {
+	  xsc = xsc - ad; // to the left
+	  ysc = ysc - ad; // to the top
+ 
+	  // Calculate new sub pixel values
+	  b1n = (a1 + a2 + 2 * b1) / 4;
+	  b2n = (c + b2 + 2 * a2) / 4;
+	  b3n = sp3;
+	  b4n = (b4 + c + 2 * a1) / 4;
+	  a1n = (b1n + c + 2 * a1) / 4;
+	  a2n = (b1n + c + 2 * a2) / 4;
+	  a3n = sp2;
+	  a4n = sp4;
+ 
+	} else if (newC == sp2) {
+	  xsc = xsc + ad; // to the right
+	  ysc = ysc - ad; // to the top
+ 
+	  // Calculate new sub pixel values
+	  b1n = (2 * a2 + b1 + c) / 4;
+	  b2n = (2 * b2 + a3 + a2) / 4;
+	  b3n = (2 * a3 + b3 + c) / 4;
+	  b4n = sp4;
+	  a1n = sp1;
+	  a2n = (b2n + c + 2 * a2) / 4;
+	  a3n = (b2n + c + 2 * a3) / 4;
+	  a4n = sp3;
+	} else if (newC == sp3) {
+	  xsc = xsc + ad; // to the right
+	  ysc = ysc + ad; // to the bottom
+ 
+	  // Calculate new sub pixel values
+	  b1n = sp1;
+	  b2n = (b2 + 2 * a3 + c) / 4;
+	  b3n = (2 * b3 + a3 + a4) / 4;
+	  b4n = (2 * a4 + b4 + c) / 4;
+	  a1n = sp4;
+	  a2n = sp2;
+	  a3n = (b3n + 2 * a3 + c) / 4;
+	  a4n = (b3n + 2 * a4 + c) / 4;
+	} else {
+	  xsc = xsc - ad; // to the left
+	  ysc = ysc + ad; // to the bottom  
+ 
+	  // Calculate new sub pixel values
+	  b1n = (2 * a1 + b1 + c) / 4;
+	  b2n = sp2;
+	  b3n = (c + b3 + 2 * a4) / 4;
+	  b4n = (2 * b4 + a1 + a4) / 4;
+	  a1n = (b4n + 2 * a1 + c) / 4;
+	  a2n = sp1;
+	  a3n = sp3;
+	  a4n = (b4n + 2 * a4 + c) / 4;
+	}
+ 
+	c = newC; // Oi = Oi+1
+ 
+	a1 = a1n;
+	a2 = a2n;
+	a3 = a3n;
+	a4 = a4n;
+ 
+	b1 = b1n;
+	b2 = b2n;
+	b3 = b3n;
+	b4 = b4n;
       }
-      level--;
-      if (level <= 1) {
-	throw CentroidExceptionT("Threshold could not be found!");
-	check = false;
-      }
-    }         
-    double threshold = vals[threshInt];
 
-    LOG(trace) << "starCentroid - threshInt: " << threshInt << ", threshold: " << threshold << endl;
-
-
-    // 7. Sum of all intensities, xSum, ySum, Threshold & Calculate Centroid
-    double sum = 0; // Sum of all of the intensities in the grid
-    double xSum = 0; // Sum of the product of the intensity of a pixel times it's x-distance from the center of the grid
-    double ySum = 0; // Sum of the product of the intensity of a pixel times it's y-distance from the center of the grid
-
-    // Threshold data and calculate the sums
-    for (size_t i = 0; i < vals.size(); i++) {
-      if(vals[i] <= threshold) {
-	vals[i] = 0; // Pix intensity <= thres, set to 0
-      } else {
-	vals[i] = vals[i] - threshold; // Pix intensity > thres, calc subtraction
-      }
-      sum += vals[i]; // Sum of intensities
-      xSum += vals[i] * (double) distX[i]; // Sum of intensities * distance X
-      ySum += vals[i] * (double) distY[i]; // Sum of intensities * distance Y
+      outSubPixelCenter->get<0>() = xsc;
+      outSubPixelCenter->get<1>() = xsc;
     }
 
-    // Calculate centroid
-    if (! sum)
-      throw CentroidExceptionT("Unable to determine centroid.");
-
-    double xCentroid = xPosMax + xSum / sum;
-    double yCentroid = yPosMax + ySum / sum;
-
-
-    PositionT centroid;
-
-    // Get closest int values for Xav and Yav
-    if (CoordTypeT::RELATIVE == inCoordType) {
-      centroid.get<0>() = xCentroid;
-      centroid.get<1>() = yCentroid;
-    } else if (CoordTypeT::ABSOLUTE == inCoordType) {
-      centroid.get<0>() = xCentroid + startX + 1; // TODO: +1 required? ok?!
-      centroid.get<1>() = yCentroid + +startY + 1;
-    } else {
-      AT_ASSERT(Centroid, false, "Not supported.");
+    static float
+    calcIx2(const CImg<float> & img, int x)
+    {
+      float Ix = 0;
+      cimg_forY(img, y) { Ix += pow(img(x, y), 2.0) * (float) x; }
+      return Ix;
+    }
+ 
+    static float
+    calcJy2(const CImg<float> & img, int y)
+    {
+      float Iy = 0;
+      cimg_forX(img, x) { Iy += pow(img(x, y), 2.0) * (float) y; }
+      return Iy;
     }
 
-    LOG(info) << "starCentroid - (x y)=(" << xCentroid << " " << yCentroid << ")"
-	      << ", transformed (x y)=" << centroid << endl;
+    // Calculate Intensity Weighted Center (IWC)
+    static void
+    calcIntensityWeightedCenter(const CImg<float> & inImg, PointT<float> * outCentroidPos)
+    {
+      AT_ASSERT(Centroid, outCentroidPos, "outCentroidPos expected to be set.");
+   
+      // Determine weighted centroid - See http://cdn.intechopen.com/pdfs-wm/26716.pdf
+      float Imean2 = 0, Jmean2 = 0, Ixy2 = 0;
+  
+      for(size_t i = 0; i < inImg.width(); ++i) {
+	Imean2 += calcIx2(inImg, i);
+	cimg_forY(inImg, y) { Ixy2 += pow(inImg(i, y), 2.0); }
+      }
 
-    return centroid;
-  }
-};
+      for(size_t i = 0; i < inImg.height(); ++i) {
+	Jmean2 += calcJy2(inImg, i);
+      }
+
+      get<0>(*outCentroidPos) = Imean2 / Ixy2;
+      get<1>(*outCentroidPos) = Jmean2 / Ixy2;
+    }
+
+
+  public:
+    struct CentroidTypeT {
+      enum TypeE {
+	IWC,
+	IWC_SUB,
+	MOMENT2,
+	_Count
+      };
+    
+      static const char * asStr(const TypeE & inType) {
+	switch (inType) {
+	case IWC: return "IWC";
+	case IWC_SUB: return "IWC_SUB";
+	case MOMENT2: return "MOMENT2";
+	default: return "<?>";
+	}
+      }
+      MAC_AS_TYPE(Type, E, _Count);  
+    };
+  
+
+    // Input:  full image, selection-frame, optional: calculation method, abs / rel coordinates (?)
+    //   or
+    // Input:  full image, centerposition, selection size, optional: calculation method, abs / rel coordinates (?)
+    //
+    // Output: centroid position (relative / absoulte), optional: sub-image, frame
+    static void
+    calc(const CImg<float> & inImg, const FrameT<float> & inSelectionFrame, PointT<float> * outCenter, CImg<float> * outImg,
+	 CoordTypeT::TypeE inCoordType = CoordTypeT::RELATIVE, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inZoomFactor = 4.0) {
+
+      AT_ASSERT(Centroid, outCenter, "outCenter expected to be set.");
+
+      PointT<float> relCenter;
+    
+      // Check if selection hits any image boundary...
+      if (! insideBounds(DimensionT<float>(inImg.width(), inImg.height()), inSelectionFrame)) {
+	throw CentroidExceptionT("Frame hits image bounds.");
+      }
+      
+      // Extract sub-image, check corner cases...
+      CImg<float> subImg = inImg.get_crop(inSelectionFrame.get<0>() /*x0*/,
+					  inSelectionFrame.get<1>() /*y0*/,
+					  inSelectionFrame.get<0>() + inSelectionFrame.get<2>() /*x1=x0+w*/,
+					  inSelectionFrame.get<1>() + inSelectionFrame.get<3>() /*y1=y0+h*/);
+
+      // TODO: "zoom" (interpolate) image by factor...
+
+      switch(inCalcType) {
+      case CentroidTypeT::IWC: {
+	calcIntensityWeightedCenter(subImg, & relCenter); // center is relative
+	break;
+      }
+      case CentroidTypeT::IWC_SUB: {
+	PointT<float> centerIwc;
+	calcIntensityWeightedCenter(subImg, & centerIwc); // center is relative
+	calcCentroidSubPixel(subImg, centerIwc, & relCenter, 20 /*numIterations*/);
+	break;
+      }
+      case CentroidTypeT::MOMENT2: {
+	calcCentroid2ndMoment(subImg, & relCenter); // center is relative
+	break;
+      }
+      default: {
+	AT_ASSERT(Centroid, false, "Invalid CentroidTypeT.");
+      }
+      }
+
+      // Calculate new centered frame
+      PointT<float> absCenter(relCenter.get<0>() + inSelectionFrame.get<0>(), relCenter.get<1>() + inSelectionFrame.get<1>());
+      FrameT<float> centeredSelectionFrameAbs = centerPosToFrame(absCenter, inSelectionFrame.get<2>() /*w*/, inSelectionFrame.get<3>() /*h*/);
+
+      // Check if selection hits any image boundary (corner cases)...
+      if (! insideBounds(DimensionT<float>(inImg.width(), inImg.height()), centeredSelectionFrameAbs)) {
+	throw CentroidExceptionT("Centered frame hits image bounds.");
+      }
+    
+      /**
+       * We return a copy of the zoomed (interpolated), centered image
+       * with the boundaries of the passed frame. The boundaries are
+       * checked after "re-centering" again.
+       */
+      if (outImg) {     
+	// Extract sub-image
+	CImg<float> centeredSubImg = inImg.get_crop(centeredSelectionFrameAbs.get<0>() /*x0*/,
+						    centeredSelectionFrameAbs.get<1>() /*y0*/,
+						    centeredSelectionFrameAbs.get<0>() + centeredSelectionFrameAbs.get<2>() /*x1 = x0 + w*/,
+						    centeredSelectionFrameAbs.get<1>() + centeredSelectionFrameAbs.get<3>() /*y1 = y0 + h*/);
+
+	// TODO: Zoom image
+
+	// Finally, return a copy
+	*outImg = centeredSubImg;
+      }
+    
+      // Transform to absolute coordinates if required
+      *outCenter = (CoordTypeT::ABSOLUTE == inCoordType ? absCenter : relCenter);
+      LOG(info) << "calc - final centroid coords (x y)=" << *outCenter << endl;
+    }
+
+  
+    static void
+    calc(const CImg<float> & inImg, const PointT<float> & inSelecionCenter, unsigned int inWindowSize /* width = height */, PointT<float> * outCenter, CImg<float> * outImg = 0, CoordTypeT::TypeE inCoordType = CoordTypeT::RELATIVE, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inZoomFactor = 4.0) {
+
+      FrameT<float> frame = centerPosToFrame(inSelecionCenter, inWindowSize);
+      calc(inImg, frame, outCenter, outImg, inCoordType, inCalcType, inZoomFactor);
+    }
+  };
+} // end AT
+
 
 #endif // _CENTROID_HPP_

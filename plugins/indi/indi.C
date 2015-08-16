@@ -137,19 +137,19 @@ namespace AT {
 		<< ", display picture: " << displayPicture << endl;
 
       // Get max. resolution
-      DimensionT maxRes(inDevice->getMaxResolution().get<0>(), inDevice->getMaxResolution().get<1>());
-      FrameT frameSize;
+      DimensionT<int> maxRes(inDevice->getMaxResolution().get<0>(), inDevice->getMaxResolution().get<1>());
+      FrameT<float> frameSize;
       bool hasIntersection = false;
       
       LOG(debug) << "Max camera resolution: " << maxRes << endl;
       
       if (cmdLineMap.count("frame_size")) {
-	hasIntersection = intersect(maxRes, cmdLineMap["frame_size"].as<FrameT>(), & frameSize);
-	LOG(debug) << "Frame size (user specified): " << cmdLineMap["frame_size"].as<FrameT>() << endl;
+	hasIntersection = intersect(maxRes, cmdLineMap["frame_size"].as< FrameT<float> >(), & frameSize);
+	LOG(debug) << "Frame size (user specified): " << cmdLineMap["frame_size"].as< FrameT<float> >() << endl;
       }
       
       if (! cmdLineMap.count("frame_size") || ! hasIntersection) {
-	frameSize = FrameT(0, 0, maxRes.get<0>(), maxRes.get<1>());
+	frameSize = FrameT<float>(0, 0, maxRes.get<0>(), maxRes.get<1>());
 	LOG(debug) << "Frame size (default=max res): " << frameSize << endl;
       }
       
@@ -376,7 +376,7 @@ namespace AT {
     DEFINE_OPTION(optDeviceName, "device_name", po::value<string>()->required(), "INDI device name.");
     DEFINE_OPTION(optExposureTime, "exposure_time", po::value<float>()->required(), "Camera exposure time in seconds.");
     DEFINE_OPTION(optFrameType, "frame_type", po::value<FrameTypeT::TypeE>()->default_value(FrameTypeT::LIGHT), "Frame type (light|dark|flat|bias).");
-    DEFINE_OPTION(optFrameSize, "frame_size", po::value<FrameT>()->default_value(FrameT(0, 0, 0, 0)), "Frame size (X x Y x W x H).");
+    DEFINE_OPTION(optFrameSize, "frame_size", po::value< FrameT<int> >()->default_value(FrameT<int>(0, 0, 0, 0)), "Frame size (X x Y x W x H).");
     DEFINE_OPTION(optBinning, "binning", po::value<BinningT>()->default_value(BinningT(1, 1)), "Camera binning (X x Y).");
     DEFINE_OPTION(optOutput, "output", po::value<string>()->default_value("a.FTS"), "Output file.");
     DEFINE_OPTION(optTimeout, "timeout", po::value<float>()->default_value(-1), "Seconds until command times out (default: no timeout).");

@@ -39,11 +39,14 @@
 #include "at_exception.hpp"
 #include "at_logging.hpp"
 
-// TODO: Put everything to AT namespace?!?!?!?! -> at_util::
-
 using namespace std;
 using namespace boost;
 using namespace cimg_library;
+
+// NOTE: Defines are not bound to any namespace...
+
+
+DEF_Exception(Timeout);
 
 #define START_MEASURE(__name__)			\
   struct timeval __name__##start;		\
@@ -59,20 +62,18 @@ using namespace cimg_library;
     __resms__ = ((__name__##secs) * 1000 + __name__##usecs / 1000.0) + 0.5; \
   }									\
 
-DEF_Exception(Timeout);
-
 #define WAIT_MAX_FOR(__cond__, __timeout__, __excmsg__)			\
   if (__timeout__) {							\
-     START_MEASURE(__timeout);						\
-     bool __hitTimeout = false;						\
-     while (!(__cond__) && ! __hitTimeout) {				\
-       long __timeMs;							\
-       usleep(1000);							\
-       MEASURE(__timeout, __timeMs);					\
-       __hitTimeout = ( __timeout__ >= 0 ? (__timeout__ <= __timeMs) : false); \
-     }									\
-     if (__hitTimeout)							\
-       throw TimeoutExceptionT(__excmsg__);				\
+    START_MEASURE(__timeout);						\
+    bool __hitTimeout = false;						\
+    while (!(__cond__) && ! __hitTimeout) {				\
+      long __timeMs;							\
+      usleep(1000);							\
+      MEASURE(__timeout, __timeMs);					\
+      __hitTimeout = ( __timeout__ >= 0 ? (__timeout__ <= __timeMs) : false); \
+    }									\
+    if (__hitTimeout)							\
+      throw TimeoutExceptionT(__excmsg__);			\
   }									\
 
 
@@ -97,9 +98,21 @@ DEF_Exception(Timeout);
     }									\
     cout << endl;							\
     if (__hitTimeout)							\
-      throw TimeoutExceptionT(__excmsg__);				\
+      throw TimeoutExceptionT(__excmsg__);			\
   }									\
 
+#define MAC_AS_TYPE(Type, E, Count)			\
+  static inline Type##E as##Type(const char * inX) {	\
+    for (size_t i = 0; i < Count; ++i) {		\
+      Type##E type = static_cast<Type##E>(i);		\
+      if (! strcasecmp(inX, asStr(type))) {		\
+	return type;					\
+      }							\
+    }							\
+    return Count;					\
+  }
+
+  
 /**
  * Floating point comparison function.
  */
@@ -110,22 +123,26 @@ bool rough_eq(T lhs, T rhs, T epsilon = std::numeric_limits<T>::epsilon()) { ret
 /**
  * DimensionT structure (W x H).
  */
-typedef boost::tuple<double, double> DimensionT;
+//typedef boost::tuple<double, double> DimensionT;
+template <typename T> using DimensionT = boost::tuple<T, T>;
 
 /**
- * PositionT structure (X x Y).
- * TODO: Rename to PointT?!
+ * PointT structure (X x Y).
+ *
  */
-typedef boost::tuple<double, double> PositionT;
+//typedef boost::tuple<double, double> PointT;
+template <typename T> using PointT = boost::tuple<T, T>;
 
 /**
  * FrameT structure (X x Y x W x H).
  */
-typedef boost::tuple<int, int, unsigned int, unsigned int> FrameT;
+//typedef boost::tuple<int, int, unsigned int, unsigned int> FrameT;
+template <typename T> using FrameT = boost::tuple<T, T, T, T>;
 
 /**
  * BinningT structure (X, Y).
  */
+// TODO: Formulate as template..
 typedef boost::tuple<unsigned int, unsigned int> BinningT;
 
 /**
@@ -137,7 +154,7 @@ private:
   size_t mPort;
 
 public:
-  HostnameAndPortT(const string & inHostname, size_t inPort) : mHostname(inHostname), mPort(inPort) { }
+  HostnameAndPortT(const string & inHostname = "", size_t inPort = 0) : mHostname(inHostname), mPort(inPort) { }
   const string & getHostname() const { return mHostname; }
   size_t getPort() const { return mPort; }
   ostream & print(ostream & os) const {
@@ -145,83 +162,152 @@ public:
     return os;
   }
   friend ostream & operator<<(ostream & os, const HostnameAndPortT & inHostnameAndPort);
-
 };
 
 ostream & operator<<(ostream & os, const HostnameAndPortT & inHostnameAndPort);
-
-
 
 /**
  * outResFrame contains subframe (FrameT) of intersection with given frame and chip dimension.
  * Returns true if there is any intersection, otherwise false if frame lies out of image bounds.
  */
-static bool intersect(const DimensionT & inDimension, const FrameT & inFrame, FrameT * outResFrame = 0) {
-  typedef boost::tuple<int, int, int, int> RectT;
+static bool
+intersect(const DimensionT<float> & inDimension, const FrameT<float> & inFrame, FrameT<float> * outResFrame = 0)
+{
+  typedef boost::tuple<float, float, float, float> RectT; // TODO: Define elsewhere? Or use Frame? What is difference between RectT and FrameT?????
   RectT rect1(0 /*x1*/, 0 /*y1*/, inDimension.get<0>() /*x2 = width*/, inDimension.get<1>() /*y2 = height*/);
   RectT rect2(inFrame.get<0>() /*x1*/, inFrame.get<1>() /*y1*/, inFrame.get<0>() + inFrame.get<2>() /*x2=x1+w*/,
 	      inFrame.get<1>() + inFrame.get<3>() /*y2=y1+h*/);
-
+  
   RectT rectRes(max(rect1.get<0>()/*x1*/, rect2.get<0>()/*x1*/), max(rect1.get<1>()/*y1*/, rect2.get<1>()/*y1*/),
 		min(rect1.get<2>()/*x2*/, rect2.get<2>()/*x2*/), min(rect1.get<3>()/*y2*/, rect2.get<3>()/*y2*/));
-  
+
   if (rectRes.get<0>()/*x1*/ >= rectRes.get<2>()/*x2*/ || rectRes.get<1>()/*y1*/ >= rectRes.get<3>()/*y2*/)
     return false;
 
   if (outResFrame)
-    *outResFrame = FrameT(rectRes.get<0>()/*x1*/, rectRes.get<1>()/*y1*/,
-			  rectRes.get<2>()/*x2*/ - rectRes.get<0>()/*x1*/,
-			  rectRes.get<3>()/*y2*/ - rectRes.get<1>()/*y1*/);
-
+    *outResFrame = FrameT<float>(rectRes.get<0>()/*x1*/, rectRes.get<1>()/*y1*/,
+				 rectRes.get<2>()/*x2*/ - rectRes.get<0>()/*x1 -> W=x2-x1*/,
+				 rectRes.get<3>()/*y2*/ - rectRes.get<1>()/*y1 -> H=y2-y1*/);  
   return true;
 }
 
-static FrameT centerPosToFrame(PositionT inCentroid, unsigned int inWindowSize) {
-  // TODO: Check if -1 is correct...
-  const unsigned int halfWindowSize = ceil(inWindowSize / 2.0f) - 1;
-  return FrameT(inCentroid.get<0>() - halfWindowSize /*x*/, inCentroid.get<1>() - halfWindowSize /*y*/, inWindowSize /*w*/, inWindowSize /*h*/);
+/**
+* Get all pixels inside a radius: http://stackoverflow.com/questions/14487322/get-all-pixel-array-inside-circle
+* Algorithm: http://en.wikipedia.org/wiki/Midpoint_circle_algorithm
+*/
+static bool
+insideCircle(float inX /*pos of x*/, float inY /*pos of y*/, float inCenterX, float inCenterY, float inRadius) {
+  return (pow(inX - inCenterX, 2.0) + pow(inY - inCenterY, 2.0) <= pow(inRadius, 2.0));
 }
 
-static bool isWindowInBounds(DimensionT inImgSize, PositionT inCentroid, unsigned int inWindowSize) {
-  FrameT inputFrame = centerPosToFrame(inCentroid, inWindowSize);
-  FrameT resultFrame;
-  bool hasIntersection = intersect(inImgSize, inputFrame, & resultFrame);
-  return (inputFrame == resultFrame && hasIntersection);
+static FrameT<float>
+centerPosToFrame(const PointT<float> & inCentroid, float inWidth, float inHeight) {
+  // TODO: Or should we round here to int? Check if -1 is correct...
+  //unsigned int halfWindowWidth = ceil(inWidth / 2.0f) - 1;
+  //unsigned int  halfWindowHeight = ceil(inHeight / 2.0f) - 1;
+  float halfWindowWidth = inWidth / 2.0f;
+  float halfWindowHeight = inHeight / 2.0f;
+  return FrameT<float>(inCentroid.get<0>() /*cx*/ - halfWindowWidth, inCentroid.get<1>() /*cy*/ - halfWindowHeight, inWidth, inHeight);
+}
+
+static FrameT<float>
+centerPosToFrame(const PointT<float> & inCentroid, float inWindowSize) {
+  return centerPosToFrame(inCentroid, inWindowSize, inWindowSize);
+}
+
+static PointT<float>
+frameToCenterPos(const FrameT<float> & inFrame) {
+  return PointT<float>(inFrame.get<0>() /*x0*/ + (inFrame.get<2>() /*w*/ / 2.0), inFrame.get<1>() /*y0*/ + (inFrame.get<3>() /*h*/ / 2.0));
+}
+
+static float
+distance(const PointT<float> & inPoint1, const PointT<float> & inPoint2) {
+  return sqrt(pow(inPoint1.get<0>() - inPoint2.get<0>(), 2.0) + pow(inPoint1.get<1>() - inPoint2.get<1>(), 2.0));
+}
+
+/* Returns true if the selection frame is fully inside the bounds. */
+static bool
+insideBounds(const DimensionT<float> & inDimension, const FrameT<float> & inSelectionFrame) {
+  FrameT<float> resultFrame;
+  bool hasIntersection = intersect(inDimension, inSelectionFrame, & resultFrame);
+
+  // NOTE: For comparison of float/double we cannot use operator==... 
+  static const float epsilon = 0.001;
+  bool equal = rough_eq(inSelectionFrame.get<0>(), resultFrame.get<0>(), epsilon) &&
+    rough_eq(inSelectionFrame.get<1>(), resultFrame.get<1>(), epsilon) &&
+    rough_eq(inSelectionFrame.get<2>(), resultFrame.get<2>(), epsilon) &&
+    rough_eq(inSelectionFrame.get<3>(), resultFrame.get<3>(), epsilon);
+  
+  bool ret = (equal && hasIntersection);
+
+  LOG(trace) << "insideBounds - selectionFrame: " << inSelectionFrame << ", resultFrame: " << resultFrame
+	     << ", equal: " << equal << ", hasIntersection: " << hasIntersection << ", ret-value: " << ret << endl;
+  return ret;
+}
+
+static bool
+insideBounds(const DimensionT<float> & inDimension, const PointT<float> & inCenter, float inWindowSize) {
+  FrameT<float> selectionFrame = centerPosToFrame(inCenter, inWindowSize);
+  return insideBounds(inDimension, selectionFrame);
+}
+
+static FrameT<float>
+rectify(const FrameT<float> & inFrame) {
+  // float border = 3;
+  // float border2 = 2.0 * border;
+  // float width = fabs(inFrame.get<0>() - inFrame.get<2>()) + border2;
+  // float height = fabs(inFrame.get<1>() - inFrame.get<3>()) + border2;
+  // float L = max(width, height);
+  // float x0 = inFrame.get<0>() - (fabs(width - L) / 2.0) - border;
+  // float y0 = inFrame.get<1>() - (fabs(height - L) / 2.0) - border;
+  // return FrameT<float>(x0, y0, x0 + L, y0 + L);
+  float border = 3;
+  float L = max(inFrame.get<2>() /*width*/, inFrame.get<3>() /*height*/);
+  return FrameT<float>(inFrame.get<0>() - border, inFrame.get<1>() - border, L + 2.0 * border, L + 2.0 * border);
 }
 
 
-#define MAC_AS_TYPE(Type, E, Count)				\
-    static inline Type##E as##Type(const char * inX) {		\
-	for (size_t i = 0; i < Count; ++i) {			\
-	    Type##E type = static_cast<Type##E>(i);		\
-	    if (! strcasecmp(inX, asStr(type))) {		\
-		return type;					\
-	    }							\
-	}							\
-	return Count;						\
-    }
 
-
-  /**
-   * Helper class - horizontal and vertical- 
-   */
-  struct DirectionT {
-    enum TypeE {
-      HORZ,
-      VERT,
-      _Count
-    };
-      
-    static const char * asStr(const TypeE & inType) {
-      switch(inType) {
-      case HORZ: return "HORZ";
-      case VERT: return "VERT";
-      default: return "<?>";
-      }
-    }
-      
-    MAC_AS_TYPE(Type, E, _Count);
+/**
+ * Helper class - horizontal and vertical.
+ */
+struct DirectionT {
+  enum TypeE {
+    HORZ,
+    VERT,
+    _Count
   };
+      
+  static const char * asStr(const TypeE & inType) {
+    switch(inType) {
+    case HORZ: return "HORZ";
+    case VERT: return "VERT";
+    default: return "<?>";
+    }
+  }
+      
+  MAC_AS_TYPE(Type, E, _Count);
+};
+
+
+/**
+ * Helper class - relative and absolute coordinates. 
+ */
+struct CoordTypeT {
+  enum TypeE {
+    RELATIVE,
+    ABSOLUTE,
+    _Count
+  };
+  
+  static const char * asStr(const TypeE & inType) {
+    switch (inType) {
+    case RELATIVE: return "RELATIVE";
+    case ABSOLUTE: return "ABSOLUTE";
+    default: return "<?>";
+    }
+  }
+};
 
 
 DEF_Exception(ExtractLine);
@@ -229,7 +315,7 @@ DEF_Exception(ExtractLine);
 static vector<float>
 extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection) {
   CImg<float> img(inImage); // Make a copy
-  PositionT center(img.width() / 2, img.height() / 2);
+  PointT<float> center(img.width() / 2, img.height() / 2);
   vector<float> values;
 
   // Subtract median image
@@ -266,7 +352,7 @@ extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection) 
 }
 
 static vector<float>
-extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, const FrameT & inFrame) {
+extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, const FrameT<float> & inFrame) {
   // TODO: Check if in bounds?!
   // TODO: is +1 correct?!
   CImg<float> resImage = inImage.get_crop(inFrame.get<0>() + 1 /* x */, inFrame.get<1>() + 1 /* y */,
@@ -279,13 +365,12 @@ extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, 
 // TODO: Do not pass back vector as copy!
 // TODO: Move to utils?!
 static vector<float>
-extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, PositionT inCenter, size_t inWindowSizePx) {
+extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, PointT<float> inCenter, size_t inWindowSizePx) {
   AT_ASSERT(ExtractLine, inWindowSizePx > 0, "Specify inWindowSizePx > 0.");
     
   // TODO: Check if in bounds?!
-  FrameT imgWindow = centerPosToFrame(inCenter, inWindowSizePx);
+  FrameT<float> imgWindow = centerPosToFrame(inCenter, inWindowSizePx);
   return extractLine(inImage, inDirection, imgWindow);
 }
-
 
 #endif /* _UTIL_HPP_ */

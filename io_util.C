@@ -22,12 +22,19 @@
 
 #include "io_util.hpp"
 
-bool readFile(CImg<float> & cimg, const string & inFilename, bool inVerboseMode) {
+// TODO: namespace AT
+
+bool readFile(CImg<float> & cimg, const string & inFilename, long * outBitPix, bool inVerboseMode) {
   FITS::setVerboseMode(inVerboseMode);
+  
   try {
     std::auto_ptr<FITS> pInfile(new FITS(inFilename, Read, true));
     PHDU& image = pInfile->pHDU(); 
-    
+
+    if (outBitPix) {
+      *outBitPix = image.bitpix();
+    }
+
     // read all user-specifed, coordinate, and checksum keys in the image
     image.readAllKeys();
 
@@ -43,8 +50,9 @@ bool readFile(CImg<float> & cimg, const string & inFilename, bool inVerboseMode)
     image.read(imgData);
 
     // For now we create a copy... maybe there is a better way to directly read data into CImg, later...
-    //cimg_forXY(cimg, x, y) { cimg(x, cimg.height() - 1 - y) = imgData[cimg.offset(x, y)]; }
-    cimg_forXY(cimg, x, y) { cimg(x, y) = imgData[cimg.offset(x, y)]; }
+    // TODO: Which one is correct?
+    cimg_forXY(cimg, x, y) { cimg(x, cimg.height() - 1 - y) = imgData[cimg.offset(x, y)]; }
+    //cimg_forXY(cimg, x, y) { cimg(x, y) = imgData[cimg.offset(x, y)]; }
 
   } catch (FitsException&) {
     // will catch all exceptions thrown by CCfits, including errors found by cfitsio (status != 0)

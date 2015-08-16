@@ -74,6 +74,7 @@ namespace AT {
 	po::store(po::command_line_parser(argc, argv).options(genericExtDescr).allow_unregistered().positional(pos).run(), *outCmdLineOptionsMap);
 	po::notify(*outCmdLineOptionsMap);
       } catch(std::exception & exc) {
+	cerr << "CASE1..." << endl;
 	printHelpNotice(cout);
 	throw;
       }
@@ -104,6 +105,7 @@ namespace AT {
 	store(parse_command_line(argc, argv, allowedDescr), *outCmdLineOptionsMap);
 	notify(*outCmdLineOptionsMap);
       } catch(std::exception & exc) {
+	cerr << "CASE2..." << endl;
 	printHelpNotice(cout);
 	throw;
       }

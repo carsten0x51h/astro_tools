@@ -46,7 +46,7 @@ namespace boost {
     }
   }
 
-  void validate(boost::any & v, const vector<string> & values, FrameT * target_type, int) {
+  void validate(boost::any & v, const vector<string> & values, FrameT<float> * target_type, int) {
     using namespace boost::program_options;
 
     static regex r("([0-9]+)(x|,)([0-9]+)(x|,)([0-9]+)(x|,)([0-9]+)");
@@ -55,14 +55,35 @@ namespace boost {
 
     smatch match;
     if (regex_match(s, match, r)) {
-      v = any(FrameT(lexical_cast<int>(match[1]), lexical_cast<int>(match[3]), lexical_cast<int>(match[5]), lexical_cast<int>(match[7])));
+      v = any(FrameT<float>(lexical_cast<int>(match[1]), lexical_cast<int>(match[3]), lexical_cast<int>(match[5]), lexical_cast<int>(match[7])));
     } else {
       throw validation_error(validation_error::invalid_option_value);
     }
   }
 
   // Note: Also used for DimensionT since same tupple type...
-  void validate(boost::any & v, const vector<string> & values, PositionT * target_type, int) {
+  void validate(boost::any & v, const vector<string> & values, PointT<float> * target_type, int) {
+    using namespace boost::program_options;
+
+    cerr << "validate(boost::any & v, const vector<string> & values, PointT<float> * target_type, int...."  << endl;
+    
+    static regex r("([0-9]*\\.?[0-9]+)(x|,)([0-9]*\\.?[0-9]+)");
+    validators::check_first_occurrence(v);
+    const string & s = validators::get_single_string(values);
+
+    smatch match;
+    if (regex_match(s, match, r)) {
+
+      // TODO/FIXME: The any cast fails... somehow... any -> Point
+      
+      v = any(PointT<float>(lexical_cast<float>(match[1]), lexical_cast<float>(match[3])));
+    } else {
+      throw validation_error(validation_error::invalid_option_value);
+    }
+  }
+
+  // Note: Also used for DimensionT since same tupple type...
+  void validate(boost::any & v, const vector<string> & values, PointT<int> * target_type, int) {
     using namespace boost::program_options;
 
     static regex r("([0-9]*\\.?[0-9]+)(x|,)([0-9]*\\.?[0-9]+)");
@@ -71,11 +92,14 @@ namespace boost {
 
     smatch match;
     if (regex_match(s, match, r)) {
-      v = any(PositionT(lexical_cast<double>(match[1]), lexical_cast<double>(match[3])));
+      v = any(PointT<int>(lexical_cast<int>(match[1]), lexical_cast<int>(match[3])));
     } else {
       throw validation_error(validation_error::invalid_option_value);
     }
   }
+
+  // TODO: We may use a macro here to define it for float, int... and whatever comes next..
+  
 };
 
 /**

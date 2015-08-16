@@ -203,7 +203,7 @@ namespace AT {
      *       allows moving the window in all directions depending on the new star position always
      *       having enough pixels around.
      */
-    FrameT imgFrame = centerPosToFrame(mStarCenterPos, 3.0 * mWindowSize);
+    FrameT<float> imgFrame = centerPosToFrame(mStarCenterPos, 3.0 * mWindowSize);
 
     // Calc star values, throws if star could not be determined
     size_t retryCnt = 0;
@@ -215,11 +215,15 @@ namespace AT {
 	mCameraDevice->takePicture(& img, mExposureTimeSec, imgFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
 
 	// Determine centroid (-> recenter), throws in case of failure -> no valid star detected
-	PositionT centerPos(img.width() / 2, img.height() / 2);
+	PointT<float> centerPos(img.width() / 2, img.height() / 2);
 
 	// Centroid coordinates are determined absolute to img which is 3 * mWindowSize in width and height.
-	PositionT centroid = CentroidCalcT::starCentroid(img, centerPos, img.width(), CoordTypeT::ABSOLUTE);	
-	FrameT subImgFrame = centerPosToFrame(centroid, mWindowSize);
+	//PointT<float> centroid = CentroidCalcT::starCentroid(img, centerPos, img.width(), CoordTypeT::ABSOLUTE);	
+	PointT<float> centroid;
+	CentroidT::calc(img, centerPos, img.width(), & centroid, 0 /*TODO: USe this!*/, CoordTypeT::ABSOLUTE);
+
+	// TODO:!!!!!!! Code below can be replaced by just using the outcome of calc...
+	FrameT<float> subImgFrame = centerPosToFrame(centroid, mWindowSize);
 
 	LOG(debug) << "Recentering to centroid - (x,y)=(" << centroid.get<0>() << ", " << centroid.get<1>() << ")..." << endl;
 

@@ -1,3 +1,5 @@
+//TODO: FwhMT class extension, Noise reduction, hot pixel filter(?), 
+
 /*****************************************************************************
  *
  *  AstroTools
@@ -22,13 +24,19 @@
 
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
+#include <limits>
 
 #include "astro_tools_app.hpp"
 #include "at_logging.hpp"
+#include "io_util.hpp"
+
 #include "at_validator.hpp"
+#include "focus_finder_validator.hpp"
 
 #include "focus_finder.hpp"
 
+#include "threshold.hpp"
+#include "cluster.hpp"
 #include "centroid.hpp"
 #include "focus_finder_linear_interpolation_impl.hpp"
 
@@ -152,7 +160,7 @@ namespace AT {
 
 
 	// Star selection
-	PositionT starCenterPos;
+	PointT<float> starCenterPos;
 
 	if (! strcmp(starSelect.c_str(), "auto")) {
 	  // TODO: Implement automatic star selection
@@ -166,7 +174,7 @@ namespace AT {
 	  vector<string> values;
 	  values.push_back(starSelect);
 	  validate(v, values, & starCenterPos, 0);
-	  starCenterPos = any_cast<PositionT>(v); // throws boost::bad_any_cast
+	  starCenterPos = any_cast<PointT<float> >(v); // throws boost::bad_any_cast
 	}
 
 	LOG(info) << "Star center pos: " << starCenterPos << endl;
@@ -198,7 +206,7 @@ namespace AT {
 	
 	// Find focus - TODO: Catch anything here?!
 	ffli.findFocus();
-
+	
 	ffli.unregisterFocusFinderUpdateListener(focusFinderUpdateHandle);
 
       } else {
@@ -209,86 +217,114 @@ namespace AT {
     }
   };
 
-
-  // TODO: unsigned int windowSize as tmpl. argument no longer required, we pass it as cmd. argument because we don't know it at compile time!
-  template <typename ActionT, unsigned int windowSize>
+  template <typename ActionT>
   class CalcStarActionT {
   public:
-    static unsigned int getWindowSize() { return windowSize; } 
     static void performAction(void) {
       const po::variables_map & cmdLineMap = CommonAstroToolsAppT::getCmdLineOptionsMap();
       AT_ASSERT(FocusFinderPlugin, cmdLineMap.count("input") > 0, "Expecting input option being set.");
       const string & inputFilename = cmdLineMap["input"].as<string>();
-      
-      const unsigned int halfWindowSize = windowSize / 2;
-      
-      CImg<float> image(inputFilename.c_str()); // TODO: What happens if file does not exist?!
-      PositionT selectionCenter;
-      
-      if (image.width() == windowSize && image.height() == windowSize) {
-	selectionCenter = PositionT(halfWindowSize, halfWindowSize);
-	
-	LOG(debug) << dec << "Image size (w h)=(" << image.width() << " " << image.height()
-		   << ") exactly fits analysis window (w w)=" << windowSize << " " << windowSize
-		   << "). Position equals center (x y)=" << selectionCenter << endl;
-	
-      } else if (image.width() >= windowSize && image.height() >= windowSize) {
-	// Require position argument sinze image is bigger than analysis window.
-	if (! cmdLineMap.count("position"))
-	  throw RequireOptionExceptionT("Require --position argument.");
-	
-	selectionCenter = cmdLineMap["position"].as<PositionT>();
-	
-	LOG(debug) << dec << "Image size (w h)=(" << image.width() << " " << image.height()
-		   << ") is bigger than analysis window (w w)=(" << windowSize << " " << windowSize
-		   << "). Position specified by user (x y)=" << selectionCenter << endl;
-	
-	// Evaluate position (check if in bounds...)
-	if (! isWindowInBounds(DimensionT(image.width(), image.height()), selectionCenter, windowSize)) {
-	  stringstream ss;
-	  ss << dec << "Selected area intersects image boundary. Image size (w h)=(" << image.width() << " " << image.height()
-	     << "), center (x y)=" << selectionCenter << ", windowSize: " << windowSize << "px" << endl;
-	  throw WindowOutOfBoundsExceptionT(ss.str().c_str());
-	}
-	
-	LOG(info) << dec << "Position (x y)=" << selectionCenter << ", window size (w w)=(" << windowSize << " " << windowSize << endl;
+      long bitPix = 0;
+ 
+      CImg<float> image;
+
+      // Read file to CImg
+      // NOTE: We need to use the readFile function based on CCfits because we need the image depth (bits)
+      try {
+	LOG(info) << "Opening file " << inputFilename.c_str() << endl;
+	readFile(image, inputFilename.c_str(), & bitPix);
+      } catch (FitsException &) {
+	throw FileNotFoundExceptionT("Read FITS failed.");
+      }
+
+      // Create a binary image to prepare clustering
+      float th = ThresholdT::calc(image, bitPix, ThresholdT::ThresholdTypeT::OTSU);
+      CImg<float> thresholdImg(image); // Create a copy
+      thresholdImg.threshold(th);
+
+      // Perform star clustering to determine interesting regions
+      list<FrameT<int> > selectionList;
+      ClusterT::calc(thresholdImg, & selectionList);
+
+      AT_ASSERT(FocusFinderPlugin, selectionList.size(), "No star recognized by clustering. At least one required.");
+
+      // Star selection
+      FrameT<unsigned int> selectedFrame;
+      const string & starSelect = cmdLineMap["star_select"].as<string>();
+
+      if (! strcmp(starSelect.c_str(), "auto")) {
+	LOG(debug) << "Automatically select 1 star out of " << selectionList.size() << "..." << endl;
+	// TODO: Implement automatic star selection - For now we pick just the first one......
+	// IDEA: Pick first (best? -> closest to center, brightness at max/2?) star from cluster list... / throw if more than one star?
+	selectedFrame = *selectionList.begin();
       } else {
-	stringstream ss;
-	ss << dec << "Image too small for analysis. Image size (w h)=(" << image.width() << " " << image.height() << "),"
-	   << " but size required is at least (w w)=(" << windowSize << " " << windowSize << ")" << endl;
-	throw ImageDimensionExceptionT(ss.str().c_str());
+	PointT<float> selectionCenter;
+
+	if (! strcmp(starSelect.c_str(), "display")) {
+	  // NOTE: See http://cimg.eu/reference/structcimg__library_1_1CImgDisplay.html
+	  // TODO: We will use our own graphical star-selector later - with zoom, value preview etc.
+	  CImgDisplay dispStarSelect(image, "Select a star (click left)...");
+	  
+	  while (! dispStarSelect.is_closed()) {
+	    if (dispStarSelect.button() & 1) { // Left button clicked.
+	      selectionCenter = PointT<float>(dispStarSelect.mouse_x(), dispStarSelect.mouse_y());
+	      LOG(debug) << "Left click - position (x,y)=" << selectionCenter << endl;
+	      break;
+	    }
+	    dispStarSelect.wait();
+	  }
+	} else {
+	  // Check if valid position
+	  boost::any v;
+	  vector<string> values;
+	  values.push_back(starSelect);
+	  validate(v, values, & selectionCenter, 0);
+	  selectionCenter = any_cast<PointT<float> >(v); // throws boost::bad_any_cast	  
+	}
+
+	LOG(debug) << "Selecting closest star to position " << selectionCenter << "..." << endl;
+	  
+	// Pick closest star from cluster list...
+	// NOTE: We may solve this by a list sort with predicate instead... but this would require to change the list 
+	float minDist = std::numeric_limits<float>::max();
+	  
+	for (list<FrameT<int> >::const_iterator it = selectionList.begin(); it != selectionList.end(); ++it) {
+	  PointT<float> clusterCenter = frameToCenterPos(*it);
+	  float dist = distance(clusterCenter, selectionCenter);
+	  if (dist < minDist) {
+	    minDist = dist;
+	    selectedFrame = *it;
+	  }
+	}
       }
 
-      ActionT::performAction(image, selectionCenter, cmdLineMap);
-    }
-  };
-
-  // TODO: Where to put this?!
-  static const unsigned int sWindowSize = 31; // TODO: Pass as argument instead?!
-
-  class CalcStarCentroidActionT : public CalcStarActionT<CalcStarCentroidActionT, sWindowSize> {
-  public:
-    static void performAction(const CImg<float> & inImage, const PositionT & inSelectionCenter, const po::variables_map & inCmdLineMap) {
-      // At this place, 'position' is valid and marks the center of the analysis window
-      // and all pixels wihin this window exist.
-      PositionT centroid = CentroidCalcT::starCentroid(inImage, inSelectionCenter, sWindowSize, CoordTypeT::ABSOLUTE);
-      cout << dec << "Centroid: " << centroid << endl;
-    }
-  };
-
-  class CalcStarParmsActionT : public CalcStarActionT<CalcStarParmsActionT, sWindowSize> {
-  public:
-    static void performAction(const CImg<float> & inImage, const PositionT & inSelectionCenter, const po::variables_map & inCmdLineMap) {
-      PositionT centroid = CentroidCalcT::starCentroid(inImage, inSelectionCenter, sWindowSize, CoordTypeT::ABSOLUTE);
-
-      // Check if there is enough image around the centroid
-      if (! isWindowInBounds(DimensionT(inImage.width(), inImage.height()), centroid, sWindowSize)) {
-	stringstream ss;
-	ss << dec << "Selected area intersects image boundary. Image size (w h)=(" << inImage.width() << " " << inImage.height()
-	   << "), center (x y)=" << centroid << ", sWindowSize: " << sWindowSize << "px" << endl;
-	throw WindowOutOfBoundsExceptionT(ss.str().c_str());
-      }
+      // Rectify selection frame
+      FrameT<float> squareFrame = rectify(selectedFrame);
+      LOG(debug)  << "Selected frame: " << dec << selectedFrame << " -> rectified: " << squareFrame << endl;
       
+      ActionT::performAction(image, squareFrame, cmdLineMap);
+    }
+  };
+
+
+  class CalcStarCentroidActionT : public CalcStarActionT<CalcStarCentroidActionT> {
+  public:
+    static void performAction(const CImg<float> & inImage, const FrameT<float> & inSquareFrame, const po::variables_map & inCmdLineMap) {
+      // Determine the centroid
+      typename CentroidT::CentroidTypeT::TypeE centroidMethod = inCmdLineMap["centroid_method"].as<typename CentroidT::CentroidTypeT::TypeE>();
+      PointT<float> centroid;
+      CentroidT::calc(inImage, inSquareFrame, & centroid, 0 /*centeredImg not required*/, CoordTypeT::ABSOLUTE, centroidMethod);
+      cout << dec << "Centroid (method=" << CentroidT::CentroidTypeT::asStr(centroidMethod) << "): " << centroid << endl;
+    }
+  };
+
+  class CalcStarParmsActionT : public CalcStarActionT<CalcStarParmsActionT> {
+  public:
+    static void performAction(const CImg<float> & inImage, const FrameT<float> & inSquareFrame, const po::variables_map & inCmdLineMap) {     
+      // TODO: Add additional arguments: zoom factor
+      LOG(trace) << "Entering CalcStarParmsActionT::performAction()..." << endl;
+      LOG(trace) << "Input image size: " << inImage.width() << " x " << inImage.height() << endl;
+
       // Check for additional parameter consistency
       bool haveFocalDistance = (inCmdLineMap.count("focal_distance") > 0);
       bool havePixelSize = (inCmdLineMap.count("pixel_size") > 0);
@@ -299,14 +335,19 @@ namespace AT {
 	   << "' argument when using '" << (havePixelSize ? "--pixel_size" : "--focal_distance")
 	   << "' argument." << endl;
 	throw RequireOptionExceptionT(ss.str().c_str());
-      }
+      }     
+      
+      // Determine the centroid
+      typename CentroidT::CentroidTypeT::TypeE centroidMethod = inCmdLineMap["centroid_method"].as<typename CentroidT::CentroidTypeT::TypeE>();
+      PointT<float> centroid;
+      CentroidT::calc(inImage, inSquareFrame, & centroid, 0 /*centeredImg not required*/, CoordTypeT::ABSOLUTE, centroidMethod);
+      LOG(debug) << "Centroid: " << centroid << endl;
+      
+      HfdT hfd(inImage, centroid);
 
-      // TODO: Where to put constants? Use sWindowSize / 2?
-      const size_t sHfdOuterRadiusPx = 15; // TODO: Pass as argunment?!
-
-      HfdT hfd(inImage, sHfdOuterRadiusPx, centroid.get<0>(), centroid.get<1>(), sWindowSize);
-      FwhmT fwhmHorz(extractLine(inImage, DirectionT::HORZ, centroid, sWindowSize));
-      FwhmT fwhmVert(extractLine(inImage, DirectionT::VERT, centroid, sWindowSize));
+      // FIXMEFIXME
+      FwhmT fwhmHorz(extractLine(inImage, DirectionT::HORZ, centroid, inSquareFrame.get<2>() /*w*/));
+      FwhmT fwhmVert(extractLine(inImage, DirectionT::VERT, centroid, inSquareFrame.get<3>() /*h*/));
 
       double hfdArcSec = 0, fwhmHorzArcSec = 0, fwhmVertArcSec = 0;
 
@@ -314,7 +355,7 @@ namespace AT {
 	AT_ASSERT(FocusFinderPlugin, inCmdLineMap.count("binning") > 0, "Expecting binning option being set.");
 
 	unsigned int focalDistance = inCmdLineMap["focal_distance"].as<unsigned int>();
-	const DimensionT & pixelSize = inCmdLineMap["pixel_size"].as<DimensionT>();
+	const DimensionT<int> & pixelSize = inCmdLineMap["pixel_size"].as<DimensionT<int> >();
 	const BinningT & binning = inCmdLineMap["binning"].as<BinningT>();
 
 	hfdArcSec = FwhmT::pxToArcsec(hfd.getValue(), focalDistance, pixelSize, binning);
@@ -330,12 +371,22 @@ namespace AT {
       stringstream fwhmHorzArcSecSs;
       fwhmHorzArcSecSs << "=" << fwhmHorzArcSec << "\"";
       cout << "Fwhm(" << DirectionT::asStr(DirectionT::HORZ) << ")=" << fwhmHorz.getValue() << "px"
-	   << (fwhmHorzArcSec ? fwhmHorzArcSecSs.str() : "") << endl;
+      	   << (fwhmHorzArcSec ? fwhmHorzArcSecSs.str() : "") << endl;
 
       stringstream fwhmVertArcSecSs;
       fwhmVertArcSecSs << "=" << fwhmVertArcSec << "\"";
       cout << "Fwhm(" << DirectionT::asStr(DirectionT::VERT) << ")=" << fwhmVert.getValue() << "px"
-	   << (fwhmVertArcSec ? fwhmVertArcSecSs.str() : "") << endl;
+      	   << (fwhmVertArcSec ? fwhmVertArcSecSs.str() : "") << endl;
+
+      // Export images
+      if (inCmdLineMap.count("export") > 0) {
+	const string & exportFolder = inCmdLineMap["export"].as<string>();
+	CImg<unsigned char> viewImg(hfd.genView());
+
+	// TODO: Check if exportFolder exists?! Create?
+	string hfdPath = exportFolder + "/hfd_view.jpg";
+	viewImg.save(hfdPath.c_str());
+      }
     }
   };
 
@@ -347,15 +398,18 @@ namespace AT {
     DEFINE_OPTION(optIndiServer, "indi_server", po::value<HostnameAndPortT>()->default_value(HostnameAndPortT(IndiClientT::sDefaultIndiHostname, IndiClientT::sDefaultIndiPort)), "INDI server name and port.");
     DEFINE_OPTION(optTimeout, "timeout", po::value<float>()->default_value(-1), "Seconds until command times out (default: no timeout).");
     DEFINE_OPTION(optInput, "input", po::value<string>(), "Input file.");
-    DEFINE_OPTION(optSelectionCenterPos, "position", po::value<PositionT>(), "Selection center (X x Y) px.");
-    DEFINE_OPTION(optFocalDistance, "focal_distance", po::value<unsigned int>(), "Telescope focal distance in mm."); 
-    DEFINE_OPTION(optPixelSize, "pixel_size", po::value<DimensionT>(), "Pixel size (W x H) um.");
+    DEFINE_OPTION(optStarSelect, "star_select", po::value<string>()->default_value("auto"), "Star select [auto|display|(x,y)]");
 
+    DEFINE_OPTION(optFocalDistance, "focal_distance", po::value<unsigned int>(), "Telescope focal distance in mm."); 
+    DEFINE_OPTION(optPixelSize, "pixel_size", po::value<DimensionT<int> >(), "Pixel size (W x H) um.");
+    DEFINE_OPTION(optCentroidMethod, "centroid_method", po::value<typename CentroidT::CentroidTypeT::TypeE>()->default_value(CentroidT::CentroidTypeT::IWC), "Centroid method (iwc|iwc_sub|moment2).");
+    DEFINE_OPTION(optExportFolder, "export", po::value<string>(), "Export folder.");
+
+    
     // Camera
     DEFINE_OPTION(optCameraDeviceName, "camera_device", po::value<string>()->required(), "INDI camera device name.");
     DEFINE_OPTION(optExposureTime, "exposure_time", po::value<float>()->required(), "Camera exposure time in seconds.");
     DEFINE_OPTION(optBinning, "binning", po::value<BinningT>()->default_value(BinningT(1, 1)), "Camera binning (X x Y).");
-    DEFINE_OPTION(optStarSelect, "star_select", po::value<string>()->default_value("display"), "Star select [auto|display|(x,y)]");
 
     // Focuser
     DEFINE_OPTION(optFocuserDeviceName, "focuser_device", po::value<string>()->required(), "INDI focuser device name.");
@@ -429,8 +483,9 @@ namespace AT {
      */
     po::options_description calcStarCentroidDescr("calc_star_centroid command options");
     calcStarCentroidDescr.add(optInput);
-    calcStarCentroidDescr.add(optSelectionCenterPos);
-    REGISTER_CONSOLE_CMD_LINE_COMMAND("calc_star_centroid", calcStarCentroidDescr, (& CalcStarActionT<CalcStarCentroidActionT, sWindowSize>::performAction));
+    calcStarCentroidDescr.add(optStarSelect);
+    calcStarCentroidDescr.add(optCentroidMethod);
+    REGISTER_CONSOLE_CMD_LINE_COMMAND("calc_star_centroid", calcStarCentroidDescr, (& CalcStarActionT<CalcStarCentroidActionT>::performAction));
 
     /**
      * Calc FWHM and HFD for given star.
@@ -440,10 +495,12 @@ namespace AT {
      */
     po::options_description calcStarParmsDescr("calc_star_parms command options");
     calcStarParmsDescr.add(optInput);
-    calcStarParmsDescr.add(optSelectionCenterPos);
+    calcStarParmsDescr.add(optStarSelect);
     calcStarParmsDescr.add(optFocalDistance);
     calcStarParmsDescr.add(optPixelSize);
     calcStarParmsDescr.add(optBinning);
-    REGISTER_CONSOLE_CMD_LINE_COMMAND("calc_star_parms", calcStarParmsDescr, (& CalcStarActionT<CalcStarParmsActionT, sWindowSize>::performAction));
+    calcStarParmsDescr.add(optCentroidMethod);
+    calcStarParmsDescr.add(optExportFolder);    
+    REGISTER_CONSOLE_CMD_LINE_COMMAND("calc_star_parms", calcStarParmsDescr, (& CalcStarActionT<CalcStarParmsActionT>::performAction));
   }
 };

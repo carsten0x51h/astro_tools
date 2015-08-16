@@ -128,7 +128,7 @@ namespace AT {
   private:
     IndiCameraT * mCameraDevice;
     IndiFocuserT * mFocuserDevice;
-    PositionT mStarCenterPos;
+    PointT<float> mStarCenterPos;
     float mExposureTimeSec;
     BinningT mBinning;
 
@@ -219,7 +219,7 @@ namespace AT {
   public:
     FocusFinderLinearInterpolationImplT(IndiCameraT * inCameraDevice,
 					IndiFocuserT * inFocuserDevice,
-					const PositionT & inStarCenterPos,
+					const PointT<float> & inStarCenterPos,
 					float inExposureTimeSec,
 					BinningT inBinning = BinningT(1, 1)) :
       mCameraDevice(inCameraDevice),

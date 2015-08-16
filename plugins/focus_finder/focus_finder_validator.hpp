@@ -20,29 +20,29 @@
  *
  ****************************************************************************/
 
-#ifndef _IO_UTIL_HPP_
-#define _IO_UTIL_HPP_ _IO_UTIL_HPP_
+#ifndef _FOCUS_FINDER_VALIDATOR_HPP_
+#define _FOCUS_FINDER_VALIDATOR_HPP_ _FOCUS_FINDER_VALIDATOR_HPP_
 
-#include <CImg.h>
-#include <CCfits/CCfits>
-#include <iostream>
+#include <boost/algorithm/string/case_conv.hpp>
+#include "centroid.hpp"
 
-#include <ctime>
-#include <sys/time.h>
-#include <unistd.h>
+namespace AT {
+  /**
+   * NOTE: This validate belongs to AT::CentroidT::CentroidTypeT.
+   */
+  void validate(boost::any & v, const vector<string> & values, typename CentroidT::CentroidTypeT::TypeE * target_type, int) {
+    using namespace boost::program_options;
+    
+    validators::check_first_occurrence(v);
+    string s = validators::get_single_string(values);
+    boost::to_upper(s);
+    typename CentroidT::CentroidTypeT::TypeE type = CentroidT::CentroidTypeT::asType(s.c_str());
 
-#include "at_exception.hpp"
-
-using namespace cimg_library;
-using namespace CCfits;
-using namespace std;
-
-// TODO: namespace AT
-
-DEF_Exception(FileNotFound);
-
-// CCfits helper function
-// See http://heasarc.gsfc.nasa.gov/fitsio/ccfits/html/cookbook.html
-bool readFile(CImg<float> & cimg, const string & inFilename, long * outBitPix = 0, bool inVerboseMode = false);
-
-#endif // _IO_UTIL_HPP_
+    if (type != CentroidT::CentroidTypeT::_Count) {
+      v = any(type);
+    } else {
+      throw validation_error(validation_error::invalid_option_value);
+    }
+  }
+} // end AT
+#endif // _FOCUS_FINDER_VALIDATOR_HPP_

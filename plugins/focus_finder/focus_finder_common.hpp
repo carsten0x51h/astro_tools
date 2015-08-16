@@ -56,8 +56,12 @@ namespace AT {
 
       // Use centroid calculation to determine if there is a valid star selected
       try {
-	PositionT centerPos(inImg.width() / 2, inImg.height() / 2);
-	PositionT centroid = CentroidCalcT::starCentroid(inImg, centerPos, inImg.width(), CoordTypeT::ABSOLUTE);
+	PointT<float> centerPos(inImg.width() / 2, inImg.height() / 2);
+	//PointT<float> centroid = CentroidT::calc(inImg, centerPos, inImg.width(), CoordTypeT::ABSOLUTE);
+
+	PointT<float> centroid;
+	CentroidT::calc(inImg, centerPos, inImg.width(), & centroid);
+	
 	LOG(trace) << dec << "isValidStar() - centroid: " << centroid << endl;
 	validStar = true;
       } catch(CentroidExceptionT & exc) {

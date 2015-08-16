@@ -74,7 +74,9 @@ namespace AT {
      * See http://www.paulmcgale.co.uk/tech.htm
      * See http://www.wilmslowastro.com/software/formulae.htm
      */
-    static double pxToArcsec(double px, double inFocalLength /*mm*/, DimensionT inPixelSize /*um*/, BinningT inBinning) {
+    static double
+    pxToArcsec(double px, double inFocalLength /*mm*/, DimensionT<float> inPixelSize /*um*/, BinningT inBinning)
+    {
       const double pixelSizeEq = sqrt(inPixelSize.get<0>() * inPixelSize.get<1>());
       const double arcsecPerPixel = (206.2648 * (double) inBinning.get<0>() * (double) inBinning.get<1>() * pixelSizeEq) / inFocalLength;
       return arcsecPerPixel * px;
@@ -122,5 +124,3 @@ namespace AT {
 }; // end namespace AT
 
 #endif // _FWHM_HPP_
-
-

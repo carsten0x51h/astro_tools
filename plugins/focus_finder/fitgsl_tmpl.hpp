@@ -1,4 +1,4 @@
-/*****************************************************************************
+/*************************************************************************** *
  *
  *  AstroTools
  *
@@ -72,86 +72,148 @@ namespace AT {
 
     /**
      * Fits the specified data to the function, storing the coefficients in 'results'.
-     *
+     * DataAccessor allows specifying how x,y data is accessed.
      * See http://en.wikipedia.org/wiki/Approximation_error for expl. of rel and abs errors.
      */
-    template<typename DataAccessorT>
-    static void fitGslLevenbergMarquart(const typename DataAccessorT::TypeT & inData, typename CurveParamsT::TypeT * outResults, double inEpsAbs, double inEpsRel, bool inExOnError = true) {
-      AT_ASSERT(CurveFit, outResults, "Result vector not set!");
+      template<typename DataAccessorT> static int  
+  fitGslLevenbergMarquart(const typename DataAccessorT::TypeT & inData, typename CurveParamsT::TypeT * outResults,
+			  double inEpsAbs, double inEpsRel, size_t inNumMaxIter = 500, bool inExOnError = true) {
+	AT_ASSERT(CurveFit, outResults, "Result vector not set!");
 
-      // Fill the params
-      const size_t numDataPoints = inData.size();
-      GslMultiFitParmsT gslMultiFitParms(numDataPoints);
-      
-      LOG(trace) << "fitGslLevenbergMarquart... numDataPoints: " << numDataPoints << endl;
-
-      for (typename DataAccessorT::TypeT::const_iterator it = inData.begin(); it != inData.end(); ++it) {
-	size_t idx = std::distance(inData.begin(), it);
-	DataPointT dataPoint = DataAccessorT::getDataPoint(idx, it);
-	gslMultiFitParms[idx].y     = dataPoint.y;
-	gslMultiFitParms[idx].sigma = 0.1f;
-	gslMultiFitParms[idx].pt    = dataPoint; // TODO: we pass a copy here... we may improve this...
-
-	LOG(trace) << " > dataPoint idx=" << idx << ", x: " << dataPoint.x << ", y: " << dataPoint.y << endl;
-      }
-
-      // Fill in function info
-      gsl_multifit_function_fdf f;
-      f.f      = FitTraitsT::gslFx;
-      f.df     = FitTraitsT::gslDfx;
-      f.fdf    = FitTraitsT::gslFdfx;
-      f.n      = numDataPoints;
-      f.p      = FitTraitsT::CurveParamsT::_Count;
-      f.params = & gslMultiFitParms;
-    
-      // Allocate the guess vector
-      gsl_vector * guess = gsl_vector_alloc(FitTraitsT::CurveParamsT::_Count);
-    
-      // Make initial guesses based on the data
-      FitTraitsT::makeGuess(gslMultiFitParms, guess);
-    
-      // Create a Levenberg-Marquardt solver with n data points and m parameters
-      const gsl_multifit_fdfsolver_type * solverType = gsl_multifit_fdfsolver_lmsder;
-      gsl_multifit_fdfsolver * solver = gsl_multifit_fdfsolver_alloc(solverType, numDataPoints, FitTraitsT::CurveParamsT::_Count);
-
-      AT_ASSERT(CurveFit, solver, "Solver is NULL!");
-
-      // Initialize the solver
-      gsl_multifit_fdfsolver_set(solver, & f, guess);
-    
-      // Reset i to count iterations
-      int status, i = 0;
-    
-      // Iterate to to find results
-      do {
-	i++;
-	status = gsl_multifit_fdfsolver_iterate(solver); // returns 0 in case of success
-	if (status) {  break; }
-
-	// TODO: use print
-	//print_state(i, solver);
-
-	status = gsl_multifit_test_delta(solver->dx, solver->x, inEpsAbs, inEpsRel);
-      } while (status == GSL_CONTINUE && i < 500);
-    
-      // Store the results to be returned to the user (copy from gsl_vector to result structure)
-      for (size_t i = 0; i < FitTraitsT::CurveParamsT::_Count; ++i) {
-	typename FitTraitsT::CurveParamsT::TypeE idx = static_cast<typename FitTraitsT::CurveParamsT::TypeE>(i);
-	(*outResults)[idx] = gsl_vector_get(solver->x, idx);
-      }
-
-      // Free GSL memory
-      gsl_multifit_fdfsolver_free(solver);
-      gsl_vector_free(guess);
-
-      // Throw if fit was not successful but only if throwing is enabled
-      if (status != 0 && inExOnError) {
-	ostringstream oss;
-	oss << "fitGslLevenbergMarquart did not succeed. Reason: " << gsl_strerror(status) << " (code=" << status
-	    << "), Could not fit within error boundaries (epsAbs=" << inEpsAbs << ", epsRel=" << inEpsRel << ")." << endl;
-	throw CurveFitExceptionT(oss.str());
-      }
+    GslMultiFitParmsT gslMultiFitParms(inData.size());
+    LOG(trace) << "fitGslLevenbergMarquart... numDataPoints: " << inData.size() << endl;
+  
+    // Fill in the parameters
+    for (typename DataAccessorT::TypeT::const_iterator it = inData.begin(); it != inData.end(); ++it) {
+      size_t idx = std::distance(inData.begin(), it);
+      const DataPointT & dataPoint = DataAccessorT::getDataPoint(idx, it);
+      gslMultiFitParms[idx].y     = dataPoint.y;
+      gslMultiFitParms[idx].sigma = 0.1f;
+      gslMultiFitParms[idx].pt    = dataPoint;
+      LOG(trace) << " > dataPoint idx=" << idx << ", x: " << dataPoint.x << ", y: " << dataPoint.y << endl;
     }
+ 
+    // Fill in function info
+    gsl_multifit_function_fdf f;
+    f.f      = FitTraitsT::gslFx;
+    f.df     = FitTraitsT::gslDfx;
+    f.fdf    = FitTraitsT::gslFdfx;
+    f.n      = inData.size();
+    f.p      = FitTraitsT::CurveParamsT::_Count;
+    f.params = & gslMultiFitParms;
+    
+ 
+    gsl_vector * guess = gsl_vector_alloc(FitTraitsT::CurveParamsT::_Count);  // Allocate the guess vector
+    
+    FitTraitsT::makeGuess(gslMultiFitParms, guess);  // Make initial guesses based on the data
+    
+    // Create a Levenberg-Marquardt solver with n data points and m parameters
+    gsl_multifit_fdfsolver * solver = gsl_multifit_fdfsolver_alloc(gsl_multifit_fdfsolver_lmsder,
+                                                                  inData.size(), FitTraitsT::CurveParamsT::_Count);
+
+    AT_ASSERT(CurveFit, solver, "Solver is NULL!");
+
+    gsl_multifit_fdfsolver_set(solver, & f, guess);  // Initialize the solver
+    
+    int status, i = 0;
+    
+    // Iterate to to find a result
+    do {
+      i++;
+      status = gsl_multifit_fdfsolver_iterate(solver); // returns 0 in case of success
+      if (status) {  break; }
+      status = gsl_multifit_test_delta(solver->dx, solver->x, inEpsAbs, inEpsRel);
+    } while (status == GSL_CONTINUE && i < inNumMaxIter);
+    
+    // Store the results to be returned to the user (copy from gsl_vector to result structure)
+    for (size_t i = 0; i < FitTraitsT::CurveParamsT::_Count; ++i) {
+      typename FitTraitsT::CurveParamsT::TypeE idx = static_cast<typename FitTraitsT::CurveParamsT::TypeE>(i);
+      (*outResults)[idx] = gsl_vector_get(solver->x, idx);
+    }
+ 
+    // Free GSL memory
+    gsl_multifit_fdfsolver_free(solver);
+    gsl_vector_free(guess);
+ 
+    return status;
+  }
+    // template<typename DataAccessorT>
+    // static void fitGslLevenbergMarquart(const typename DataAccessorT::TypeT & inData, typename CurveParamsT::TypeT * outResults, double inEpsAbs, double inEpsRel, bool inExOnError = true) // {
+    //   AT_ASSERT(CurveFit, outResults, "Result vector not set!");
+
+    //   // Fill the params
+    //   const size_t numDataPoints = inData.size();
+    //   GslMultiFitParmsT gslMultiFitParms(numDataPoints);
+      
+    //   LOG(trace) << "fitGslLevenbergMarquart... numDataPoints: " << numDataPoints << endl;
+
+    //   for (typename DataAccessorT::TypeT::const_iterator it = inData.begin(); it != inData.end(); ++it) {
+    // 	size_t idx = std::distance(inData.begin(), it);
+    // 	DataPointT dataPoint = DataAccessorT::getDataPoint(idx, it);
+    // 	gslMultiFitParms[idx].y     = dataPoint.y;
+    // 	gslMultiFitParms[idx].sigma = 0.1f;
+    // 	gslMultiFitParms[idx].pt    = dataPoint; // TODO: we pass a copy here... we may improve this...
+
+    // 	LOG(trace) << " > dataPoint idx=" << idx << ", x: " << dataPoint.x << ", y: " << dataPoint.y << endl;
+    //   }
+
+    //   // Fill in function info
+    //   gsl_multifit_function_fdf f;
+    //   f.f      = FitTraitsT::gslFx;
+    //   f.df     = FitTraitsT::gslDfx;
+    //   f.fdf    = FitTraitsT::gslFdfx;
+    //   f.n      = numDataPoints;
+    //   f.p      = FitTraitsT::CurveParamsT::_Count;
+    //   f.params = & gslMultiFitParms;
+    
+    //   // Allocate the guess vector
+    //   gsl_vector * guess = gsl_vector_alloc(FitTraitsT::CurveParamsT::_Count);
+    
+    //   // Make initial guesses based on the data
+    //   FitTraitsT::makeGuess(gslMultiFitParms, guess);
+    
+    //   // Create a Levenberg-Marquardt solver with n data points and m parameters
+    //   const gsl_multifit_fdfsolver_type * solverType = gsl_multifit_fdfsolver_lmsder;
+    //   gsl_multifit_fdfsolver * solver = gsl_multifit_fdfsolver_alloc(solverType, numDataPoints, FitTraitsT::CurveParamsT::_Count);
+
+    //   AT_ASSERT(CurveFit, solver, "Solver is NULL!");
+
+    //   // Initialize the solver
+    //   gsl_multifit_fdfsolver_set(solver, & f, guess);
+    
+    //   // Reset i to count iterations
+    //   int status, i = 0;
+    
+    //   // Iterate to to find results
+    //   do {
+    // 	i++;
+    // 	status = gsl_multifit_fdfsolver_iterate(solver); // returns 0 in case of success
+    // 	if (status) {  break; }
+
+    // 	// TODO: use print
+    // 	//print_state(i, solver);
+
+    // 	status = gsl_multifit_test_delta(solver->dx, solver->x, inEpsAbs, inEpsRel);
+    //   } while (status == GSL_CONTINUE && i < 500);
+    
+    //   // Store the results to be returned to the user (copy from gsl_vector to result structure)
+    //   for (size_t i = 0; i < FitTraitsT::CurveParamsT::_Count; ++i) {
+    // 	typename FitTraitsT::CurveParamsT::TypeE idx = static_cast<typename FitTraitsT::CurveParamsT::TypeE>(i);
+    // 	(*outResults)[idx] = gsl_vector_get(solver->x, idx);
+    //   }
+
+    //   // Free GSL memory
+    //   gsl_multifit_fdfsolver_free(solver);
+    //   gsl_vector_free(guess);
+
+    //   // Throw if fit was not successful but only if throwing is enabled
+    //   if (status != 0 && inExOnError) {
+    // 	ostringstream oss;
+    // 	oss << "fitGslLevenbergMarquart did not succeed. Reason: " << gsl_strerror(status) << " (code=" << status
+    // 	    << "), Could not fit within error boundaries (epsAbs=" << inEpsAbs << ", epsRel=" << inEpsRel << ")." << endl;
+    // 	throw CurveFitExceptionT(oss.str());
+    //   }
+    // }
     
     // int print_state(size_t iter, gsl_multifit_fdfsolver * s) {
     //   printf ("iter: %3u x = % 15.8f % 15.8f % 15.8f %15.8f "
@@ -233,41 +295,36 @@ namespace AT {
       return (b + p * exp(-0.5f * t));
     }
 
-    /* Calculates f(x) = b + p * e^[0.5*((x-c)/w)] for each data point */
-    // TODO: Stupid naming - parms vs resParms...
-    static int gslFx(const gsl_vector * x, void * params /* Passed from fitgsl_lm... */, gsl_vector * f) {    
-      /* Store parameter values */
-      const GslMultiFitParmsT * gslParams = ((GslMultiFitParmsT*) params);
-    
-      /* Store the current coefficient values */
-      CurveParamsT::TypeT resParams(x);
-
-      /* Execute Levenberg-Marquart on f(x) */
+    /* Calculates f(x) = b + p * e^[0.5*((x-c)/w)] for each data point. */
+    static int gslFx(const gsl_vector * x, void * inGslParams, gsl_vector * outResultVec) {    
+      CurveParamsT::TypeT curveParams(x);     // Store the current coefficient values
+      const GslMultiFitParmsT * gslParams = ((GslMultiFitParmsT*) inGslParams); // Store parameter values
+      
+      //Execute Levenberg-Marquart on f(x)
       for(size_t i = 0; i < gslParams->size(); ++i) {
 	const GslMultiFitDataT & gslData = gslParams->at(i);
-	float yi = GaussianFitTraitsT::fx((float) gslData.pt.x, resParams);
-
+	float yi = GaussianFitTraitsT::fx((float) gslData.pt.x, curveParams);
 	LOG(trace) << "Gaussian - gslFx - i: " << i << ", gslData.pt.x: " << gslData.pt.x
 		   << ", yi: " << yi << ", gslData.y: " << gslData.y << ", gslData.sigma: " << gslData.sigma << endl; 
-
-	gsl_vector_set(f, i, (yi - gslData.y) / gslData.sigma);
+	
+	gsl_vector_set(outResultVec, i, (yi - gslData.y) / gslData.sigma);
       }
-    
       return GSL_SUCCESS;
     }
+
 
     /* Calculates the Jacobian (derivative) matrix of f(x) = b + p * e^[0.5*((x-c)/w)^2] for each data point */
     static int gslDfx(const gsl_vector * x, void * params, gsl_matrix * J) {
     
-      /* Store parameter values */
+      // Store parameter values
       const GslMultiFitParmsT * gslParams = ((GslMultiFitParmsT*) params);
     
-      /* Store current coefficients */
+      // Store current coefficients
       float p = gsl_vector_get(x, CurveParamsT::P_IDX);
       float c = gsl_vector_get(x, CurveParamsT::C_IDX);
       float w = gsl_vector_get(x, CurveParamsT::W_IDX);
     
-      /*  Store non-changing calculations */
+      // Store non-changing calculations
       float w2 = w * w;
       float w3 = w2 * w;
     
@@ -424,8 +481,6 @@ namespace AT {
       return GSL_SUCCESS;
     }
   };
-
-
 }; // end namespace AT
 
 #endif	/* __FITGSL_TMPL_HPP__ */

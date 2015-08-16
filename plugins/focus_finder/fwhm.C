@@ -94,8 +94,8 @@ namespace AT {
   }
 
   /**
-   *  Method to calculate the standrard deviation from values on the curve
-   *  to values measured values (image values).
+   * Method to calculate the standrard deviation from values on the curve
+   * to values measured values (image values).
    *
    * See http://de.wikipedia.org/wiki/Mittlere_quadratische_Abweichung
    */
