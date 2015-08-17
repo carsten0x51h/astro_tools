@@ -424,6 +424,26 @@ namespace AT {
   };
 
 
+  class FocusAbortT : public IndiDeviceActionT<IndiFocuserT, FocusAbortT> {
+  public:
+    static bool setupAction(IndiFocuserT * inDevice, const po::variables_map & cmdLineMap) {
+      AT_ASSERT(IndiPlugin, cmdLineMap.count("timeout") > 0, "Expecting timeout option being set.");
+      AT_ASSERT(IndiPlugin, cmdLineMap.count("device_port") > 0, "Expecting device_port option being set.");
+      string devicePort = cmdLineMap["device_port"].as<string>();
+      const float timeoutMs = 1000.0 * cmdLineMap["timeout"].as<float>(); // Conversion to ms
+      LOG(info) << "Setting focuser device_port to: '" << devicePort << "'..." << endl;
+      inDevice->setDevicePort(devicePort, timeoutMs);
+      return true; // Needs reconnect
+    }
+    static void performAction(IndiFocuserT * inDevice, const po::variables_map & cmdLineMap) {
+      const float timeoutMs = 1000.0 * cmdLineMap["timeout"].as<float>(); // Conversion to ms
+      cout << "Aborting focus motion..." << flush;
+      inDevice->abortMotion(timeoutMs);
+      cout << "DONE." << endl;
+    }
+  };
+  
+
 
   IndiPluginT::IndiPluginT() : PluginT("IndiPlugin") {
     LOG(debug) << "Constructor of IndiPlugin..." << endl;
@@ -559,6 +579,14 @@ namespace AT {
     REGISTER_CONSOLE_CMD_LINE_COMMAND("focus_info", focusInfoDescr, (& IndiDeviceActionT<IndiFocuserT, FocusInfoT>::performAction));
 
 
-    // TODO: focus_abort...
+    /**
+     * focus_abort command
+     */
+    po::options_description focusAbortDescr("focus_abort command options");
+    focusAbortDescr.add(optIndiServer);
+    focusAbortDescr.add(optDeviceName);
+    focusAbortDescr.add(optTimeout);
+    focusAbortDescr.add(optDevicePort);
+    REGISTER_CONSOLE_CMD_LINE_COMMAND("focus_abort", focusAbortDescr, (& IndiDeviceActionT<IndiFocuserT, FocusAbortT>::performAction));
   }
 };
