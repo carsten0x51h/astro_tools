@@ -43,6 +43,33 @@ namespace AT {
 
   static const string sDegreeCelsius = "°C"; /* Note: As an option we can use \u2103 = one degree celsius symbol instead */
 
+  class IndiDeviceListActionT {
+  public:
+    static void performAction(void) {
+      const po::variables_map & cmdLineMap = CommonAstroToolsAppT::getCmdLineOptionsMap();
+      
+      // Check cmdline args - depends
+      AT_ASSERT(IndiPlugin, cmdLineMap.count("indi_server") > 0, "Expecting indi_server option being set.");
+      
+      const HostnameAndPortT & hostnameAndPort = cmdLineMap["indi_server"].as<HostnameAndPortT>();
+      LOG(info) << "Indi server: " << dec << hostnameAndPort << endl;
+      
+      IndiClientT indiClient(hostnameAndPort.getHostname(), hostnameAndPort.getPort(), true);
+      
+      if (indiClient.isConnected()) {
+ 	const vector<INDI::BaseDevice *> & baseDevices = indiClient.getBaseDevices();
+
+	cout << "Found " << baseDevices.size() << " devices" << (baseDevices.size() > 0 ? ":" : ".") << endl;
+
+	for (vector<INDI::BaseDevice *>::const_iterator it = baseDevices.begin(); it != baseDevices.end(); ++it) {
+	  BaseDevice * baseDevice = *it;
+	  const char * deviceName = baseDevice->getDeviceName();
+	  cout << distance(baseDevices.begin(), it) + 1 << ". " << deviceName << endl;
+	}
+      }
+    }
+  };
+  
   template <typename DeviceT, typename ActionT>
   class IndiDeviceActionT {
   public:
@@ -56,7 +83,7 @@ namespace AT {
       const HostnameAndPortT & hostnameAndPort = cmdLineMap["indi_server"].as<HostnameAndPortT>();
       const string & deviceName = cmdLineMap["device_name"].as<string>();
       
-      LOG(info) << "Indi server: " << hostnameAndPort << ", Device name: " << deviceName << endl;
+      LOG(info) << "Indi server: " << dec << hostnameAndPort << ", Device name: " << deviceName << endl;
       
       IndiClientT indiClient(hostnameAndPort.getHostname(), hostnameAndPort.getPort(), true);
       
@@ -65,7 +92,6 @@ namespace AT {
 	DeviceT * device = static_cast<DeviceT*>(indiClient.getDevice(deviceName.c_str(), DeviceT::getType()));
 	
 	if (! device) {
-	  // TODO: Print device name?!
 	  stringstream ss;
 	  ss << "Invalid device handle for device name '" << deviceName << "' returned.";
 	  throw IndiPluginExceptionT(ss.str().c_str());
@@ -144,8 +170,8 @@ namespace AT {
       LOG(debug) << "Max camera resolution: " << maxRes << endl;
       
       if (cmdLineMap.count("frame_size")) {
-	hasIntersection = intersect(maxRes, cmdLineMap["frame_size"].as< FrameT<float> >(), & frameSize);
-	LOG(debug) << "Frame size (user specified): " << cmdLineMap["frame_size"].as< FrameT<float> >() << endl;
+	hasIntersection = intersect(maxRes, cmdLineMap["frame_size"].as< FrameT<int> >(), & frameSize);
+	LOG(debug) << "Frame size (user specified): " << cmdLineMap["frame_size"].as< FrameT<int> >() << endl;
       }
       
       if (! cmdLineMap.count("frame_size") || ! hasIntersection) {
@@ -241,6 +267,7 @@ namespace AT {
       LOG(info) << "FilterWheelFilterSelectT - timeoutMs: " << timeoutMs << " [ms]"
 		<< ", filter: " << filter << endl;
 
+      // Connect to device (if not yet connected)
       size_t pos;
 
       try {
@@ -251,10 +278,16 @@ namespace AT {
 	pos = 0; // TODO...
       }
 
-      inDevice->setPos(pos, 0 /* do not block */);
+      if (inDevice->getPos() != pos) {
+	inDevice->setPos(pos, 0 /* do not block */);
 
-      WAIT_MAX_FOR_PRINT(!inDevice->isMovementInProgess(), timeoutMs, CommonAstroToolsAppT::isInQuietMode(),
-			 "[Filter pos: " << inDevice->getPos() << "]...", "Hit timeout while waiting for filter wheel.");
+	WAIT_MAX_FOR_PRINT(!inDevice->isMovementInProgess(), timeoutMs, CommonAstroToolsAppT::isInQuietMode(),
+			   "[Filter pos: " << inDevice->getPos() << "]...", "Hit timeout while waiting for filter wheel.");
+
+	cout << "New filter position: " << inDevice->getPos() << endl;
+      } else {
+	cout << "Filter position " << pos << " already set." << endl;
+      }
     }
   };
 
@@ -296,7 +329,7 @@ namespace AT {
       inDevice->moveFocusBy(abs(steps), direction, 0);
       unsigned int estimatedDelay = IndiFocuserT::estimateMaxFocuserMovementDelayMs(abs(steps));
 
-      WAIT_MAX_FOR_PRINT(!inDevice->isMovementInProgess(), estimatedDelay, CommonAstroToolsAppT::isInQuietMode(),
+      WAIT_MAX_FOR_PRINT(! inDevice->isMovementInProgess(), estimatedDelay, CommonAstroToolsAppT::isInQuietMode(),
 			 "[Focuser pos: " << inDevice->getAbsPos() << "]...", "Hit timeout while waiting for focuser.");
     }
   };
@@ -385,6 +418,14 @@ namespace AT {
     DEFINE_OPTION(optPosition, "position", po::value<unsigned int>()->required(), "Set absolute focus position (0..MAX).");
     DEFINE_OPTION(optDevicePort, "device_port", po::value<string>()->default_value("/dev/ttyUSB0"), "Set device port.");
 
+
+    /**
+     * device_list command.
+     */
+    po::options_description deviceListDescr("device_list command options");
+    deviceListDescr.add(optIndiServer);
+    REGISTER_CONSOLE_CMD_LINE_COMMAND("device_list", deviceListDescr, (& IndiDeviceListActionT::performAction));
+
     /**
      * take_picture command.
      */
@@ -395,7 +436,7 @@ namespace AT {
     takePictureDescr.add(optBinning);
     takePictureDescr.add(optFrameType);
     takePictureDescr.add(optFrameSize);
-    takePictureDescr.add(optOutput);    
+    takePictureDescr.add(optOutput);
     takePictureDescr.add_options()("display_picture", "Display picture.");
     REGISTER_CONSOLE_CMD_LINE_COMMAND("take_picture", takePictureDescr, (& IndiDeviceActionT<IndiCameraT, CameraTakePictureT>::performAction));
 

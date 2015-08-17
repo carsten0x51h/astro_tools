@@ -122,9 +122,10 @@ struct FocuserTraitsT {
       CONNECT,
       DISCONNECT,
       PORT,
-      NAME,
-      EXEC,
-      VERSION,
+      DRIVER_NAME,
+      DRIVER_EXEC,
+      DRIVER_VERSION,
+      DRIVER_INTERFACE,
       ENABLE,
       DISABLE,
       FOCUS_INWARD,
@@ -148,9 +149,10 @@ struct FocuserTraitsT {
       case CONNECT: return "CONNECT";
       case DISCONNECT: return "DISCONNECT";
       case PORT: return "PORT";
-      case NAME: return "NAME";
-      case EXEC: return "EXEC";
-      case VERSION: return "VERSION";
+      case DRIVER_NAME: return "DRIVER_NAME";
+      case DRIVER_EXEC: return "DRIVER_EXEC";
+      case DRIVER_VERSION: return "DRIVER_VERSION";
+      case DRIVER_INTERFACE: return "DRIVER_INTERFACE";
       case ENABLE: return "ENABLE";
       case DISABLE: return "DISABLE";
       case FOCUS_INWARD: return "FOCUS_INWARD";

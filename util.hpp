@@ -92,13 +92,13 @@ DEF_Exception(Timeout);
 	size_t idx = (++pos) % (strlen(progressChars));			\
 	cout << "\r" << progressChars[idx] << " Please wait..." << __pmsg__ << flush; \
 	if (__timeout__ > 0)						\
-	  cout << (unsigned int) (100.0 * __timeMs / __timeout__) << "%" << flush; \
+	  cout << (unsigned int) ((__timeout__ - __timeMs) / 1000.0) << "s to timeout" << flush; \
       }									\
       usleep(1000);							\
     }									\
     cout << endl;							\
     if (__hitTimeout)							\
-      throw TimeoutExceptionT(__excmsg__);			\
+      throw TimeoutExceptionT(__excmsg__);				\
   }									\
 
 #define MAC_AS_TYPE(Type, E, Count)			\

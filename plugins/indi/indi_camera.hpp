@@ -123,9 +123,9 @@ struct CameraTraitsT {
       DISCONNECT,
       PORT, // TODO: Does the Atik have this porp?!?!?!?!
 
-      NAME,
-      EXEC,
-      VERSION,
+      DRIVER_NAME,
+      DRIVER_EXEC,
+      DRIVER_VERSION,
 
       CCD_MAX_X,
       CCD_MAX_Y,
@@ -148,8 +148,8 @@ struct CameraTraitsT {
 
       CCD_TEMPERATURE_VALUE,
 
-      COMPRESS,
-      RAW,
+      CCD_COMPRESS,
+      CCD_RAW,
 
       CCD1,
 
@@ -180,9 +180,9 @@ struct CameraTraitsT {
       case DISCONNECT: return "DISCONNECT";
       case PORT: return "PORT";
 
-      case NAME: return "NAME";
-      case EXEC: return "EXEC";
-      case VERSION: return "VERSION";
+      case DRIVER_NAME: return "DRIVER_NAME";
+      case DRIVER_EXEC: return "DRIVER_EXEC";
+      case DRIVER_VERSION: return "DRIVER_VERSION";
 
       case CCD_MAX_X: return "CCD_MAX_X";
       case CCD_MAX_Y: return "CCD_MAX_Y";
@@ -205,8 +205,8 @@ struct CameraTraitsT {
 
       case CCD_TEMPERATURE_VALUE: return "CCD_TEMPERATURE_VALUE";
 
-      case COMPRESS: return "COMPRESS";
-      case RAW: return "RAW";
+      case CCD_COMPRESS: return "CCD_COMPRESS";
+      case CCD_RAW: return "CCD_RAW";
 
       case CCD1: return "CCD1";
 
@@ -400,11 +400,11 @@ public:
   /**
    * Compression
    */
-  inline bool isCompressed() const { return this->getSwitchVal<CameraTraitsT>(VecPropsT::CCD_COMPRESSION, PropsT::COMPRESS);  }
+  inline bool isCompressed() const { return this->getSwitchVal<CameraTraitsT>(VecPropsT::CCD_COMPRESSION, PropsT::CCD_COMPRESS);  }
   inline bool isRaw() const { return (! this->isCompressed()); }
 
   inline void setCompressed(bool inCompressed, int inTimeout = sDefaultTimeoutMs) {
-    this->sendSwitchVal<CameraTraitsT>(VecPropsT::CCD_COMPRESSION, PropsT::COMPRESS, inCompressed, inTimeout);
+    this->sendSwitchVal<CameraTraitsT>(VecPropsT::CCD_COMPRESSION, PropsT::CCD_COMPRESS, inCompressed, inTimeout);
   }
 
 

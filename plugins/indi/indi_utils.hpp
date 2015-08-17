@@ -49,7 +49,7 @@ public:
    *   INDI_BLOB   - IBLOBVectorProperty
    *   INDI_UNKNOWN
    */
-  static inline const char * asStr(const INDI_TYPE & inIndiType) {
+  static inline const char * asStr(const INDI_PROPERTY_TYPE  & inIndiType) {
     switch(inIndiType) {
     case INDI_NUMBER: return "INDI_NUMBER";
     case INDI_SWITCH: return "INDI_SWITCH";

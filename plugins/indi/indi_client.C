@@ -59,6 +59,7 @@ IndiDeviceT * IndiClientT::createDeviceInstance(INDI::BaseDevice * inBaseDevice,
   AT_ASSERT(IndiClient, false, "End of IndiClientT::createDeviceInstance should never be reached.");
 }
 
+// TODO: Question is: Current design requires calling of getDevice at least once before indi-devices are created...
 IndiDeviceT * IndiClientT::getDevice(const char * inDeviceName, DeviceTypeT::TypeE inDeviceType) /*TODO: const?!*/ {
   BaseDevice * baseDevice = this->BaseClient::getDevice(inDeviceName);
   if (! baseDevice) {
@@ -108,6 +109,12 @@ void IndiClientT::newDevice(INDI::BaseDevice * inBaseDevice) {
   AT_ASSERT(IndiClient, inBaseDevice, "Expecting inBaseDevice to be valid pointer.");
   LOG(debug) << "INDI CLIENT - New device received: " << inBaseDevice->getDeviceName() << endl;
   mNewDeviceListeners(inBaseDevice);
+}
+
+void IndiClientT::removeDevice(INDI::BaseDevice * inBaseDevice) {
+  AT_ASSERT(IndiClient, inBaseDevice, "Expecting inBaseDevice to be valid pointer.");
+  LOG(debug) << "INDI CLIENT - Remove device received: " << inBaseDevice->getDeviceName() << endl;
+  mRemoveDeviceListeners(inBaseDevice);
 }
 
 void IndiClientT::connect() {

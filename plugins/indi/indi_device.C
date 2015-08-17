@@ -33,7 +33,7 @@ const char * IndiDeviceT::sPropNameMapNvp = "prop_name_map";
 
 double IndiDeviceT::sInitialDevicePropertyPopulationDelaySec = 2.0;
 
-int IndiDeviceT::sDefaultTimeoutMs = 5000;
+int IndiDeviceT::sDefaultTimeoutMs = 10000;
 
 // Further device functions...
 // void addMessage(const char *msg);

@@ -245,6 +245,7 @@ private:
   DEFINE_PROP_LISTENER(NewLight, ILightVectorProperty*);
   DEFINE_PROP_LISTENER(NewBLOB, IBLOB*);
   DEFINE_PROP_LISTENER(NewDevice, BaseDevice*);
+  DEFINE_PROP_LISTENER(RemoveDevice, BaseDevice*);
   DEFINE_PROP_LISTENER(NewProperty, Property*);
   DEFINE_PROP_LISTENER(RemoveProperty, Property*);
   DEFINE_PROP_LISTENER(NewMessage, const char*);
@@ -256,6 +257,7 @@ private:
   DEFINE_INDI_SLOT(newLight, NewLight, ILightVectorProperty*);
   DEFINE_INDI_SLOT(newBLOB, NewBLOB, IBLOB*);
   DEFINE_INDI_SLOT(newDevice, NewDevice, BaseDevice*);
+  DEFINE_INDI_SLOT(removeDevice, RemoveDevice, BaseDevice*);
   DEFINE_INDI_SLOT(newProperty, NewProperty, Property*);
   DEFINE_INDI_SLOT(removeProperty, RemoveProperty, Property*);
 

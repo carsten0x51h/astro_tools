@@ -132,6 +132,7 @@ private:
 
   DEFINE_PROP_LISTENER(IndiServerConnectionStatus, bool);
   DEFINE_PROP_LISTENER(NewDevice, INDI::BaseDevice*);
+  DEFINE_PROP_LISTENER(RemoveDevice, INDI::BaseDevice*);
   DEFINE_PROP_LISTENER(NewProp, INDI::Property*);
   //DEFINE_PROP_LISTENER(DeviceConnectionStatus, string);
   DEFINE_PROP_LISTENER(Message, const char*);
@@ -210,8 +211,11 @@ public:
 
   inline bool isConnected() const { return mIndiServerConnected; }
 
-  const IndiDeviceMapT & getDevices() { return mDeviceMap; }
+  // TODO: Should this map be accessable?!
+  //const IndiDeviceMapT & getDeviceMap() { return mDeviceMap; }
 
+  const vector<INDI::BaseDevice *> & getBaseDevices() const { return this->BaseClient::getDevices(); }
+  
   IndiDeviceT * getDevice(const char * inDeviceName, DeviceTypeT::TypeE inDeviceType); // TODO: const?!
   // TODO:
   IndiCameraT * getCamera(const string & inDeviceName); // TODO: const?!
@@ -261,6 +265,7 @@ protected:
    * Implement the INDI interface.
    */
   virtual void newDevice(INDI::BaseDevice * inBaseDevice);
+  virtual void removeDevice(INDI::BaseDevice * dp);
   virtual void newProperty(INDI::Property * pp) {
     LOG(trace) << "INDI CLIENT - New property received: " << pp->getDeviceName() << endl;
     mNewPropListeners(pp);
@@ -268,8 +273,11 @@ protected:
 
   virtual void removeProperty(INDI::Property *) { /* ignore so far */ }
   virtual void newMessage(INDI::BaseDevice *dp, int messageID) {
-    LOG(debug) << "INDI-CLIENT - new message received..." << dp->messageQueue(messageID) << endl;
-    mMessageListeners(dp->messageQueue(messageID));
+    // TODO / FIXME: dp seems to be 0!?
+    LOG(trace) << "INDI-CLIENT - new message received... dp: " << dp << endl;
+    //LOG(debug) << "INDI-CLIENT - new message received..." << dp->messageQueue(messageID) << endl;
+    // TODO / FIXME! Where is mMessageListeners defined??? No longer there?! 
+    //mMessageListeners(dp->messageQueue(messageID));
   }
 
   virtual void serverConnected() {

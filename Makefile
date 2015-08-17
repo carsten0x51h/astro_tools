@@ -94,8 +94,9 @@ py:
 indiserver:
 	indiserver -m 500 -v /usr/bin/indi_moonlite_focus /home/devnull/workspace/atik_ccd_src/src/indi_atik_ccd /usr/bin/indi_simulator_ccd /usr/bin/indi_simulator_focus
 
+#OLD path: /home/devnull/workspace/atik_ccd_src/src
 atik_indiserver:
-	indiserver -m 500 -v /usr/bin/indi_moonlite_focus /home/devnull/workspace/atik_ccd_src/src/indi_atik_ccd
+	indiserver -m 500 -v /usr/bin/indi_moonlite_focus /usr/bin/indi_atik_ccd /usr/bin/indi_atik_wheel
 
 sim_find_focus:
 	./build/astro_tools focus_find -vv --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=405,155

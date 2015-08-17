@@ -65,9 +65,10 @@ struct FilterWheelTraitsT {
     enum TypeE {
       CONNECT,
       DISCONNECT,
-      NAME,
-      EXEC,
-      VERSION,
+      DRIVER_NAME,
+      DRIVER_EXEC,
+      DRIVER_VERSION,
+      DRIVER_INTERFACE,
       FILTER_SLOT_VALUE,
       _Count
     };
@@ -77,9 +78,10 @@ struct FilterWheelTraitsT {
       switch (inType) {
       case CONNECT: return "CONNECT";
       case DISCONNECT: return "DISCONNECT";
-      case NAME: return "NAME";
-      case EXEC: return "EXEC";
-      case VERSION: return "VERSION";
+      case DRIVER_NAME: return "DRIVER_NAME";
+      case DRIVER_EXEC: return "DRIVER_EXEC";
+      case DRIVER_VERSION: return "DRIVER_VERSION";
+      case DRIVER_INTERFACE: return "DRIVER_INTERFACE";
       case FILTER_SLOT_VALUE: return "FILTER_SLOT_VALUE";
       default: return "<?>";
       }
@@ -121,7 +123,7 @@ public:
     if (this->isMovementInProgess())
       throw IndiFilterWheelIsBusyExceptionT("Cannot set new filter position - filter wheel is currently busy.");
     this->sendNumberVal<FilterWheelTraitsT>(VecPropsT::FILTER_SLOT, PropsT::FILTER_SLOT_VALUE, inPos, inTimeoutMs);
-  }
+ } 
 
   inline bool isMovementInProgess() const {
     // TODO: Is this the correct prop. to check for busy state?!
