@@ -252,8 +252,10 @@ public:
    * Temperature
    *
    */
+  inline bool supportsTemperature() const { return this->hasVecProp<FocuserTraitsT>(VecPropsT::FOCUS_TEMPERATURE); }
   inline double getTemperature() const { return this->getNumberVal<FocuserTraitsT>(VecPropsT::FOCUS_TEMPERATURE, PropsT::TEMPERATURE); }
 
+  
   /**
    * Focus relative position
    */
@@ -268,6 +270,8 @@ public:
   /**
    * Focus absolute position
    */
+  inline bool supportsAbsPos() const { return this->hasVecProp<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION); }
+
   inline int getAbsPos() const { return this->getNumberVal<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION, PropsT::FOCUS_ABSOLUTE_POSITION); }
   inline void setAbsPos(unsigned int inAbsPos, int inTimeoutMs = sDefaultTimeoutMs) {
     if (this->isMovementInProgess())
@@ -339,6 +343,8 @@ public:
    * Device connection
    *
    */
+  inline bool supportsDevicePort() const { return this->hasVecProp<FocuserTraitsT>(VecPropsT::DEVICE_PORT); }
+
   inline string getDevicePort() const { return this->getTextVal<FocuserTraitsT>(VecPropsT::DEVICE_PORT, PropsT::PORT); }
   inline void setDevicePort(const string & inDevicePort, int inTimeoutMs = sDefaultTimeoutMs) {
     this->sendTextVal<FocuserTraitsT>(VecPropsT::DEVICE_PORT, PropsT::PORT, inDevicePort.c_str(), inTimeoutMs);

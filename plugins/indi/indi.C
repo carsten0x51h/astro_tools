@@ -232,7 +232,6 @@ namespace AT {
 		<< " cooler...temperature: " << temperature << sDegreeCelsius << endl;
 
       // Set temperature
-      // TODO: Does non-blocking work? Which one blocks until temp. has been reached?! --> TEST with real camera!
       if (! inDevice->isCoolerEnabled())
       	inDevice->setCoolerEnabled(true, 0 /* do not block */);
 
@@ -415,10 +414,10 @@ namespace AT {
     }
     static void performAction(IndiFocuserT * inDevice, const po::variables_map & cmdLineMap) {
       // TODO: Get abs, temperature and port only if they exist... otherwise print "n.a." --> try catch...
-      cout << "Position: " << inDevice->getAbsPos()
-	   << ", temperature: " << inDevice->getTemperature() << sDegreeCelsius
+      cout << "Position: " << (inDevice->supportsAbsPos() ? std::to_string(inDevice->getAbsPos()) : "n.a.")
+	   << ", temperature: " << (inDevice->supportsTemperature() ? std::to_string(inDevice->getTemperature()) : "n.a.") << sDegreeCelsius
 	   << ", state: " << (inDevice->isMovementInProgess() ? "busy" : "ready")
-	   << ", device port: " << inDevice->getDevicePort()
+	   << ", device port: " << (inDevice->supportsDevicePort() ? inDevice->getDevicePort() : "n.a.")
 	   << endl;
     }
   };
@@ -485,6 +484,7 @@ namespace AT {
 
     /**
      * cooler_enable command.
+     * TODO: We may implement a staged cool down / cool up process to protect the chip... 
      */
     DEFINE_OPTION(optCoolerEnable, "temperature", po::value<float>()->required(), "Chip temperature °C.");
 
@@ -577,7 +577,6 @@ namespace AT {
     focusInfoDescr.add(optTimeout);
     focusInfoDescr.add(optDevicePort);
     REGISTER_CONSOLE_CMD_LINE_COMMAND("focus_info", focusInfoDescr, (& IndiDeviceActionT<IndiFocuserT, FocusInfoT>::performAction));
-
 
     /**
      * focus_abort command

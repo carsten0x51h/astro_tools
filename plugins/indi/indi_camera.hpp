@@ -502,7 +502,6 @@ public:
   }
 
   double getTemperature() const { return this->getNumberVal<CameraTraitsT>(VecPropsT::CCD_TEMPERATURE, PropsT::CCD_TEMPERATURE_VALUE); }
-  // TODO: How long will this be busy?!?!?!
   void setTemperature(double inTemperature, int inTimeout = sDefaultTimeoutMs) {
     sendNumberVal<CameraTraitsT>(VecPropsT::CCD_TEMPERATURE, PropsT::CCD_TEMPERATURE_VALUE, inTemperature, inTimeout);
   }
