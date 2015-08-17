@@ -43,11 +43,9 @@ using namespace std;
 using namespace boost;
 using namespace cimg_library;
 
-// NOTE: Defines are not bound to any namespace...
-
-
 DEF_Exception(Timeout);
 
+// NOTE: Defines are not bound to any namespace...
 #define START_MEASURE(__name__)			\
   struct timeval __name__##start;		\
   gettimeofday(& __name__##start, NULL);	\

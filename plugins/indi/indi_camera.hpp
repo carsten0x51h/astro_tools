@@ -473,10 +473,12 @@ public:
    */
   // TODO: There are additional exposure settings for GUIDER! How to handle?
   void startExposure(double inExposureTimeSec) {
+    LOG(debug) << "startExposure - Starting exposure..." << inExposureTimeSec << " sec." << endl;
     if (this->isExposureInProgress())
       throw IndiCameraExposureInProgressExceptionT();
     
     this->setExposureTime(inExposureTimeSec, 0 /* 0ms - Don't wait at all */);
+    LOG(debug) << "startExposure - Exposure finished." << endl;
   }
   void abortExposure(int inTimeoutMs = sDefaultTimeoutMs) {
     ISwitchVectorProperty * vec = this->getSwitchVec<CameraTraitsT>(VecPropsT::CCD_ABORT_EXPOSURE);

@@ -29,7 +29,7 @@
 #include "indi_filter_wheel.hpp"
 
 #include "indi_utils.hpp"
-#include "util.hpp" // TODO: at_util.hpp?! and AT namespace?!
+#include "util.hpp"
 
 #include "at_validator.hpp"
 #include "indi_validator.hpp"
@@ -88,7 +88,6 @@ namespace AT {
       IndiClientT indiClient(hostnameAndPort.getHostname(), hostnameAndPort.getPort(), true);
       
       if (indiClient.isConnected()) {
-
 	DeviceT * device = static_cast<DeviceT*>(indiClient.getDevice(deviceName.c_str(), DeviceT::getType()));
 	
 	if (! device) {
@@ -97,7 +96,7 @@ namespace AT {
 	  throw IndiPluginExceptionT(ss.str().c_str());
 	}
 
-	// TODO: What if device is already connected?!
+	bool wasCameraConnected = device->isConnected();
 	bool forceReConnect = ActionT::setupAction(device, cmdLineMap); // This takes place before connectiong to device..
 
 	if (forceReConnect && device->isConnected()) {
@@ -105,34 +104,31 @@ namespace AT {
 	  device->disconnect();
 	}
 
-	// TODO: Remember if device was connected, ... disconnect if so?! Maybe regulate this behaviour by another switch? "keep state" ?!
 	if (! device->isConnected()) {
 	  LOG(info) << "Connecting " << DeviceTypeT::asStr(device->getType()) << "..." << endl;
 	  device->connect(); // NOTE: Throws on failure
 	}
 	
 	if (! device->isConnected()) {
-	  // TODO: Print device name?!
 	  stringstream ss;
-	  ss << "Could not connect to '" << DeviceTypeT::asStr(device->getType());
+	  ss << "Could not connect to '" << deviceName.c_str() << "' (type: " << DeviceTypeT::asStr(device->getType()) << ")";
 	  throw IndiPluginExceptionT(ss.str().c_str());
 	}
 	
 	// Call static member of specialization
 	ActionT::performAction(device, cmdLineMap);
-	
+
+	// NOTE: We only disconnect the camera if it was disconnected previously.
+	if (! wasCameraConnected) {
+	  LOG(info) << "Disconnecting camera..." << flush;	
+	  device->disconnect();
+	  LOG(info) << "DONE." << flush;	
+	}
       } else {
 	stringstream ss;
 	ss << "Could not connect to INDI client: '" << indiClient << "'." << endl;
 	throw IndiPluginExceptionT(ss.str().c_str());
       }
-
-      // NOTE: We only disconnect the camera if it was disconnected previously.
-      // if (! wasCameraConnected) {
-      // 	LOG(info) << "Disconnecting camera..." << flush;	
-      // 	inDevice->disconnect();
-      // 	LOG(info) << "DONE." << flush;	
-      // }
     }
   }; // end class
 
@@ -183,10 +179,37 @@ namespace AT {
       
       // Finally, we have all to take a picture.
       CImg<float> img;
-      inDevice->takePicture(& img, exposureTime, frameSize, frameType, binning, false /* not compressed - TODO?! */);
-      
+
+      if (! inDevice->isConnected())
+	throw IndiCameraNotConnectedExceptionT();
+
+      if (inDevice->isExposureInProgress())
+	throw IndiCameraExposureInProgressExceptionT();
+
+      LOG(trace) << "CameraTakePictureT - Calling setBinning(" << binning << ")..." << endl;
+      inDevice->setBinning(binning);
+      LOG(trace) << "CameraTakePictureT - Calling setFrame(" << frameSize << ")..." << endl;
+      inDevice->setFrame(frameSize);
+      LOG(trace) << "CameraTakePictureT - Calling setFrameType(" << FrameTypeT::asStr(frameType) << ")..." << endl;
+      inDevice->setFrameType(frameType);
+      LOG(trace) << "CameraTakePictureT - setCompressed(false)..." << endl;
+      inDevice->setCompressed(false); // No compression when moving image to CImg
+      LOG(trace) << "CameraTakePictureT - startExposure(" << exposureTime << "s)..." << endl;
+      inDevice->startExposure(exposureTime); // Non-blocking call...
+
+      unsigned int estimatedTime = 1000 * exposureTime + 15000 /* 15 sec. to transfer 1x1 binned image */;
+      WAIT_MAX_FOR_PRINT(! inDevice->isExposureInProgress(), estimatedTime,
+			 CommonAstroToolsAppT::isInQuietMode(), "[Exposure left " << inDevice->getExposureTime() << "s]...",
+			 "Hit timeout while waiting for camera.");
+
+      LOG(trace) << "CameraTakePictureT - getImage(outImg=" << & img << ")..." << endl;
+      inDevice->getImage(& img);
+      LOG(trace) << "CameraTakePictureT - DONE." << endl;
+
       // Save picture
+      cout << "Writing image data to '" << outputFileName << "'..." << flush;
       img.save(outputFileName.c_str());
+      cout << "DONE" << endl;
       
       // Display image, if user specified
       if (displayPicture) {
@@ -356,7 +379,7 @@ namespace AT {
 
       unsigned int estimatedDelay = IndiFocuserT::estimateMaxFocuserMovementDelayMs(abs(position - inDevice->getAbsPos()));
 
-      WAIT_MAX_FOR_PRINT(!inDevice->isMovementInProgess(), estimatedDelay, CommonAstroToolsAppT::isInQuietMode(),
+      WAIT_MAX_FOR_PRINT(! inDevice->isMovementInProgess(), estimatedDelay, CommonAstroToolsAppT::isInQuietMode(),
 			 "[Focuser pos: " << inDevice->getAbsPos() << "]...", "Hit timeout while waiting for focuser.");
     }
   };
