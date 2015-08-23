@@ -211,7 +211,106 @@ namespace AT {
     endwin();
   }
 
+  static FrameT<unsigned int>
+  getStarFrame(const CImg<float> & inImg, long bitPix, const string & starSelectMethod,
+	       typename StarFrameSelectorT::StarRecognitionTypeT::TypeE inStarRecognitionMethod,
+	       typename CentroidT::CentroidTypeT::TypeE inCentroidMethod, unsigned int inFrameSize = 25) {
 
+    DimensionT<int> imageDimension(inImg.width(), inImg.height());
+    PointT<float> selectionCenter;
+    FrameT<unsigned int> selectedFrame;
+    
+    if (! strcmp(starSelectMethod.c_str(), "auto")) {
+      //StarFrameSelectorT::calc();
+      // Create a binary image to prepare clustering
+      float th = ThresholdT::calc(inImg, bitPix, ThresholdT::ThresholdTypeT::OTSU);
+      LOG(debug) << "Calculated threshold: " << th << endl;
+	  
+      CImg<float> thresholdImg(inImg); // Create a copy
+      thresholdImg.threshold(th);
+	  
+      // // DEBUG START
+      // CImgDisplay thDsp(thresholdImg, "TH IMG...");
+      // while (! thDsp.is_closed()) {
+      // 	thDsp.wait();
+      // }
+      // // DEBUG END
+	  
+      // Perform star clustering to determine interesting regions
+      // TODO: Enabled clustering should not exit program!! Comment in...
+      list<FrameT<int> > selectionList;
+      ClusterT::calc(thresholdImg, & selectionList);
+      
+      AT_ASSERT(StarFrameSelector, selectionList.size(), "Automatic star selection needs at least one star.");
+      LOG(debug) << "Automatically select 1 star out of " << selectionList.size() << "..." << endl;
+
+      // TODO: Implement automatic star selection - For now we pick just the first one......
+      // IDEA: Pick first (best? -> closest to center, brightness at max/2?) star from cluster list... / throw if more than one star?
+      selectedFrame = *selectionList.begin();
+      
+    } else if (! strcmp(starSelectMethod.c_str(), "display")) {
+      // Normalize image
+      CImg<unsigned char> normalizedImage(normalize(inImg, pow(2.0, bitPix), 5.0 /*5%*/));
+
+      // NOTE: See http://cimg.eu/reference/structcimg__library_1_1CImgDisplay.html
+      // TODO: We will use our own graphical star-selector later - with zoom, value preview etc.
+      CImgDisplay dispStarSelect(normalizedImage, "Select a star (click left)...");
+
+      while (! dispStarSelect.is_closed()) {
+	dispStarSelect.wait();
+
+	if (dispStarSelect.button() & 1) { // Left button clicked.
+	  
+	  // NOTE:  If the image is bigger than the screen / window it is stretched and the mouse position
+	  //        returned has to be computed accordingly.
+	  int x = (float) inImg.width() / (float) dispStarSelect.width() * (float)dispStarSelect.mouse_x();
+	  int y = (float) inImg.height() / (float) dispStarSelect.height() * (float)dispStarSelect.mouse_y();
+	  selectionCenter = PointT<float>(x, y);
+	  LOG(debug) << "Left click - position (x,y)=" << selectionCenter << endl;
+
+	  if (StarFrameSelectorT::calc(inImg, bitPix, selectionCenter, & selectedFrame, inStarRecognitionMethod, inCentroidMethod, inFrameSize)) {
+	    // DEBUG START - Show, what has been selected!!
+	    // CImg<float> cropImg = normalizedImage.get_crop(selectedFrame.get<0>(), selectedFrame.get<1>(),
+	    // 						 selectedFrame.get<0>() + selectedFrame.get<2>() - 1,
+	    // 						 selectedFrame.get<1>() + selectedFrame.get<3>() - 1);
+	    // CImgDisplay cropDsp(cropImg, "DEBUG - CROP IMG...");
+	    // while (! cropDsp.is_closed()) {
+	    //   cropDsp.wait();
+	    // }
+	    // DEBUG END
+
+	    // We have a valid selecction - exit selection loop
+	    break;
+	  } else {
+	    LOG(warning) << "Selected frame hits image boundary." << endl;
+	  }
+	}
+      } // end while
+    } else {
+      // Check if valid position
+      boost::any v;
+      vector<string> values;
+      values.push_back(starSelectMethod);
+      validate(v, values, & selectionCenter, 0);
+      selectionCenter = any_cast<PointT<float> >(v); // throws boost::bad_any_cast
+      
+      // Just create a frame with the given window size at exactly the given position...
+      selectedFrame = centerPosToFrame(selectionCenter, inFrameSize);
+    }
+
+    // Finally check again, if selected frame is not going to cut any image boundaries
+    if (! insideBounds(imageDimension, selectedFrame)) {
+      stringstream ss;
+      ss << "Selected frame hits image boundary - image bounds: " << imageDimension
+	 << ", starSearchFrame: " << selectedFrame << endl;
+      
+      LOG(error) << ss.str().c_str() << endl;
+      throw FocusFinderPluginExceptionT(ss.str().c_str());
+    }
+    return selectedFrame;
+  }
+
+  
   class FocusFinderActionT {
   public:
     static void focusFinderStatusUpdates(const FocusFinderDataT * inFfUpdData) {
@@ -261,7 +360,7 @@ namespace AT {
       float exposureTimeSec = cmdLineMap["exposure_time"].as<float>();
       const BinningT & binning = cmdLineMap["binning"].as<BinningT>();
       const string & starSelectMethod = cmdLineMap["star_select"].as<string>();
-      typename StarFrameSelectorT::StarSelectionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarSelectionTypeT::TypeE>();
+      typename StarFrameSelectorT::StarRecognitionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarRecognitionTypeT::TypeE>();
 
       const unsigned int windowSize = cmdLineMap["window_size"].as<unsigned int>();
       const unsigned int numStepsToDetermineDirection = cmdLineMap["num_steps_to_determine_direction"].as<unsigned int>();
@@ -370,10 +469,10 @@ namespace AT {
 	
 	// Star selection
 	const string & starSelectMethod = cmdLineMap["star_select"].as<string>();
-	typename StarFrameSelectorT::StarSelectionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarSelectionTypeT::TypeE>();
+	typename StarFrameSelectorT::StarRecognitionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarRecognitionTypeT::TypeE>();
 	typename CentroidT::CentroidTypeT::TypeE centroidMethod = cmdLineMap["centroid_method"].as<typename CentroidT::CentroidTypeT::TypeE>();
 
-	FrameT<unsigned int> selectedFrame = StarFrameSelectorT::calc(image, bitPix, starSelectMethod, starRecognitionMethod, centroidMethod);
+	FrameT<unsigned int> selectedFrame = getStarFrame(image, bitPix, starSelectMethod, starRecognitionMethod, centroidMethod);
 
 	if (! strcmp(focusMode.c_str(), "manual")) { // Manual focusing
 	  manualConsoleFocusCntl(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning);
@@ -439,9 +538,9 @@ namespace AT {
 
       // Star selection
       const string & starSelectMethod = cmdLineMap["star_select"].as<string>();
-      typename StarFrameSelectorT::StarSelectionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarSelectionTypeT::TypeE>();
+      typename StarFrameSelectorT::StarRecognitionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarRecognitionTypeT::TypeE>();
       typename CentroidT::CentroidTypeT::TypeE centroidMethod = cmdLineMap["centroid_method"].as<typename CentroidT::CentroidTypeT::TypeE>();
-      FrameT<unsigned int> selectedFrame = StarFrameSelectorT::calc(image, bitPix, starSelectMethod, starRecognitionMethod, centroidMethod);
+      FrameT<unsigned int> selectedFrame = getStarFrame(image, bitPix, starSelectMethod, starRecognitionMethod, centroidMethod);
 
       // Rectify selection frame
       FrameT<float> squareFrame = rectify(selectedFrame);
@@ -543,7 +642,7 @@ namespace AT {
     DEFINE_OPTION(optTimeout, "timeout", po::value<float>()->default_value(-1), "Seconds until command times out (default: no timeout).");
     DEFINE_OPTION(optInput, "input", po::value<string>(), "Input file.");
     DEFINE_OPTION(optStarSelect, "star_select", po::value<string>()->default_value("display"), "Star select [auto|display|(x,y)]");
-    DEFINE_OPTION(optStarRecognition, "star_recognition", po::value<typename StarFrameSelectorT::StarSelectionTypeT::TypeE>()->default_value(StarFrameSelectorT::StarSelectionTypeT::PROXIMITY), "Star select [proximity|clustering]");
+    DEFINE_OPTION(optStarRecognition, "star_recognition", po::value<typename StarFrameSelectorT::StarRecognitionTypeT::TypeE>()->default_value(StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY), "Star select [proximity|clustering]");
 
     DEFINE_OPTION(optFocalDistance, "focal_distance", po::value<unsigned int>(), "Telescope focal distance in mm."); 
     DEFINE_OPTION(optPixelSize, "pixel_size", po::value<DimensionT<int> >(), "Pixel size (W x H) um.");
