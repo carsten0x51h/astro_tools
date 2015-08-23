@@ -22,30 +22,195 @@
  *
  ****************************************************************************/
 
+#include <ncurses.h>
+
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
 #include <limits>
 
+#include <unistd.h>
+#include <stdlib.h>
+
 #include "astro_tools_app.hpp"
 #include "at_logging.hpp"
 #include "io_util.hpp"
-
 #include "at_validator.hpp"
-#include "focus_finder_validator.hpp"
 
 #include "focus_finder.hpp"
 
 #include "threshold.hpp"
+#include "normalize.hpp"
 #include "cluster.hpp"
 #include "centroid.hpp"
+#include "star_frame_selector.hpp"
 #include "focus_finder_linear_interpolation_impl.hpp"
 
 namespace AT {
+
   DEF_Exception(FocusFinderPlugin);
   DEF_Exception(UnknownFocusFinderImpl);
   DEF_Exception(RequireOption);
   DEF_Exception(ImageDimension);
   DEF_Exception(WindowOutOfBounds);
+
+  static void
+  manualConsoleFocusCntl(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice,
+			 FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec,
+			 BinningT inBinning)
+  {
+    CImgDisplay currentImageDisp;
+    CImg<float> image;
+    int key;
+
+    int stepSize = 10;
+    int stepFactor = 10;
+    int focusPos = inFocuserDevice->getAbsPos();
+    float hfdValue = -1;
+  
+    initscr();
+    crmode();
+    keypad(stdscr, TRUE);
+    noecho();
+    clear();
+    mvprintw(5,5, "Focus finder. Press 'q' to quit");
+    move(7,5);
+    refresh();
+    key = getch();
+
+    while(key != 'q') {
+      move(7,5);
+      clrtoeol();
+    
+      if ((key >= 'A' && key <= 'Z') || (key >= 'a' && key <= 'z')) {
+	//printw("Key was %c", (char) key);
+      } else {
+	switch(key){
+	case KEY_LEFT:
+	  if (stepSize > 1) {
+	    stepSize =  stepSize / stepFactor;
+	  }
+	  move(5,5);
+	  clrtoeol();
+	  mvprintw(5, 5, "Step size: %d", stepSize);
+	  break;
+	
+	case KEY_RIGHT:
+	  if (stepSize < 10000) {
+	    stepSize =  stepSize * stepFactor;
+	  }
+	  move(5, 5);
+	  clrtoeol();
+	  mvprintw(5, 5, "Step size: %d", stepSize);
+	  break;
+
+	case KEY_UP:
+	  move(4, 5);
+	  clrtoeol();
+	  focusPos += stepSize;
+	  mvprintw(4, 5, "Focus pos (dest): %d", focusPos);
+	  inFocuserDevice->setAbsPos(focusPos, 0 /* non-blocking */);
+	  break;
+	
+	case KEY_DOWN:
+	  move(4, 5);
+	  clrtoeol();
+	  focusPos -= stepSize;
+	  mvprintw(4, 5, "Focus pos (dest): %d", focusPos);
+	  inFocuserDevice->setAbsPos(focusPos, 0 /* non-blocking */);
+	  break;
+	
+	case 27 /*LOCAL_ESCAPE_KEY*/:
+	  printw("%s", "Stopping focus motion.");
+	  inFocuserDevice->abortMotion(0 /*non blocking*/);
+	  break;
+	
+	  // case KEY_END:
+	  // 	printw("%s", "END key");
+	  // 	break;
+	  
+	default:
+	  //printw("Unmatched - %d", key);
+	  break;
+	} /* switch */
+      } /*else*/
+
+
+      // Update measurement data
+      string focuserStatus = (inFocuserDevice->isMovementInProgess() ? "busy" : "ready"); 
+      stringstream ssCameraStatus;
+      if (inCameraDevice->isExposureInProgress()) {
+	ssCameraStatus << "exposing..." << inCameraDevice->getExposureTime() << "s";
+      } else {
+	ssCameraStatus << "ready";
+      }
+
+      // Calculate status
+      const size_t infoColumn = 50;
+      mvprintw(2, infoColumn, "Focus status: %s", focuserStatus.c_str());
+      mvprintw(3, infoColumn, "Focus pos (is): %d", inFocuserDevice->getAbsPos());
+      mvprintw(4, infoColumn, "Camera status: %s", ssCameraStatus.str().c_str());
+      if (hfdValue > 0) {
+	mvprintw(5, infoColumn, "HFD: %f\"", hfdValue);
+      } else {
+	mvprintw(5, infoColumn, "HFD: n.a.");
+      }
+      mvprintw(6, infoColumn, "FWHM(horz): %f\"", 2.5);
+      mvprintw(7, infoColumn, "FWHM(vert): %f\"", 3.5);
+
+    
+      // Keep exposure running...
+      if (! inCameraDevice->isExposureInProgress()) {	
+	LOG(trace) << "setBinning(" << inBinning << ")..." << endl;
+	inCameraDevice->setBinning(inBinning);
+	LOG(trace) << "setFrame(" << inSelectionFrame << ")..." << endl;
+	inCameraDevice->setFrame(inSelectionFrame);
+	LOG(trace) << "setFrameType(" << FrameTypeT::asStr(FrameTypeT::LIGHT) << ")..." << endl;
+	inCameraDevice->setFrameType(FrameTypeT::LIGHT);
+	LOG(trace) << "setCompressed(false)..." << endl;
+	inCameraDevice->setCompressed(false); // No compression when moving image to CImg
+
+	// Get previous image (if any)
+	inCameraDevice->getImage(& image);
+
+	// HACK!
+	CImg<float> loadedImg("test33.fits");
+	image = loadedImg.get_crop(inSelectionFrame.get<0>(), inSelectionFrame.get<1>(), inSelectionFrame.get<0>() + inSelectionFrame.get<2>() - 1, inSelectionFrame.get<1>() + inSelectionFrame.get<3>() - 1);
+	// HACK!
+
+	LOG(trace) << "Received image [subframe: " << inSelectionFrame << "] from camera - size: " << image.width() << " x " << image.height() << endl;
+
+	// Recalculate picture data...
+	LOG(trace) << "image.width(): " << image.width() << ", image.height(): " << image.height() << endl;
+	LOG(trace) << "inSelectionFrame.get<2>(): " << inSelectionFrame.get<2>() << ", inSelectionFrame.get<3>(): " << inSelectionFrame.get<3>() << endl;
+	
+	if (image.width() == (inSelectionFrame.get<2>() / inBinning.get<0>()) && image.height() == (inSelectionFrame.get<3>() / inBinning.get<0>())) {
+
+	  // TODO: Calculate value below instead of hard-coding it...
+	  float maxPossiblePixelValue = 65535.0;
+	  CImg<unsigned char> normalizedImage(normalize(image, maxPossiblePixelValue, 5.0 /*5%*/));
+
+	  currentImageDisp.display(normalizedImage);
+
+	  // Try to calculate star data
+	  // TODO: try catch?
+	  HfdT hfd(image);
+	  hfdValue = hfd.getValue();
+
+	  // TODO: Also calc FWHMs, max pixel value, ...
+	  
+	}
+	
+	LOG(trace) << "startExposure(" << inExposureTimeSec << "s)..." << endl;
+	inCameraDevice->startExposure(inExposureTimeSec); // Non-blocking call...!!
+      }
+    
+      refresh();
+      timeout(10);
+      key = getch();
+    } /* while */
+    endwin();
+  }
+
 
   class FocusFinderActionT {
   public:
@@ -95,7 +260,8 @@ namespace AT {
       const string & focuserDevicePort = cmdLineMap["focuser_device_port"].as<string>();
       float exposureTimeSec = cmdLineMap["exposure_time"].as<float>();
       const BinningT & binning = cmdLineMap["binning"].as<BinningT>();
-      const string & starSelect = cmdLineMap["star_select"].as<string>();
+      const string & starSelectMethod = cmdLineMap["star_select"].as<string>();
+      typename StarFrameSelectorT::StarSelectionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarSelectionTypeT::TypeE>();
 
       const unsigned int windowSize = cmdLineMap["window_size"].as<unsigned int>();
       const unsigned int numStepsToDetermineDirection = cmdLineMap["num_steps_to_determine_direction"].as<unsigned int>();
@@ -113,11 +279,13 @@ namespace AT {
       const unsigned int fineSearchRangeSteps = cmdLineMap["fine_search_range_steps"].as<unsigned int>();
       const unsigned int vcurveFitEpsAbs = cmdLineMap["vcurve_fit_eps_abs"].as<unsigned int>();
       const unsigned int vcurveFitEpsRel = cmdLineMap["vcurve_fit_eps_rel"].as<unsigned int>();
+      const string & focusMode = cmdLineMap["focus_mode"].as<string>();
 
       LOG(info) << "Indi server: " << hostnameAndPort
 		<< ", cameraDeviceName: " << cameraDeviceName << ", focuserDeviceName: " << focuserDeviceName
 		<< ", focuserDevicePort: " << focuserDevicePort << ", exposureTimeSec: " << exposureTimeSec
-		<< ", binning: " << binning << ", starSelect: " << starSelect
+		<< ", binning: " << binning << ", starSelect: " << starSelectMethod
+		<< ", starRecognitionMethod: " << starRecognitionMethod
 		<< ", windowSize: " << windowSize << ", numStepsToDetermineDirection: " << numStepsToDetermineDirection
 		<< ", stepsToReachFocus: " << stepsToReachFocus << ", extremaFitnessBoundary: " << extremaFitnessBoundary
 		<< ", outerHfdRadiusPx: " << outerHfdRadiusPx << ", roughFocusMaxIterCnt: " << roughFocusMaxIterCnt
@@ -125,7 +293,8 @@ namespace AT {
 		<< ", roughFocusSearchRangePerc: " << roughFocusSearchRangePerc << ", roughFocusRecordNumCurves: " << roughFocusRecordNumCurves
 		<< ", roughFocusGranularitySteps: " << fineFocusRecordNumCurves << ", fineFocusGranularitySteps: " << fineFocusGranularitySteps
 		<< ", fineSearchRangeSteps: " << fineSearchRangeSteps << ", vcurveFitEpsAbs: " << vcurveFitEpsAbs
-		<< ", vcurveFitEpsRel: " << vcurveFitEpsRel << endl;
+		<< ", vcurveFitEpsRel: " << vcurveFitEpsRel
+		<< ", focusMode: " << focusMode << endl;
 
       IndiClientT indiClient(hostnameAndPort.getHostname(), hostnameAndPort.getPort(), true /* autoconnect*/);
 
@@ -157,58 +326,88 @@ namespace AT {
 
 	// Crosscheck if really connected (not expected)
 	AT_ASSERT(FocusFinderPlugin, cameraDevice->isConnected() && focuserDevice->isConnected(), "Expected camera and focuser to be connected.");
+	
+	// Get max. resolution
+	long bitPix = cameraDevice->getBitsPerPixel();
+	DimensionT<int> maxRes(cameraDevice->getMaxResolution().get<0>(), cameraDevice->getMaxResolution().get<1>());
+	LOG(info) << "Max camera resoultion: " << maxRes << ", bitsPerPix: " << bitPix << endl;
+	
+	// NOTE: Calculation seems to be done inside camera driver..
+	FrameT<float> fullFrame(0, 0, maxRes.get<0>(), maxRes.get<1>());
+	
+	// Take an image
+	// NOTE: To select a star a higher binning makes sense...?!!!!
+	LOG(trace) << "setBinning(" << binning << ")..." << endl;
+	cameraDevice->setBinning(binning);
+	//cameraDevice->setBinning(BinningT(4,4));
+	LOG(trace) << "setFrame(" << fullFrame << ")..." << endl;
+	cameraDevice->setFrame(fullFrame);
+	LOG(trace) << "setFrameType(" << FrameTypeT::asStr(FrameTypeT::LIGHT) << ")..." << endl;
+	cameraDevice->setFrameType(FrameTypeT::LIGHT);
+	LOG(trace) << "setCompressed(false)..." << endl;
+	cameraDevice->setCompressed(false); // No compression when moving image to CImg
+	LOG(trace) << "startExposure(" << exposureTimeSec << "s)..." << endl;
+	cameraDevice->startExposure(exposureTimeSec); // Non-blocking call...!!
+	// We have to wait for the first image...
+	unsigned int estimatedTime = 1000 * exposureTimeSec + 15000 /* 15 sec. to transfer 1x1 binned image */;
+	WAIT_MAX_FOR_PRINT(! cameraDevice->isExposureInProgress(), estimatedTime,
+			   CommonAstroToolsAppT::isInQuietMode(), "[Exposure left " << cameraDevice->getExposureTime() << "s]...",
+			   "Hit timeout while waiting for camera.");
+	
+	CImg<float> image;
+	cameraDevice->getImage(& image);
 
+	// DEBUG START
+	//image.save("TEST.fits");
+	// DEBUG END
 
+	// HACK!!!!
+	image.load("test33.fits");
+	//image = image.get_crop(0, 0, image.width() / 2, image.height() / 2);
+	//image.load("test2.jpeg");
+
+	
+	
 	// Star selection
-	PointT<float> starCenterPos;
+	const string & starSelectMethod = cmdLineMap["star_select"].as<string>();
+	typename StarFrameSelectorT::StarSelectionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarSelectionTypeT::TypeE>();
+	typename CentroidT::CentroidTypeT::TypeE centroidMethod = cmdLineMap["centroid_method"].as<typename CentroidT::CentroidTypeT::TypeE>();
 
-	if (! strcmp(starSelect.c_str(), "auto")) {
-	  // TODO: Implement automatic star selection
-	  AT_ASSERT(FocusFinderPlugin, false, "Mode 'auto' not yet implemented");
-	} else if (! strcmp(starSelect.c_str(), "display")) {
-	  // TODO: Implement star selection by displaying window
-	  AT_ASSERT(FocusFinderPlugin, false, "Mode 'display' not yet implemented");
-	} else {
-	  // Check if valid position
-	  boost::any v;
-	  vector<string> values;
-	  values.push_back(starSelect);
-	  validate(v, values, & starCenterPos, 0);
-	  starCenterPos = any_cast<PointT<float> >(v); // throws boost::bad_any_cast
+	FrameT<unsigned int> selectedFrame = StarFrameSelectorT::calc(image, bitPix, starSelectMethod, starRecognitionMethod, centroidMethod);
+
+	if (! strcmp(focusMode.c_str(), "manual")) { // Manual focusing
+	  manualConsoleFocusCntl(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning);
+	} else { // Automatic focusing
+	  FocusFinderLinearInterpolationImplT ffli(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning);
+
+	  // TODO: Introduce typedef for signals2::connection!, do we need x?!
+	  signals2::connection focusFinderUpdateHandle = ffli.registerFocusFinderUpdateListener(boost::bind(& FocusFinderActionT::focusFinderStatusUpdates, _1));
+
+	  // Set further configurations
+	  // TODO: Question is - do we pass this as optional cmd line parms? or do we provide an additional cfg file with focus finder settings?
+	  //       If so, whee do we store the file?
+	  ffli.setWindowSize(windowSize);
+	  ffli.setNumStepsToDetermineDirection(numStepsToDetermineDirection);
+	  ffli.setStepsToReachFocus(stepsToReachFocus);
+	  ffli.setExtremaFitnessBoundary(extremaFitnessBoundary);
+	  ffli.setOuterHfdRadiusPx(outerHfdRadiusPx);
+	  ffli.setRoughFocusMaxIterCnt(roughFocusMaxIterCnt);
+	  ffli.setTakePictureFitGaussCurveMaxRetryCnt(takePictureFitGaussCurveMaxRetryCnt);
+	  //ffli.setDebugShowTakePictureImage(debugShowTakePictureImage);
+	  ffli.setRoughFocusSearchRangePerc(roughFocusSearchRangePerc);
+	  ffli.setRoughFocusRecordNumCurves(roughFocusRecordNumCurves);
+	  ffli.setRoughFocusGranularitySteps(roughFocusGranularitySteps);
+	  ffli.setFineFocusRecordNumCurves(fineFocusRecordNumCurves);
+	  ffli.setFineFocusGranularitySteps(fineFocusGranularitySteps);
+	  ffli.setFineSearchRangeSteps(fineSearchRangeSteps);
+	  ffli.setVCurveFitEpsAbs(vcurveFitEpsAbs);
+	  ffli.setVCurveFitEpsRel(vcurveFitEpsRel);
+	
+	  // Find focus - TODO: Catch anything here?!
+	  ffli.findFocus();
+	
+	  ffli.unregisterFocusFinderUpdateListener(focusFinderUpdateHandle);
 	}
-
-	LOG(info) << "Star center pos: " << starCenterPos << endl;
-
-	FocusFinderLinearInterpolationImplT ffli(cameraDevice, focuserDevice, starCenterPos, exposureTimeSec, binning);
-
-	// TODO: Introduce typedef for signals2::connection!, do we need x?!
-	signals2::connection focusFinderUpdateHandle = ffli.registerFocusFinderUpdateListener(boost::bind(& FocusFinderActionT::focusFinderStatusUpdates, _1));
-
-	// Set further configurations
-	// TODO: Question is - do we pass this as optional cmd line parms? or do we provide an additional cfg file with focus finder settings?
-	//       If so, whee do we store the file?
-	ffli.setWindowSize(windowSize);
-	ffli.setNumStepsToDetermineDirection(numStepsToDetermineDirection);
-	ffli.setStepsToReachFocus(stepsToReachFocus);
-	ffli.setExtremaFitnessBoundary(extremaFitnessBoundary);
-	ffli.setOuterHfdRadiusPx(outerHfdRadiusPx);
-	ffli.setRoughFocusMaxIterCnt(roughFocusMaxIterCnt);
-	ffli.setTakePictureFitGaussCurveMaxRetryCnt(takePictureFitGaussCurveMaxRetryCnt);
-	//ffli.setDebugShowTakePictureImage(debugShowTakePictureImage);
-	ffli.setRoughFocusSearchRangePerc(roughFocusSearchRangePerc);
-	ffli.setRoughFocusRecordNumCurves(roughFocusRecordNumCurves);
-	ffli.setRoughFocusGranularitySteps(roughFocusGranularitySteps);
-	ffli.setFineFocusRecordNumCurves(fineFocusRecordNumCurves);
-	ffli.setFineFocusGranularitySteps(fineFocusGranularitySteps);
-	ffli.setFineSearchRangeSteps(fineSearchRangeSteps);
-	ffli.setVCurveFitEpsAbs(vcurveFitEpsAbs);
-	ffli.setVCurveFitEpsRel(vcurveFitEpsRel);
-	
-	// Find focus - TODO: Catch anything here?!
-	ffli.findFocus();
-	
-	ffli.unregisterFocusFinderUpdateListener(focusFinderUpdateHandle);
-
       } else {
 	stringstream ss;
 	ss << "Could not connect to INDI client: '" << indiClient << "'." << endl;
@@ -216,6 +415,7 @@ namespace AT {
       }
     }
   };
+
 
   template <typename ActionT>
   class CalcStarActionT {
@@ -237,66 +437,11 @@ namespace AT {
 	throw FileNotFoundExceptionT("Read FITS failed.");
       }
 
-      // Create a binary image to prepare clustering
-      float th = ThresholdT::calc(image, bitPix, ThresholdT::ThresholdTypeT::OTSU);
-      CImg<float> thresholdImg(image); // Create a copy
-      thresholdImg.threshold(th);
-
-      // Perform star clustering to determine interesting regions
-      list<FrameT<int> > selectionList;
-      ClusterT::calc(thresholdImg, & selectionList);
-
-      AT_ASSERT(FocusFinderPlugin, selectionList.size(), "No star recognized by clustering. At least one required.");
-
       // Star selection
-      FrameT<unsigned int> selectedFrame;
-      const string & starSelect = cmdLineMap["star_select"].as<string>();
-
-      if (! strcmp(starSelect.c_str(), "auto")) {
-	LOG(debug) << "Automatically select 1 star out of " << selectionList.size() << "..." << endl;
-	// TODO: Implement automatic star selection - For now we pick just the first one......
-	// IDEA: Pick first (best? -> closest to center, brightness at max/2?) star from cluster list... / throw if more than one star?
-	selectedFrame = *selectionList.begin();
-      } else {
-	PointT<float> selectionCenter;
-
-	if (! strcmp(starSelect.c_str(), "display")) {
-	  // NOTE: See http://cimg.eu/reference/structcimg__library_1_1CImgDisplay.html
-	  // TODO: We will use our own graphical star-selector later - with zoom, value preview etc.
-	  CImgDisplay dispStarSelect(image, "Select a star (click left)...");
-	  
-	  while (! dispStarSelect.is_closed()) {
-	    if (dispStarSelect.button() & 1) { // Left button clicked.
-	      selectionCenter = PointT<float>(dispStarSelect.mouse_x(), dispStarSelect.mouse_y());
-	      LOG(debug) << "Left click - position (x,y)=" << selectionCenter << endl;
-	      break;
-	    }
-	    dispStarSelect.wait();
-	  }
-	} else {
-	  // Check if valid position
-	  boost::any v;
-	  vector<string> values;
-	  values.push_back(starSelect);
-	  validate(v, values, & selectionCenter, 0);
-	  selectionCenter = any_cast<PointT<float> >(v); // throws boost::bad_any_cast	  
-	}
-
-	LOG(debug) << "Selecting closest star to position " << selectionCenter << "..." << endl;
-	  
-	// Pick closest star from cluster list...
-	// NOTE: We may solve this by a list sort with predicate instead... but this would require to change the list 
-	float minDist = std::numeric_limits<float>::max();
-	  
-	for (list<FrameT<int> >::const_iterator it = selectionList.begin(); it != selectionList.end(); ++it) {
-	  PointT<float> clusterCenter = frameToCenterPos(*it);
-	  float dist = distance(clusterCenter, selectionCenter);
-	  if (dist < minDist) {
-	    minDist = dist;
-	    selectedFrame = *it;
-	  }
-	}
-      }
+      const string & starSelectMethod = cmdLineMap["star_select"].as<string>();
+      typename StarFrameSelectorT::StarSelectionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarSelectionTypeT::TypeE>();
+      typename CentroidT::CentroidTypeT::TypeE centroidMethod = cmdLineMap["centroid_method"].as<typename CentroidT::CentroidTypeT::TypeE>();
+      FrameT<unsigned int> selectedFrame = StarFrameSelectorT::calc(image, bitPix, starSelectMethod, starRecognitionMethod, centroidMethod);
 
       // Rectify selection frame
       FrameT<float> squareFrame = rectify(selectedFrame);
@@ -305,7 +450,6 @@ namespace AT {
       ActionT::performAction(image, squareFrame, cmdLineMap);
     }
   };
-
 
   class CalcStarCentroidActionT : public CalcStarActionT<CalcStarCentroidActionT> {
   public:
@@ -398,7 +542,8 @@ namespace AT {
     DEFINE_OPTION(optIndiServer, "indi_server", po::value<HostnameAndPortT>()->default_value(HostnameAndPortT(IndiClientT::sDefaultIndiHostname, IndiClientT::sDefaultIndiPort)), "INDI server name and port.");
     DEFINE_OPTION(optTimeout, "timeout", po::value<float>()->default_value(-1), "Seconds until command times out (default: no timeout).");
     DEFINE_OPTION(optInput, "input", po::value<string>(), "Input file.");
-    DEFINE_OPTION(optStarSelect, "star_select", po::value<string>()->default_value("auto"), "Star select [auto|display|(x,y)]");
+    DEFINE_OPTION(optStarSelect, "star_select", po::value<string>()->default_value("display"), "Star select [auto|display|(x,y)]");
+    DEFINE_OPTION(optStarRecognition, "star_recognition", po::value<typename StarFrameSelectorT::StarSelectionTypeT::TypeE>()->default_value(StarFrameSelectorT::StarSelectionTypeT::PROXIMITY), "Star select [proximity|clustering]");
 
     DEFINE_OPTION(optFocalDistance, "focal_distance", po::value<unsigned int>(), "Telescope focal distance in mm."); 
     DEFINE_OPTION(optPixelSize, "pixel_size", po::value<DimensionT<int> >(), "Pixel size (W x H) um.");
@@ -437,6 +582,9 @@ namespace AT {
     DEFINE_OPTION(optVCurveFitEpsAbs, "vcurve_fit_eps_abs", po::value<unsigned int>()->default_value(1), "VCurve fit eps abs.");
     DEFINE_OPTION(optVCurveFitEpsRel, "vcurve_fit_eps_rel", po::value<unsigned int>()->default_value(1), "VCurve fit eps rel.");
 
+    DEFINE_OPTION(optFocusMode, "focus_mode", po::value<string>()->default_value("manual"), "Focus mode [manual|auto].");
+
+    
 
     /**
      * focus_find command.
@@ -447,6 +595,8 @@ namespace AT {
     focusFindDescr.add(optExposureTime);
     focusFindDescr.add(optBinning);
     focusFindDescr.add(optStarSelect);
+    focusFindDescr.add(optStarRecognition);
+    focusFindDescr.add(optCentroidMethod);
     focusFindDescr.add(optFocuserDeviceName);
     focusFindDescr.add(optFocuserDevicePort);
     focusFindDescr.add(optFilterDeviceName);
@@ -470,7 +620,8 @@ namespace AT {
     focusFindDescr.add(optFineSearchRangeSteps);
     focusFindDescr.add(optVCurveFitEpsAbs);
     focusFindDescr.add(optVCurveFitEpsRel);
-
+    focusFindDescr.add(optFocusMode);
+    
     //focusFindDescr.add_options()("display_picture", "Display picture.");
     REGISTER_CONSOLE_CMD_LINE_COMMAND("focus_find", focusFindDescr, (& FocusFinderActionT::performAction));
 
@@ -484,6 +635,7 @@ namespace AT {
     po::options_description calcStarCentroidDescr("calc_star_centroid command options");
     calcStarCentroidDescr.add(optInput);
     calcStarCentroidDescr.add(optStarSelect);
+    focusFindDescr.add(optStarRecognition);
     calcStarCentroidDescr.add(optCentroidMethod);
     REGISTER_CONSOLE_CMD_LINE_COMMAND("calc_star_centroid", calcStarCentroidDescr, (& CalcStarActionT<CalcStarCentroidActionT>::performAction));
 
@@ -496,6 +648,7 @@ namespace AT {
     po::options_description calcStarParmsDescr("calc_star_parms command options");
     calcStarParmsDescr.add(optInput);
     calcStarParmsDescr.add(optStarSelect);
+    focusFindDescr.add(optStarRecognition);
     calcStarParmsDescr.add(optFocalDistance);
     calcStarParmsDescr.add(optPixelSize);
     calcStarParmsDescr.add(optBinning);

@@ -152,11 +152,13 @@ namespace AT {
       const BinningT & binning = cmdLineMap["binning"].as<BinningT>();
       const string & outputFileName = cmdLineMap["output"].as<string>();
       const bool displayPicture = (cmdLineMap.count("display_picture") > 0);
+      const bool loop = (cmdLineMap.count("loop") > 0);
 
       LOG(info) << ", Exposure time [s]: " << exposureTime
 		<< ", Frame type: " << FrameTypeT::asStr(frameType)
 		<< ", Binning: " << binning << ", Output: " << outputFileName
-		<< ", display picture: " << displayPicture << endl;
+		<< ", display picture: " << displayPicture
+		<< ", loop: " << loop << endl;
 
       // Get max. resolution
       DimensionT<int> maxRes(inDevice->getMaxResolution().get<0>(), inDevice->getMaxResolution().get<1>());
@@ -186,36 +188,47 @@ namespace AT {
       if (inDevice->isExposureInProgress())
 	throw IndiCameraExposureInProgressExceptionT();
 
-      LOG(trace) << "CameraTakePictureT - Calling setBinning(" << binning << ")..." << endl;
-      inDevice->setBinning(binning);
-      LOG(trace) << "CameraTakePictureT - Calling setFrame(" << frameSize << ")..." << endl;
-      inDevice->setFrame(frameSize);
-      LOG(trace) << "CameraTakePictureT - Calling setFrameType(" << FrameTypeT::asStr(frameType) << ")..." << endl;
-      inDevice->setFrameType(frameType);
-      LOG(trace) << "CameraTakePictureT - setCompressed(false)..." << endl;
-      inDevice->setCompressed(false); // No compression when moving image to CImg
-      LOG(trace) << "CameraTakePictureT - startExposure(" << exposureTime << "s)..." << endl;
-      inDevice->startExposure(exposureTime); // Non-blocking call...
+      CImgDisplay disp1;
+      do {
+	LOG(trace) << "CameraTakePictureT - Calling setBinning(" << binning << ")..." << endl;
+	inDevice->setBinning(binning);
+	LOG(trace) << "CameraTakePictureT - Calling setFrame(" << frameSize << ")..." << endl;
+	inDevice->setFrame(frameSize);
+	LOG(trace) << "CameraTakePictureT - Calling setFrameType(" << FrameTypeT::asStr(frameType) << ")..." << endl;
+	inDevice->setFrameType(frameType);
+	LOG(trace) << "CameraTakePictureT - setCompressed(false)..." << endl;
+	inDevice->setCompressed(false); // No compression when moving image to CImg
+	LOG(trace) << "CameraTakePictureT - startExposure(" << exposureTime << "s)..." << endl;
+	inDevice->startExposure(exposureTime); // Non-blocking call...
 
-      unsigned int estimatedTime = 1000 * exposureTime + 15000 /* 15 sec. to transfer 1x1 binned image */;
-      WAIT_MAX_FOR_PRINT(! inDevice->isExposureInProgress(), estimatedTime,
-			 CommonAstroToolsAppT::isInQuietMode(), "[Exposure left " << inDevice->getExposureTime() << "s]...",
-			 "Hit timeout while waiting for camera.");
+	unsigned int estimatedTime = 1000 * exposureTime + 15000 /* 15 sec. to transfer 1x1 binned image */;
+	WAIT_MAX_FOR_PRINT(! inDevice->isExposureInProgress(), estimatedTime,
+			   CommonAstroToolsAppT::isInQuietMode(), "[Exposure left " << inDevice->getExposureTime() << "s]...",
+			   "Hit timeout while waiting for camera.");
 
-      LOG(trace) << "CameraTakePictureT - getImage(outImg=" << & img << ")..." << endl;
-      inDevice->getImage(& img);
-      LOG(trace) << "CameraTakePictureT - DONE." << endl;
+	LOG(trace) << "CameraTakePictureT - getImage(outImg=" << & img << ")..." << endl;
+	inDevice->getImage(& img);
+	LOG(trace) << "CameraTakePictureT - DONE." << endl;
 
-      // Save picture
-      cout << "Writing image data to '" << outputFileName << "'..." << flush;
-      img.save(outputFileName.c_str());
-      cout << "DONE" << endl;
+	// Save picture
+	// TODO: in case of loop, save arch image - timestamp as filename...
+	cout << "Writing image data to '" << outputFileName << "'..." << flush;
+	img.save(outputFileName.c_str());
+	cout << "DONE" << endl;
       
-      // Display image, if user specified
-      if (displayPicture) {
-	CImgDisplay disp1(img, "img");
-	while(! disp1.is_closed()) { CImgDisplay::wait(disp1); }
-      }
+	// Display image, if user specified
+	if (displayPicture) {
+	  //disp1.assign(img, "Current image", 1 /*normalization 1=always, 2=once, 3=pixel-type dependent*/, false /*is_fullscreen*/, false /*is_closed*/);
+	  disp1.display(img);
+
+	  if (! loop) {
+	    // If not in loop-mode, wait until window is closed
+	    while(! disp1.is_closed()) { CImgDisplay::wait(disp1); }
+	  }
+	}
+	// TODO: How to cleanly exit loop?
+      } while(loop);
+      
     }
   };
 
@@ -480,6 +493,7 @@ namespace AT {
     takePictureDescr.add(optFrameSize);
     takePictureDescr.add(optOutput);
     takePictureDescr.add_options()("display_picture", "Display picture.");
+    takePictureDescr.add_options()("loop", "Take pictures in a loop.");
     REGISTER_CONSOLE_CMD_LINE_COMMAND("take_picture", takePictureDescr, (& IndiDeviceActionT<IndiCameraT, CameraTakePictureT>::performAction));
 
     /**

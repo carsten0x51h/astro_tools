@@ -471,6 +471,13 @@ namespace AT {
       calc(inImg, frame, outCenter, outImg, inCoordType, inCalcType, inZoomFactor);
     }
   };
+
+
+  /**
+   * NOTE: This validate belongs to AT::CentroidT::CentroidTypeT.
+   */
+  void validate(boost::any & v, const vector<string> & values, typename CentroidT::CentroidTypeT::TypeE * target_type, int);
+
 } // end AT
 
 

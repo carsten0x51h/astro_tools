@@ -121,7 +121,7 @@ t_level_value<T>* level_value(T* v) {
 
 
 // See http://stackoverflow.com/questions/24170577/simultaneous-logging-to-console-and-file-using-boost
-#define LOG(level) BOOST_LOG_SEV(global_logger::get(), level)
+#define LOG(level) BOOST_LOG_SEV(global_logger::get(), logging::trivial::level)
 
 typedef src::severity_channel_logger_mt<severity_level, std::string> global_logger_type;
 

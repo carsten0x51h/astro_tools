@@ -371,4 +371,69 @@ extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, 
   return extractLine(inImage, inDirection, imgWindow);
 }
 
+
+
+static void
+getMinMaxPixel(const CImg<float> & inImg, const FrameT<int> * inFrame = 0, CoordTypeT::TypeE inCoordType = CoordTypeT::ABSOLUTE,
+	       float * outMin = 0, PointT<unsigned int> * outMinPixelPos = 0,float * outMax = 0, PointT<unsigned int> * outMaxPixelPos = 0) { 
+
+  // If frame is give, we crop...
+  CImg<float> cropImg;
+  if (inFrame) {
+    cropImg = inImg.get_crop(inFrame->get<0>(), inFrame->get<1>(),
+			     inFrame->get<0>() + inFrame->get<2>() - 1,
+			     inFrame->get<1>() + inFrame->get<3>() - 1);
+  }
+  const CImg<float> & searchImg = (inFrame ? cropImg : inImg);
+  
+  PointT<unsigned int> minPos, maxPos;
+  float min = std::numeric_limits<float>::max();
+  float max = 0;
+  
+  // NOTE: First minimum and maximum counts
+  cimg_forXY(cropImg, x, y) {
+    const float & value = cropImg(x,y);
+    if (min > value) {
+      min = value;
+      minPos = PointT<unsigned int>(x, y);
+    }
+    if (max < value) {
+      max = value;
+      maxPos = PointT<unsigned int>(x, y);
+    }
+  }
+  
+  if (outMin) { *outMin = min; }
+  if (outMinPixelPos) {
+    *outMinPixelPos = minPos;
+    
+    if (inCoordType == CoordTypeT::ABSOLUTE && inFrame) {
+      outMinPixelPos->get<0>() += inFrame->get<0>();
+      outMinPixelPos->get<1>() += inFrame->get<1>();
+    }
+  }
+  if (outMax)  { *outMax = max; }
+  if (outMaxPixelPos) {
+    *outMaxPixelPos = maxPos;
+
+    if (inCoordType == CoordTypeT::ABSOLUTE && inFrame) {
+      outMaxPixelPos->get<0>() += inFrame->get<0>();
+      outMaxPixelPos->get<1>() += inFrame->get<1>();
+    }
+  }
+}
+
+static void
+getMaxPixel(const CImg<float> & inImg, const FrameT<int> * inFrame = 0, CoordTypeT::TypeE inCoordType = CoordTypeT::ABSOLUTE,
+	    float * outMax = 0, PointT<unsigned int> * outMaxPixelPos = 0) {
+  getMinMaxPixel(inImg, inFrame, inCoordType, 0 /* outMin */, 0 /* outMinPixelPos */, outMax, outMaxPixelPos);
+}
+
+static void
+getMinPixel(const CImg<float> & inImg, const FrameT<int> * inFrame = 0, CoordTypeT::TypeE inCoordType = CoordTypeT::ABSOLUTE,
+	    float * outMin = 0, PointT<unsigned int> * outMinPixelPos = 0) {
+  getMinMaxPixel(inImg, inFrame, inCoordType, outMin, outMinPixelPos, 0 /* outMax */, 0 /* outMaxPixelPos */);
+}
+
+
 #endif /* _UTIL_HPP_ */

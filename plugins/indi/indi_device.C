@@ -75,6 +75,7 @@ void IndiDeviceT::connect(int inTimeoutMs, bool inVerifyDeviceType) {
   // before the connection has been made and without evaluating possible errors.
   mIndiClient->connectDevice(mBaseDevice->getDeviceName());
 
+  LOG(debug) << "Waiting for device " << mBaseDevice->getDeviceName() << " to be connected..." << endl; 
   WAIT_MAX_FOR(mBaseDevice->isConnected(), inTimeoutMs, "Hit timeout connecting to INDI device.");
 
   LOG(debug) << "Waiting for props..." << endl;

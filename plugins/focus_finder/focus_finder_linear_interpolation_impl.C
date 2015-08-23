@@ -195,16 +195,6 @@ namespace AT {
     AT_ASSERT(FocusFinderLinearInterpolation, outStarData, "outStarData expected to be set!");
     CImg<float> img;
     
-    /** 
-     * Calc frameSize from inStarCenterPos and mWindowSize.
-     *
-     * NOTE: We multiply window size by 3 because we want to recenter the star window within the area.
-     *       This is required since the star may will move due to seeing effects. Multiplying by 3
-     *       allows moving the window in all directions depending on the new star position always
-     *       having enough pixels around.
-     */
-    FrameT<float> imgFrame = centerPosToFrame(mStarCenterPos, 3.0 * mWindowSize);
-
     // Calc star values, throws if star could not be determined
     size_t retryCnt = 0;
     while(retryCnt < mTakePictureFitGaussCurveMaxRetryCnt) {
@@ -212,7 +202,7 @@ namespace AT {
 
       try {
 	// Take a picture, throws if not connected or problem with device
-	mCameraDevice->takePicture(& img, mExposureTimeSec, imgFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
+	mCameraDevice->takePicture(& img, mExposureTimeSec, mSelectionFrame, FrameTypeT::LIGHT, mBinning, false /* not compressed */);
 
 	// Determine centroid (-> recenter), throws in case of failure -> no valid star detected
 	PointT<float> centerPos(img.width() / 2, img.height() / 2);

@@ -274,8 +274,9 @@ public:
 
   inline int getAbsPos() const { return this->getNumberVal<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION, PropsT::FOCUS_ABSOLUTE_POSITION); }
   inline void setAbsPos(unsigned int inAbsPos, int inTimeoutMs = sDefaultTimeoutMs) {
-    if (this->isMovementInProgess())
-      throw IndiFocuserIsBusyExceptionT("Cannot set new absolute position - focuser is currently moving.");
+    // NOTE: Setting new absolute position should work even if focus is currently runing
+    //if (this->isMovementInProgess())
+    //  throw IndiFocuserIsBusyExceptionT("Cannot set new absolute position - focuser is currently moving.");
 
     this->sendNumberVal<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION, PropsT::FOCUS_ABSOLUTE_POSITION, inAbsPos, inTimeoutMs);
 

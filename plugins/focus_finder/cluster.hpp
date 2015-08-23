@@ -85,7 +85,7 @@ namespace AT {
 	  PointT<int> curPixelPos = pixelsToBeProcessed.front();
 
 	  // Determine boundaries (min max in x and y directions)
-	  LOG(trace) << "Current pixel pos=" << curPixelPos << ", current frame: " << frame << endl;
+	  //LOG(trace) << "Current pixel pos=" << curPixelPos << ", current frame: " << frame << endl;
 	  float x2 = frame.get<0>() + frame.get<2>(); /*x2=x1+w*/
 	  float y2 = frame.get<1>() + frame.get<3>(); /*y2=y1+h*/
 	
@@ -94,7 +94,7 @@ namespace AT {
 	  if (curPixelPos.get<1>() /*y*/ < frame.get<1>() /*y1*/)  { frame.get<1>() = curPixelPos.get<1>() - 1; }
 	  if (curPixelPos.get<1>() /*y*/ > y2 /*y2*/)              { frame.get<3>() = fabs(frame.get<1>() - curPixelPos.get<1>()) + 2; }
 
-	  LOG(trace) << "--> New frame: " << frame << endl;
+	  //LOG(trace) << "--> New frame: " << frame << endl;
 
 	  getAndRemoveNeighbours(curPixelPos, & whitePixels, & pixelsToBeProcessed);
 	  pixelsToBeProcessed.pop_front();
