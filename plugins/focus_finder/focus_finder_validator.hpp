@@ -27,22 +27,6 @@
 #include "centroid.hpp"
 
 namespace AT {
-  /**
-   * NOTE: This validate belongs to AT::CentroidT::CentroidTypeT.
-   */
-  void validate(boost::any & v, const vector<string> & values, typename CentroidT::CentroidTypeT::TypeE * target_type, int) {
-    using namespace boost::program_options;
-    
-    validators::check_first_occurrence(v);
-    string s = validators::get_single_string(values);
-    boost::to_upper(s);
-    typename CentroidT::CentroidTypeT::TypeE type = CentroidT::CentroidTypeT::asType(s.c_str());
 
-    if (type != CentroidT::CentroidTypeT::_Count) {
-      v = any(type);
-    } else {
-      throw validation_error(validation_error::invalid_option_value);
-    }
-  }
 } // end AT
 #endif // _FOCUS_FINDER_VALIDATOR_HPP_
