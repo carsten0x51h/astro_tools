@@ -364,7 +364,16 @@ public:
 			     this->getNumberVal<CameraTraitsT>(vec, PropsT::HEIGHT));
   }
 
-  inline void setFrame(int inFrameX, int inFrameY, int inFrameW, int inFrameH, int inTimeout = sDefaultTimeoutMs) {
+  inline void setFrame(int inFrameX, int inFrameY, int inFrameW, int inFrameH, bool inTransToCamCoords = true, int inTimeout = sDefaultTimeoutMs) {
+
+    if (inTransToCamCoords) {
+      DimensionT<unsigned int> maxRes = this->getMaxResolution();
+
+      // NOTE: Convert to coordinate system of camera....
+      // TODO: We may move this to a common utility function...
+      inFrameY /*new y*/ = maxRes.get<1>() /*ymax*/ - inFrameY /*y*/ - inFrameH /*h*/;
+    }
+    
     INumberVectorProperty * nVec = this->getNumberVec<CameraTraitsT>(VecPropsT::CCD_FRAME);
     this->updateNumberVal<CameraTraitsT>(nVec, PropsT::X, inFrameX);
     this->updateNumberVal<CameraTraitsT>(nVec, PropsT::Y, inFrameY);
@@ -373,8 +382,8 @@ public:
     this->sendNumberVec(nVec, inTimeout);
   }
 
-  inline void setFrame(const FrameT<int> & inFrame, int inTimeout = sDefaultTimeoutMs) {
-    this->setFrame(inFrame.get<0>(), inFrame.get<1>(), inFrame.get<2>(), inFrame.get<3>(), inTimeout);
+  inline void setFrame(const FrameT<int> & inFrame, bool inTransToCamCoords = true, int inTimeout = sDefaultTimeoutMs) {
+    this->setFrame(inFrame.get<0>() /*x*/, inFrame.get<1>() /*y*/, inFrame.get<2>() /*w*/, inFrame.get<3>() /*h*/, inTransToCamCoords, inTimeout);
   }
 
 

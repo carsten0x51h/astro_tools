@@ -168,7 +168,7 @@ namespace AT {
       LOG(debug) << "Max camera resolution: " << maxRes << endl;
       
       if (cmdLineMap.count("frame_size")) {
-	hasIntersection = intersect(maxRes, cmdLineMap["frame_size"].as< FrameT<int> >(), & frameSize);
+	hasIntersection = intersect(maxRes,  cmdLineMap["frame_size"].as< FrameT<int> >(), & frameSize);
 	LOG(debug) << "Frame size (user specified): " << cmdLineMap["frame_size"].as< FrameT<int> >() << endl;
       }
       
@@ -192,6 +192,11 @@ namespace AT {
       do {
 	LOG(trace) << "CameraTakePictureT - Calling setBinning(" << binning << ")..." << endl;
 	inDevice->setBinning(binning);
+
+	// NOTE: Convert to coordinate system of camera....
+	// TODO: We may move this to a common utility function...
+	frameSize.get<1>() /*new y*/ = maxRes.get<1>() /*ymax*/ - frameSize.get<1>() /*y*/ - frameSize.get<3>() /*h*/;
+
 	LOG(trace) << "CameraTakePictureT - Calling setFrame(" << frameSize << ")..." << endl;
 	inDevice->setFrame(frameSize);
 	LOG(trace) << "CameraTakePictureT - Calling setFrameType(" << FrameTypeT::asStr(frameType) << ")..." << endl;

@@ -46,6 +46,7 @@ namespace AT {
       enum TypeE {
 	PROXIMITY,
 	CLUSTERING,
+	NONE,
 	_Count
       };
       
@@ -53,6 +54,7 @@ namespace AT {
 	switch(inType) {
 	case PROXIMITY: return "PROXIMITY";
 	case CLUSTERING: return "CLUSTERING";
+	case NONE: return "NONE";
 	default: return "<?>";
 	}
       }
@@ -91,7 +93,7 @@ namespace AT {
 	// NOTE: maxRecenteredFrame cannot hit the boundary because search frame was 3 * inFrameSize.
 	FrameT<int> maxRecenteredFrame = centerPosToFrame(maxPixelPos, inFrameSize);
 	LOG(debug) << "maxRecenteredFrame: " << maxRecenteredFrame << endl;
-	    
+	
 	// Calc centroid given the new frame
 	PointT<float> centroid;
 	CentroidT::calc(inImg, maxRecenteredFrame, & centroid, 0 /*centeredImg not required*/, CoordTypeT::ABSOLUTE, inCentroidMethod);
@@ -103,7 +105,6 @@ namespace AT {
 	    
 	// TODO: How to detect if there is no valid star detected?? Should this actually be done here?
 	selectedFrame = centroidRecenteredFrame;
-	
       } else if (inStarRecognitionMethod == StarRecognitionTypeT::CLUSTERING) {
 	// Create a binary image to prepare clustering
 	float th = ThresholdT::calc(inImg, bitPix, ThresholdT::ThresholdTypeT::OTSU);
@@ -139,6 +140,11 @@ namespace AT {
 	  LOG(warning) << "No star recognized with cluster method. Keeping selected frame." << endl;
 	  selectedFrame = centerPosToFrame(inSelectionCenter, inFrameSize);
 	}
+      } else if(inStarRecognitionMethod == StarRecognitionTypeT::NONE) {
+	// NOTE: In this case the click position is directly converted into a frame
+	//       with the click position as its center.
+	selectedFrame = centerPosToFrame(inSelectionCenter, inFrameSize);
+	LOG(debug) << "Star recognition disabled. Frame: " << selectedFrame << endl;
       } else {
 	AT_ASSERT(StarFrameSelector, false, "Unknown star recognition method.");
       }
@@ -148,8 +154,6 @@ namespace AT {
       }
       return true;
     }
-
-    
   };
 
 

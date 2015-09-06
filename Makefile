@@ -2,7 +2,7 @@ VPATH=.:ui:ui/gen
 BASE_DIR = .
 BUILD_DIR = $(BASE_DIR)/build
 CXX = g++
-CXXFLAGS = -std=c++11 -g -O0 -DBOOST_LOG_DYN_LINK
+CXXFLAGS = -std=c++11 -g -O0 -DBOOST_LOG_DYN_LINK -fPIC
 
 INCPATH_COMMON = -I/usr/include/libindi -I/usr/include/python2.7
 INCPATH_GUI = -I/usr/share/qt4/mkspecs/linux-g++ -I. -I/usr/include/qt4 -I/usr/include/qt4/Qt -I/usr/include/qt4/QtCore -I/usr/include/qt4/QtGui -Iui -Iui/gen -I/usr/include/qwt-qt4

@@ -46,6 +46,7 @@ namespace boost {
     }
   }
 
+  // TODO: Macro instead?! for int and float?!
   void validate(boost::any & v, const vector<string> & values, FrameT<float> * target_type, int) {
     using namespace boost::program_options;
 
@@ -61,6 +62,22 @@ namespace boost {
     }
   }
 
+  void validate(boost::any & v, const vector<string> & values, FrameT<int> * target_type, int) {
+    using namespace boost::program_options;
+
+    static regex r("([0-9]+)(x|,)([0-9]+)(x|,)([0-9]+)(x|,)([0-9]+)");
+    validators::check_first_occurrence(v);
+    const string & s = validators::get_single_string(values);
+
+    smatch match;
+    if (regex_match(s, match, r)) {
+      v = any(FrameT<int>(lexical_cast<int>(match[1]), lexical_cast<int>(match[3]), lexical_cast<int>(match[5]), lexical_cast<int>(match[7])));
+    } else {
+      throw validation_error(validation_error::invalid_option_value);
+    }
+  }
+
+  
   // Note: Also used for DimensionT since same tupple type...
   void validate(boost::any & v, const vector<string> & values, PointT<float> * target_type, int) {
     using namespace boost::program_options;

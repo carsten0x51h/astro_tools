@@ -52,12 +52,25 @@ namespace AT {
   DEF_Exception(RequireOption);
   DEF_Exception(ImageDimension);
   DEF_Exception(WindowOutOfBounds);
+  
+  template <typename... Args> void
+  mv_print(int x, int y, const char * c, Args&&... args) {
+    move(y, x);
+    clrtoeol();
+    mvprintw(y, x, c, std::forward<Args>(args)...);
+  }
 
+  // TODO / IDEA: Better console menu: Move to different entries with up/down, change their values by left/right or +/-...
+  //              Just for Abort & Quit (and maybe some other operations) add specific keys - like ESC for abort, q for quit...
   static void
   manualConsoleFocusCntl(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice,
 			 FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec,
 			 BinningT inBinning)
   {
+    const unsigned int statusPosX = 5;
+    const unsigned int statusPosY = 27;
+    const size_t infoColumn = 5;
+
     CImgDisplay currentImageDisp;
     CImg<float> image;
     int key;
@@ -72,14 +85,13 @@ namespace AT {
     keypad(stdscr, TRUE);
     noecho();
     clear();
-    mvprintw(5,5, "Focus finder. Press 'q' to quit");
     move(7,5);
     refresh();
-    key = getch();
 
+    timeout(10);
+    key = getch();
+    
     while(key != 'q') {
-      move(7,5);
-      clrtoeol();
     
       if ((key >= 'A' && key <= 'Z') || (key >= 'a' && key <= 'z')) {
 	//printw("Key was %c", (char) key);
@@ -89,38 +101,26 @@ namespace AT {
 	  if (stepSize > 1) {
 	    stepSize =  stepSize / stepFactor;
 	  }
-	  move(5,5);
-	  clrtoeol();
-	  mvprintw(5, 5, "Step size: %d", stepSize);
 	  break;
 	
 	case KEY_RIGHT:
 	  if (stepSize < 10000) {
 	    stepSize =  stepSize * stepFactor;
 	  }
-	  move(5, 5);
-	  clrtoeol();
-	  mvprintw(5, 5, "Step size: %d", stepSize);
 	  break;
 
 	case KEY_UP:
-	  move(4, 5);
-	  clrtoeol();
 	  focusPos += stepSize;
-	  mvprintw(4, 5, "Focus pos (dest): %d", focusPos);
 	  inFocuserDevice->setAbsPos(focusPos, 0 /* non-blocking */);
 	  break;
 	
 	case KEY_DOWN:
-	  move(4, 5);
-	  clrtoeol();
 	  focusPos -= stepSize;
-	  mvprintw(4, 5, "Focus pos (dest): %d", focusPos);
 	  inFocuserDevice->setAbsPos(focusPos, 0 /* non-blocking */);
 	  break;
 	
 	case 27 /*LOCAL_ESCAPE_KEY*/:
-	  printw("%s", "Stopping focus motion.");
+	  mv_print(statusPosX, statusPosY, "Stopping focus motion.");
 	  inFocuserDevice->abortMotion(0 /*non blocking*/);
 	  break;
 	
@@ -144,19 +144,24 @@ namespace AT {
 	ssCameraStatus << "ready";
       }
 
-      // Calculate status
-      const size_t infoColumn = 50;
-      mvprintw(2, infoColumn, "Focus status: %s", focuserStatus.c_str());
-      mvprintw(3, infoColumn, "Focus pos (is): %d", inFocuserDevice->getAbsPos());
-      mvprintw(4, infoColumn, "Camera status: %s", ssCameraStatus.str().c_str());
-      if (hfdValue > 0) {
-	mvprintw(5, infoColumn, "HFD: %f\"", hfdValue);
-      } else {
-	mvprintw(5, infoColumn, "HFD: n.a.");
-      }
-      mvprintw(6, infoColumn, "FWHM(horz): %f\"", 2.5);
-      mvprintw(7, infoColumn, "FWHM(vert): %f\"", 3.5);
+      mv_print(5, 25, "Focus finder. Press 'q' to quit");
+      mv_print(infoColumn, 1, "Focus status: %s", focuserStatus.c_str());
+      mv_print(infoColumn, 2, "Step size: %d", stepSize);
+      mv_print(infoColumn, 3, "Focus pos (is): %d", inFocuserDevice->getAbsPos());
+      mv_print(infoColumn, 4, "Focus pos (dest): %d", focusPos);
+      
+      mv_print(infoColumn, 9, "Camera status: %s", ssCameraStatus.str().c_str());
+      mv_print(infoColumn, 10, "Cooler status: ");
+      mv_print(infoColumn, 11, "Temperature: ");
 
+      
+      if (hfdValue > 0) {
+	mv_print(infoColumn, 15, "HFD: %f\"", hfdValue);
+      } else {
+	mv_print(infoColumn, 15, "HFD: n.a.");
+      }
+      mv_print(infoColumn, 16, "FWHM(horz): %f\"", 2.5);
+      mv_print(infoColumn, 17, "FWHM(vert): %f\"", 3.5);
     
       // Keep exposure running...
       if (! inCameraDevice->isExposureInProgress()) {	
@@ -171,12 +176,6 @@ namespace AT {
 
 	// Get previous image (if any)
 	inCameraDevice->getImage(& image);
-
-	// HACK!
-	CImg<float> loadedImg("test33.fits");
-	image = loadedImg.get_crop(inSelectionFrame.get<0>(), inSelectionFrame.get<1>(), inSelectionFrame.get<0>() + inSelectionFrame.get<2>() - 1, inSelectionFrame.get<1>() + inSelectionFrame.get<3>() - 1);
-	// HACK!
-
 	LOG(trace) << "Received image [subframe: " << inSelectionFrame << "] from camera - size: " << image.width() << " x " << image.height() << endl;
 
 	// Recalculate picture data...
@@ -187,7 +186,7 @@ namespace AT {
 
 	  // TODO: Calculate value below instead of hard-coding it...
 	  float maxPossiblePixelValue = 65535.0;
-	  CImg<unsigned char> normalizedImage(normalize(image, maxPossiblePixelValue, 5.0 /*5%*/));
+	  CImg<unsigned char> normalizedImage(normalize(image, maxPossiblePixelValue, 100.0 /*TODO: HACK FIXME! 5%*/));
 
 	  currentImageDisp.display(normalizedImage);
 
@@ -250,7 +249,8 @@ namespace AT {
       
     } else if (! strcmp(starSelectMethod.c_str(), "display")) {
       // Normalize image
-      CImg<unsigned char> normalizedImage(normalize(inImg, pow(2.0, bitPix), 5.0 /*5%*/));
+      // TODO / FIXME: 5%???
+      CImg<unsigned char> normalizedImage(normalize(inImg, pow(2.0, bitPix), 100.0 /*5%*/));
 
       // NOTE: See http://cimg.eu/reference/structcimg__library_1_1CImgDisplay.html
       // TODO: We will use our own graphical star-selector later - with zoom, value preview etc.
@@ -269,15 +269,15 @@ namespace AT {
 	  LOG(debug) << "Left click - position (x,y)=" << selectionCenter << endl;
 
 	  if (StarFrameSelectorT::calc(inImg, bitPix, selectionCenter, & selectedFrame, inStarRecognitionMethod, inCentroidMethod, inFrameSize)) {
-	    // DEBUG START - Show, what has been selected!!
-	    // CImg<float> cropImg = normalizedImage.get_crop(selectedFrame.get<0>(), selectedFrame.get<1>(),
-	    // 						 selectedFrame.get<0>() + selectedFrame.get<2>() - 1,
-	    // 						 selectedFrame.get<1>() + selectedFrame.get<3>() - 1);
-	    // CImgDisplay cropDsp(cropImg, "DEBUG - CROP IMG...");
-	    // while (! cropDsp.is_closed()) {
-	    //   cropDsp.wait();
-	    // }
-	    // DEBUG END
+	    //DEBUG START - Show, what has been selected!!
+	    CImg<float> cropImg = normalizedImage.get_crop(selectedFrame.get<0>(), selectedFrame.get<1>(),
+	    						 selectedFrame.get<0>() + selectedFrame.get<2>() - 1,
+	    						 selectedFrame.get<1>() + selectedFrame.get<3>() - 1);
+	    CImgDisplay cropDsp(cropImg, "DEBUG - CROP IMG...");
+	    while (! cropDsp.is_closed()) {
+	      cropDsp.wait();
+	    }
+	    //DEBUG END
 
 	    // We have a valid selecction - exit selection loop
 	    break;
@@ -456,17 +456,6 @@ namespace AT {
 	CImg<float> image;
 	cameraDevice->getImage(& image);
 
-	// DEBUG START
-	//image.save("TEST.fits");
-	// DEBUG END
-
-	// HACK!!!!
-	image.load("test33.fits");
-	//image = image.get_crop(0, 0, image.width() / 2, image.height() / 2);
-	//image.load("test2.jpeg");
-
-	
-	
 	// Star selection
 	const string & starSelectMethod = cmdLineMap["star_select"].as<string>();
 	typename StarFrameSelectorT::StarRecognitionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarRecognitionTypeT::TypeE>();
@@ -588,7 +577,7 @@ namespace AT {
       
       HfdT hfd(inImage, centroid);
 
-      // FIXMEFIXME
+      // FIXMEFIXME - TODO: ???
       FwhmT fwhmHorz(extractLine(inImage, DirectionT::HORZ, centroid, inSquareFrame.get<2>() /*w*/));
       FwhmT fwhmVert(extractLine(inImage, DirectionT::VERT, centroid, inSquareFrame.get<3>() /*h*/));
 
@@ -642,7 +631,7 @@ namespace AT {
     DEFINE_OPTION(optTimeout, "timeout", po::value<float>()->default_value(-1), "Seconds until command times out (default: no timeout).");
     DEFINE_OPTION(optInput, "input", po::value<string>(), "Input file.");
     DEFINE_OPTION(optStarSelect, "star_select", po::value<string>()->default_value("display"), "Star select [auto|display|(x,y)]");
-    DEFINE_OPTION(optStarRecognition, "star_recognition", po::value<typename StarFrameSelectorT::StarRecognitionTypeT::TypeE>()->default_value(StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY), "Star select [proximity|clustering]");
+    DEFINE_OPTION(optStarRecognition, "star_recognition", po::value<typename StarFrameSelectorT::StarRecognitionTypeT::TypeE>()->default_value(StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY), "Star select [proximity|clustering|none]");
 
     DEFINE_OPTION(optFocalDistance, "focal_distance", po::value<unsigned int>(), "Telescope focal distance in mm."); 
     DEFINE_OPTION(optPixelSize, "pixel_size", po::value<DimensionT<int> >(), "Pixel size (W x H) um.");
@@ -723,7 +712,6 @@ namespace AT {
     
     //focusFindDescr.add_options()("display_picture", "Display picture.");
     REGISTER_CONSOLE_CMD_LINE_COMMAND("focus_find", focusFindDescr, (& FocusFinderActionT::performAction));
-
 
     /**
      * Calc centroid for given image....
