@@ -272,13 +272,13 @@ namespace AT {
 
 	  if (StarFrameSelectorT::calc(inImg, bitPix, selectionCenter, & selectedFrame, inStarRecognitionMethod, inCentroidMethod, inFrameSize)) {
 	    //DEBUG START - Show, what has been selected!!
-	    CImg<float> cropImg = normalizedImage.get_crop(selectedFrame.get<0>(), selectedFrame.get<1>(),
-	    						 selectedFrame.get<0>() + selectedFrame.get<2>() - 1,
-	    						 selectedFrame.get<1>() + selectedFrame.get<3>() - 1);
-	    CImgDisplay cropDsp(cropImg, "DEBUG - CROP IMG...");
-	    while (! cropDsp.is_closed()) {
-	      cropDsp.wait();
-	    }
+	    // CImg<float> cropImg = normalizedImage.get_crop(selectedFrame.get<0>(), selectedFrame.get<1>(),
+	    // 						 selectedFrame.get<0>() + selectedFrame.get<2>() - 1,
+	    // 						 selectedFrame.get<1>() + selectedFrame.get<3>() - 1);
+	    // CImgDisplay cropDsp(cropImg, "DEBUG - CROP IMG...");
+	    // while (! cropDsp.is_closed()) {
+	    //   cropDsp.wait();
+	    // }
 	    //DEBUG END
 
 	    // We have a valid selecction - exit selection loop
