@@ -364,16 +364,7 @@ public:
 			     this->getNumberVal<CameraTraitsT>(vec, PropsT::HEIGHT));
   }
 
-  inline void setFrame(int inFrameX, int inFrameY, int inFrameW, int inFrameH, bool inTransToCamCoords = true, int inTimeout = sDefaultTimeoutMs) {
-
-    if (inTransToCamCoords) {
-      DimensionT<unsigned int> maxRes = this->getMaxResolution();
-
-      // NOTE: Convert to coordinate system of camera....
-      // TODO: We may move this to a common utility function...
-      inFrameY /*new y*/ = maxRes.get<1>() /*ymax*/ - inFrameY /*y*/ - inFrameH /*h*/;
-    }
-    
+  inline void setFrame(int inFrameX, int inFrameY, int inFrameW, int inFrameH, int inTimeout = sDefaultTimeoutMs) {
     INumberVectorProperty * nVec = this->getNumberVec<CameraTraitsT>(VecPropsT::CCD_FRAME);
     this->updateNumberVal<CameraTraitsT>(nVec, PropsT::X, inFrameX);
     this->updateNumberVal<CameraTraitsT>(nVec, PropsT::Y, inFrameY);
@@ -382,10 +373,19 @@ public:
     this->sendNumberVec(nVec, inTimeout);
   }
 
-  inline void setFrame(const FrameT<int> & inFrame, bool inTransToCamCoords = true, int inTimeout = sDefaultTimeoutMs) {
-    this->setFrame(inFrame.get<0>() /*x*/, inFrame.get<1>() /*y*/, inFrame.get<2>() /*w*/, inFrame.get<3>() /*h*/, inTransToCamCoords, inTimeout);
+  inline void setFrame(const FrameT<int> & inFrame, int inTimeout = sDefaultTimeoutMs) {
+    this->setFrame(inFrame.get<0>() /*x*/, inFrame.get<1>() /*y*/, inFrame.get<2>() /*w*/, inFrame.get<3>() /*h*/, inTimeout);
   }
 
+  inline void setBinnedFrame(const FrameT<int> & inUnbinnedFrame, const BinningT & inBinning, int inTimeout = sDefaultTimeoutMs) {
+    FrameT<int> binnedFrame;
+    binnedFrame.get<0>() = inBinning.get<0>() /*bin_x*/ * inUnbinnedFrame.get<0>();
+    binnedFrame.get<1>() = inBinning.get<1>() /*bin_y*/ * inUnbinnedFrame.get<1>();
+    binnedFrame.get<2>() = inBinning.get<0>() /*bin_x*/ * inUnbinnedFrame.get<2>();
+    binnedFrame.get<3>() = inBinning.get<1>() /*bin_y*/ * inUnbinnedFrame.get<3>();
+    this->setFrame(binnedFrame, inTimeout);
+  }
+  
 
   /**
    * Binning

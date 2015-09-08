@@ -64,7 +64,7 @@ namespace AT {
   //              Just for Abort & Quit (and maybe some other operations) add specific keys - like ESC for abort, q for quit...
   static void
   manualConsoleFocusCntl(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice,
-			 FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec,
+			 const FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec,
 			 BinningT inBinning)
   {
     const unsigned int statusPosX = 5;
@@ -164,11 +164,11 @@ namespace AT {
       mv_print(infoColumn, 17, "FWHM(vert): %f\"", 3.5);
     
       // Keep exposure running...
-      if (! inCameraDevice->isExposureInProgress()) {	
+      if (! inCameraDevice->isExposureInProgress()) {
 	LOG(trace) << "setBinning(" << inBinning << ")..." << endl;
 	inCameraDevice->setBinning(inBinning);
-	LOG(trace) << "setFrame(" << inSelectionFrame << ")..." << endl;
-	inCameraDevice->setFrame(inSelectionFrame);
+	LOG(trace) << "setBinnedFrame(" << inSelectionFrame << ", " << inBinning << ")..." << endl;
+	inCameraDevice->setBinnedFrame(inSelectionFrame, inBinning);
 	LOG(trace) << "setFrameType(" << FrameTypeT::asStr(FrameTypeT::LIGHT) << ")..." << endl;
 	inCameraDevice->setFrameType(FrameTypeT::LIGHT);
 	LOG(trace) << "setCompressed(false)..." << endl;
@@ -181,9 +181,11 @@ namespace AT {
 	// Recalculate picture data...
 	LOG(trace) << "image.width(): " << image.width() << ", image.height(): " << image.height() << endl;
 	LOG(trace) << "inSelectionFrame.get<2>(): " << inSelectionFrame.get<2>() << ", inSelectionFrame.get<3>(): " << inSelectionFrame.get<3>() << endl;
+	LOG(trace) << "inBinning.get<0>(): " << inBinning.get<0>() << ", inBinning.get<1>(): " << inBinning.get<1>() << endl;
 	
-	if (image.width() == (inSelectionFrame.get<2>() / inBinning.get<0>()) && image.height() == (inSelectionFrame.get<3>() / inBinning.get<0>())) {
-
+	if (image.width() == inSelectionFrame.get<2>() && image.height() == inSelectionFrame.get<3>()) {
+	  cerr << "INSIDE!" << endl;
+	  
 	  // TODO: Calculate value below instead of hard-coding it...
 	  float maxPossiblePixelValue = 65535.0;
 	  CImg<unsigned char> normalizedImage(normalize(image, maxPossiblePixelValue, 100.0 /*TODO: HACK FIXME! 5%*/));
@@ -213,7 +215,7 @@ namespace AT {
   static FrameT<unsigned int>
   getStarFrame(const CImg<float> & inImg, long bitPix, const string & starSelectMethod,
 	       typename StarFrameSelectorT::StarRecognitionTypeT::TypeE inStarRecognitionMethod,
-	       typename CentroidT::CentroidTypeT::TypeE inCentroidMethod, unsigned int inFrameSize = 25) {
+	       typename CentroidT::CentroidTypeT::TypeE inCentroidMethod, unsigned int inFrameSize = 31) {
 
     DimensionT<int> imageDimension(inImg.width(), inImg.height());
     PointT<float> selectionCenter;
@@ -436,9 +438,9 @@ namespace AT {
 	
 	// Take an image
 	// NOTE: To select a star a higher binning makes sense...?!!!!
+	//cameraDevice->setBinning(BinningT(4,4));
 	LOG(trace) << "setBinning(" << binning << ")..." << endl;
 	cameraDevice->setBinning(binning);
-	//cameraDevice->setBinning(BinningT(4,4));
 	LOG(trace) << "setFrame(" << fullFrame << ")..." << endl;
 	cameraDevice->setFrame(fullFrame);
 	LOG(trace) << "setFrameType(" << FrameTypeT::asStr(FrameTypeT::LIGHT) << ")..." << endl;

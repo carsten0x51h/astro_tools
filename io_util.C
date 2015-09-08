@@ -51,8 +51,8 @@ bool readFile(CImg<float> & cimg, const string & inFilename, long * outBitPix, b
 
     // For now we create a copy... maybe there is a better way to directly read data into CImg, later...
     // TODO: Which one is correct?
-    cimg_forXY(cimg, x, y) { cimg(x, cimg.height() - 1 - y) = imgData[cimg.offset(x, y)]; }
-    //cimg_forXY(cimg, x, y) { cimg(x, y) = imgData[cimg.offset(x, y)]; }
+    //cimg_forXY(cimg, x, y) { cimg(x, cimg.height() - 1 - y) = imgData[cimg.offset(x, y)]; }
+    cimg_forXY(cimg, x, y) { cimg(x, y) = imgData[cimg.offset(x, y)]; }
 
   } catch (FitsException&) {
     // will catch all exceptions thrown by CCfits, including errors found by cfitsio (status != 0)

@@ -192,13 +192,8 @@ namespace AT {
       do {
 	LOG(trace) << "CameraTakePictureT - Calling setBinning(" << binning << ")..." << endl;
 	inDevice->setBinning(binning);
-
-	// NOTE: Convert to coordinate system of camera....
-	// TODO: We may move this to a common utility function...
-	frameSize.get<1>() /*new y*/ = maxRes.get<1>() /*ymax*/ - frameSize.get<1>() /*y*/ - frameSize.get<3>() /*h*/;
-
-	LOG(trace) << "CameraTakePictureT - Calling setFrame(" << frameSize << ")..." << endl;
-	inDevice->setFrame(frameSize);
+	LOG(trace) << "CameraTakePictureT - Calling setBinnedFrame(" << frameSize << ", " << binning << ")..." << endl;
+	inDevice->setBinnedFrame(frameSize, binning);
 	LOG(trace) << "CameraTakePictureT - Calling setFrameType(" << FrameTypeT::asStr(frameType) << ")..." << endl;
 	inDevice->setFrameType(frameType);
 	LOG(trace) << "CameraTakePictureT - setCompressed(false)..." << endl;
@@ -488,6 +483,7 @@ namespace AT {
 
     /**
      * take_picture command.
+     * TODO: Add --filter option!!
      */
     po::options_description takePictureDescr("take_picture command options");
     takePictureDescr.add(optIndiServer);
