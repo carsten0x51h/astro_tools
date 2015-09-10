@@ -378,11 +378,18 @@ public:
   }
 
   inline void setBinnedFrame(const FrameT<int> & inUnbinnedFrame, const BinningT & inBinning, int inTimeout = sDefaultTimeoutMs) {
+    // TODO: Is this ok?!?!
+    DimensionT<unsigned int> maxRes = this->getMaxResolution();
     FrameT<int> binnedFrame;
     binnedFrame.get<0>() = inBinning.get<0>() /*bin_x*/ * inUnbinnedFrame.get<0>();
     binnedFrame.get<1>() = inBinning.get<1>() /*bin_y*/ * inUnbinnedFrame.get<1>();
-    binnedFrame.get<2>() = inBinning.get<0>() /*bin_x*/ * inUnbinnedFrame.get<2>();
-    binnedFrame.get<3>() = inBinning.get<1>() /*bin_y*/ * inUnbinnedFrame.get<3>();
+
+    unsigned int binnedW = inBinning.get<0>() /*bin_x*/ * inUnbinnedFrame.get<2>();
+    binnedFrame.get<2>() = (binnedW > maxRes.get<0>() ? maxRes.get<0>() : binnedW);
+    
+    unsigned int binnedH = inBinning.get<1>() /*bin_y*/ * inUnbinnedFrame.get<3>();
+    binnedFrame.get<3>() = (binnedH > maxRes.get<1>() ? maxRes.get<1>() : binnedH);
+    
     this->setFrame(binnedFrame, inTimeout);
   }
   
