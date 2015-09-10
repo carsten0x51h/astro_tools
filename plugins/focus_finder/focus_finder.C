@@ -184,11 +184,9 @@ namespace AT {
 	LOG(trace) << "inBinning.get<0>(): " << inBinning.get<0>() << ", inBinning.get<1>(): " << inBinning.get<1>() << endl;
 	
 	if (image.width() == inSelectionFrame.get<2>() && image.height() == inSelectionFrame.get<3>()) {
-	  cerr << "INSIDE!" << endl;
-	  
 	  // TODO: Calculate value below instead of hard-coding it...
 	  float maxPossiblePixelValue = 65535.0;
-	  CImg<unsigned char> normalizedImage(normalize(image, maxPossiblePixelValue, 100.0 /*TODO: HACK FIXME! 5%*/));
+	  CImg<unsigned char> normalizedImage(normalize(image, maxPossiblePixelValue, 10.0 /*TODO: HACK FIXME! 5%*/));
 
 	  currentImageDisp.display(normalizedImage);
 
@@ -252,7 +250,7 @@ namespace AT {
     } else if (! strcmp(starSelectMethod.c_str(), "display")) {
       // Normalize image
       // TODO / FIXME: 5%???
-      CImg<unsigned char> normalizedImage(normalize(inImg, pow(2.0, bitPix), 100.0 /*5%*/));
+      CImg<unsigned char> normalizedImage(normalize(inImg, pow(2.0, bitPix), 10.0 /*5%*/));
 
       // NOTE: See http://cimg.eu/reference/structcimg__library_1_1CImgDisplay.html
       // TODO: We will use our own graphical star-selector later - with zoom, value preview etc.
