@@ -71,6 +71,11 @@ namespace AT {
     const unsigned int statusPosY = 27;
     const size_t infoColumn = 5;
 
+    // TODO FIXME: getSelectionFrame() needs to take care of border!! Use borderFactor below...
+    const float borderFactor = 3.0; // TODO: Pass as argument?!
+    PointT<float> centerPos = frameToCenterPos(inSelectionFrame);
+    FrameT<float> imageFrame = centerPosToFrame(centerPos, borderFactor * inSelectionFrame.get<2>(), borderFactor * inSelectionFrame.get<3>());
+    
     CImgDisplay currentImageDisp;
     CImg<float> image;
     int key;
@@ -167,8 +172,8 @@ namespace AT {
       if (! inCameraDevice->isExposureInProgress()) {
 	LOG(trace) << "setBinning(" << inBinning << ")..." << endl;
 	inCameraDevice->setBinning(inBinning);
-	LOG(trace) << "setBinnedFrame(" << inSelectionFrame << ", " << inBinning << ")..." << endl;
-	inCameraDevice->setBinnedFrame(inSelectionFrame, inBinning);
+	LOG(trace) << "setBinnedFrame(" << imageFrame << ", " << inBinning << ")..." << endl;
+	inCameraDevice->setBinnedFrame(imageFrame, inBinning);
 	LOG(trace) << "setFrameType(" << FrameTypeT::asStr(FrameTypeT::LIGHT) << ")..." << endl;
 	inCameraDevice->setFrameType(FrameTypeT::LIGHT);
 	LOG(trace) << "setCompressed(false)..." << endl;
@@ -176,29 +181,143 @@ namespace AT {
 
 	// Get previous image (if any)
 	inCameraDevice->getImage(& image);
-	LOG(trace) << "Received image [subframe: " << inSelectionFrame << "] from camera - size: " << image.width() << " x " << image.height() << endl;
+	LOG(trace) << "Received image [subframe: " << imageFrame << "] from camera - size: " << image.width() << " x " << image.height() << endl;
 
 	// Recalculate picture data...
 	LOG(trace) << "image.width(): " << image.width() << ", image.height(): " << image.height() << endl;
-	LOG(trace) << "inSelectionFrame.get<2>(): " << inSelectionFrame.get<2>() << ", inSelectionFrame.get<3>(): " << inSelectionFrame.get<3>() << endl;
 	LOG(trace) << "inBinning.get<0>(): " << inBinning.get<0>() << ", inBinning.get<1>(): " << inBinning.get<1>() << endl;
-	
-	if (image.width() == inSelectionFrame.get<2>() && image.height() == inSelectionFrame.get<3>()) {
-	  // TODO: Calculate value below instead of hard-coding it...
-	  float maxPossiblePixelValue = 65535.0;
-	  CImg<unsigned char> normalizedImage(normalize(image, maxPossiblePixelValue, 10.0 /*TODO: HACK FIXME! 5%*/));
 
-	  currentImageDisp.display(normalizedImage);
+	// TODO: Is this if necessary any longer?!
+	if (image.width() == imageFrame.get<2>() && image.height() == imageFrame.get<3>()) {
 
-	  // Try to calculate star data
+	  // Re-Determine star center
+	  // ------------------------------------------------------------------------------------------------------------ //
+
+
+	  
+	  // Calculate star data
+	  // ------------------------------------------------------------------------------------------------------------ //
+    
 	  // TODO: try catch?
-	  HfdT hfd(image);
+	  HfdT hfd(image); // NOTE: HfdT takes image center as centroid, it does not matter if image is bigger
 	  hfdValue = hfd.getValue();
 
-	  // TODO: Also calc FWHMs, max pixel value, ...
+	  // Get sub-frame
+	  PointT<float> imageFrameCenter = frameToCenterPos(imageFrame);
+	  FrameT<float> selectionFrame = centerPosToFrame(imageFrameCenter, inSelectionFrame.get<2>(), inSelectionFrame.get<3>());
+
+	  // Convert to imageFrame coordinates
+	  selectionFrame.get<0>() -= imageFrame.get<0>();
+	  selectionFrame.get<1>() -= imageFrame.get<1>();
 	  
-	}
+	  LOG(trace) << "imageFrame: " << imageFrame << ", imageFrameCenter: " << imageFrameCenter << ", selectionFrame: " << selectionFrame << endl;
+
+	  CImg<float> subImg = image.get_crop(selectionFrame.get<0>() /*x0*/,
+	   				      selectionFrame.get<1>() /*y0*/,
+	   				      selectionFrame.get<0>() + selectionFrame.get<2>() /*x1=x0+w*/,
+	   				      selectionFrame.get<1>() + selectionFrame.get<3>() /*y1=y0+h*/);
+
+	  // DEBUG START
+	  CImgDisplay thDsp1(image, "IMG...");
+	  while (! thDsp1.is_closed()) {
+	    thDsp1.wait();
+	  }
+	  CImgDisplay thDsp2(subImg, "SUBIMG...");
+	  while (! thDsp2.is_closed()) {
+	    thDsp2.wait();
+	  }
+	  // DEBUG END
+
+	  
+	  // TODO: Also calc FWHMs, max pixel value, ...
+	  // TODO: Or can FWHM just do the job?!?!?!!?
+	  
+
+	  // Perform re-centroiding i.e. re-set selectionFrame in order to follow the star
+	  // ------------------------------------------------------------------------------------------------------------ //
+	  FrameT<unsigned int> newFrame;
+
+	  // IDEA: Pass current image, re-center using given method
+	  // TODO: Last but one two parameters should not be hardcoded?!?!?!
+	  PointT<float> newCenter(image.width() / 2, image.height() / 2);
+	  bool insideBounds = StarFrameSelectorT::calc(image, 0 /*bitPix - HACK: not needed */,
+						       newCenter, & newFrame,
+						       StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY,
+						       CentroidT::CentroidTypeT::IWC, inSelectionFrame.get<2>() /*frameSize*/);
+ 
+	  // Calculate new imageFrame
+	  PointT<float> newLocalCenterPos = frameToCenterPos(newFrame); // In "imageFrame" coordinates
+	  float deltaX = newLocalCenterPos.get<0>() - ((float) imageFrame.get<2>() / 2.0);
+	  float deltaY = newLocalCenterPos.get<1>() - ((float) imageFrame.get<3>() / 2.0);
+
+	  LOG(trace) << "Old imageFrame: " << imageFrame << endl;
+	  LOG(trace) << "frameSize used: " << inSelectionFrame.get<2>() << ", newCenter: " << newCenter
+		     << ", newFrame: " << newFrame << " --> newLocalCenterPos: " << newLocalCenterPos
+		     << ", --> deltaX: " << deltaX << ", deltaY: " << deltaY << endl;
+	    
+	  AT_ASSERT(StarFrameSelector, insideBounds, "Expected frame to be inside bounds.");
+	  
+
+	  PointT<float> oldCenterPos = frameToCenterPos(imageFrame); // In "full frame" coordinates
+	  PointT<float> newCenterPos(oldCenterPos.get<0>() + deltaX, oldCenterPos.get<1>() +  deltaY);
+	  LOG(trace) << "oldCenterPos: " << oldCenterPos << " --> newCenterPos: " << newCenterPos << endl;
+	  
+
+	  
+	  // Finally, scale and display the image
+	  // ------------------------------------------------------------------------------------------------------------ //
+	  // TODO: Calculate value below instead of hard-coding it...
+	  float maxPossiblePixelValue = 65535.0;
+	  CImg<unsigned char> normalizedImage(normalize(subImg, maxPossiblePixelValue, 25.0 /*TODO: HACK FIXME! 5%*/));
+
+	  // Zoom image so that the star can be seen better...
+	  // NOTE: RGB because we may add additional things in color to indicate for example the centroid / frame...
+	  const float scaleFactor = 3.0;
+	  
+	  CImg<unsigned char> rgbImg(normalizedImage.width(), normalizedImage.height(), 1 /*depth*/, 3 /*3 channels - RGB*/);    
+	  cimg_forXY(normalizedImage, x, y) {
+	    int value = normalizedImage(x,y);
+	    rgbImg(x, y, 0 /*red*/) = value;
+	    rgbImg(x, y, 1 /*green*/) = value;
+	    rgbImg(x, y, 2 /*blue*/) = value;
+	  }
+
+	  rgbImg.resize(scaleFactor * normalizedImage.width(), scaleFactor * normalizedImage.height(),
+			-100 /*size_z*/, -100 /*size_c*/, 1 /*interpolation_type*/);
+
+	  // Draw center
+	  const unsigned char red[3] = { 255, 0, 0 };
+	  const size_t cCrossSize = 3;
+	  PointT<float> localNewCenterPos(newCenterPos.get<0>() - imageFrame.get<0>() - selectionFrame.get<0>(),
+					  newCenterPos.get<1>() - imageFrame.get<1>() - selectionFrame.get<1>());
+
+	  LOG(trace) << "newCenterPos: " << newCenterPos << ", localNewCenterPos: " << localNewCenterPos << endl;
+
+	  rgbImg.draw_line(floor(scaleFactor * (localNewCenterPos.get<0>() - cCrossSize) + 0.5), floor(scaleFactor * localNewCenterPos.get<1>() + 0.5),
+			   floor(scaleFactor * (localNewCenterPos.get<0>() + cCrossSize) + 0.5), floor(scaleFactor * localNewCenterPos.get<1>() + 0.5), red, 1 /*opacity*/);
+	  
+	  rgbImg.draw_line(floor(scaleFactor * localNewCenterPos.get<0>() + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() - cCrossSize) + 0.5),
+			   floor(scaleFactor * localNewCenterPos.get<0>() + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() + cCrossSize) + 0.5), red, 1 /*opacity*/);
+
+	  currentImageDisp.display(rgbImg);
+
+
+	  
+	  // Finally, set new frame
+	  // ------------------------------------------------------------------------------------------------------------ //
+	  imageFrame = centerPosToFrame(newCenterPos, imageFrame.get<2>(), imageFrame.get<3>());
+	  LOG(trace) << "New imageFrame: " << imageFrame << endl;
+	  
+	  // TODO / FIXME: Check if it hits boundaries!!
+
+	  
+	} // TODO: handle else?!?!?
+
+
+
 	
+	// Start new exposure
+	// ------------------------------------------------------------------------------------------------------------ //
 	LOG(trace) << "startExposure(" << inExposureTimeSec << "s)..." << endl;
 	inCameraDevice->startExposure(inExposureTimeSec); // Non-blocking call...!!
       }
@@ -460,7 +579,6 @@ namespace AT {
 	const string & starSelectMethod = cmdLineMap["star_select"].as<string>();
 	typename StarFrameSelectorT::StarRecognitionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarRecognitionTypeT::TypeE>();
 	typename CentroidT::CentroidTypeT::TypeE centroidMethod = cmdLineMap["centroid_method"].as<typename CentroidT::CentroidTypeT::TypeE>();
-
 	FrameT<unsigned int> selectedFrame = getStarFrame(image, bitPix, starSelectMethod, starRecognitionMethod, centroidMethod);
 
 	if (! strcmp(focusMode.c_str(), "manual")) { // Manual focusing

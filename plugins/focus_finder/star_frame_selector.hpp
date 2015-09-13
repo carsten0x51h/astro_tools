@@ -76,7 +76,7 @@ namespace AT {
 	// Calc frame of specified size around selectionCenter
 	// NOTE: For now we just look around in 3 times the frame size for the maximum pixel
 	FrameT<int> starSearchFrame = centerPosToFrame(inSelectionCenter, 3.0 * inFrameSize);
-	LOG(debug) << "starSearchFrame: " << starSearchFrame << endl;
+	LOG(debug) << "inSelectionCenter: " << inSelectionCenter << ", starSearchFrame: " << starSearchFrame << endl;
 	    
 	if (! insideBounds(imageDimension, starSearchFrame)) {
 	  LOG(debug) << "Frame hits image boundary." << endl;
