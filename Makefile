@@ -48,7 +48,11 @@ ASTRO_TOOLS_GUI_LIBS=$(ASTRO_TOOLS_COMMON_LIBS)
 
 .SUFFIXES: .o .C
 
-astro_tools: astro_tools_console astro_tools_gui
+astro_tools: prepare_dirs astro_tools_console astro_tools_gui
+
+prepare_dirs:
+	mkdir -p build
+	mkdir -p build/plugins
 
 astro_tools_console: $(ASTRO_TOOLS_CONSOLE_OBJECTS)
 	$(CXX) $(CXXFLAGS) $(ASTRO_TOOLS_CONSOLE_OBJECTS) -o $(BUILD_DIR)/astro_tools $(LFLAGS_CONSOLE) $(ASTRO_TOOLS_CONSOLE_LIBS) /usr/lib/libindiclient.a

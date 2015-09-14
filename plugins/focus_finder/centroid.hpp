@@ -80,7 +80,7 @@ namespace AT {
 
       // X and Y are now central brightest pixel in SIZExSIZE grid
       int startX = xPosMax - BACK, startY = yPosMax - BACK;
-      const CImg <float> & subInImg = inImg.get_crop(startX+1, startY+1, startX + SIZE, startY + SIZE);
+      const CImg <float> & subInImg = inImg.get_crop(startX + 1, startY + 1, startX + SIZE, startY + SIZE);
 
       LOG(trace) << "starCentroid - subInImg size (w h)=(" << subInImg.width() << " " << subInImg.height() << ")" << endl;
 
@@ -406,8 +406,8 @@ namespace AT {
       // Extract sub-image, check corner cases...
       CImg<float> subImg = inImg.get_crop(inSelectionFrame.get<0>() /*x0*/,
 					  inSelectionFrame.get<1>() /*y0*/,
-					  inSelectionFrame.get<0>() + inSelectionFrame.get<2>() /*x1=x0+w*/,
-					  inSelectionFrame.get<1>() + inSelectionFrame.get<3>() /*y1=y0+h*/);
+					  inSelectionFrame.get<0>() + inSelectionFrame.get<2>() - 1 /*x1=x0+w*/,
+					  inSelectionFrame.get<1>() + inSelectionFrame.get<3>() - 1/*y1=y0+h*/);
 
       // TODO: "zoom" (interpolate) image by factor...
 

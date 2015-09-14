@@ -65,7 +65,7 @@ namespace AT {
   static void
   manualConsoleFocusCntl(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice,
 			 const FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec,
-			 BinningT inBinning)
+			 BinningT inBinning, bool inFollowStar = true)
   {
     const unsigned int statusPosX = 5;
     const unsigned int statusPosY = 27;
@@ -75,6 +75,9 @@ namespace AT {
     const float borderFactor = 3.0; // TODO: Pass as argument?!
     PointT<float> centerPos = frameToCenterPos(inSelectionFrame);
     FrameT<float> imageFrame = centerPosToFrame(centerPos, borderFactor * inSelectionFrame.get<2>(), borderFactor * inSelectionFrame.get<3>());
+    
+    LOG(trace) << "Initial selectionFrame(by click): " << inSelectionFrame
+	       << ", centerPos: " << centerPos << ", initial imageFrame: " << imageFrame << endl;
     
     CImgDisplay currentImageDisp;
     CImg<float> image;
@@ -170,105 +173,87 @@ namespace AT {
     
       // Keep exposure running...
       if (! inCameraDevice->isExposureInProgress()) {
-	LOG(trace) << "setBinning(" << inBinning << ")..." << endl;
-	inCameraDevice->setBinning(inBinning);
-	LOG(trace) << "setBinnedFrame(" << imageFrame << ", " << inBinning << ")..." << endl;
-	inCameraDevice->setBinnedFrame(imageFrame, inBinning);
-	LOG(trace) << "setFrameType(" << FrameTypeT::asStr(FrameTypeT::LIGHT) << ")..." << endl;
-	inCameraDevice->setFrameType(FrameTypeT::LIGHT);
-	LOG(trace) << "setCompressed(false)..." << endl;
-	inCameraDevice->setCompressed(false); // No compression when moving image to CImg
-
 	// Get previous image (if any)
 	inCameraDevice->getImage(& image);
-	LOG(trace) << "Received image [subframe: " << imageFrame << "] from camera - size: " << image.width() << " x " << image.height() << endl;
 
-	// Recalculate picture data...
+	LOG(trace) << "Received image [subframe: " << imageFrame << "] from camera - size: " << image.width() << " x " << image.height() << endl;
 	LOG(trace) << "image.width(): " << image.width() << ", image.height(): " << image.height() << endl;
 	LOG(trace) << "inBinning.get<0>(): " << inBinning.get<0>() << ", inBinning.get<1>(): " << inBinning.get<1>() << endl;
 
-	// TODO: Is this if necessary any longer?!
 	if (image.width() == imageFrame.get<2>() && image.height() == imageFrame.get<3>()) {
-
-	  // Re-Determine star center
-	  // ------------------------------------------------------------------------------------------------------------ //
-
-
-	  
-	  // Calculate star data
-	  // ------------------------------------------------------------------------------------------------------------ //
-    
-	  // TODO: try catch?
-	  HfdT hfd(image); // NOTE: HfdT takes image center as centroid, it does not matter if image is bigger
-	  hfdValue = hfd.getValue();
-
-	  // Get sub-frame
-	  PointT<float> imageFrameCenter = frameToCenterPos(imageFrame);
-	  FrameT<float> selectionFrame = centerPosToFrame(imageFrameCenter, inSelectionFrame.get<2>(), inSelectionFrame.get<3>());
-
-	  // Convert to imageFrame coordinates
-	  selectionFrame.get<0>() -= imageFrame.get<0>();
-	  selectionFrame.get<1>() -= imageFrame.get<1>();
-	  
-	  LOG(trace) << "imageFrame: " << imageFrame << ", imageFrameCenter: " << imageFrameCenter << ", selectionFrame: " << selectionFrame << endl;
-
-	  CImg<float> subImg = image.get_crop(selectionFrame.get<0>() /*x0*/,
-	   				      selectionFrame.get<1>() /*y0*/,
-	   				      selectionFrame.get<0>() + selectionFrame.get<2>() /*x1=x0+w*/,
-	   				      selectionFrame.get<1>() + selectionFrame.get<3>() /*y1=y0+h*/);
-
-	  // DEBUG START
-	  CImgDisplay thDsp1(image, "IMG...");
-	  while (! thDsp1.is_closed()) {
-	    thDsp1.wait();
-	  }
-	  CImgDisplay thDsp2(subImg, "SUBIMG...");
-	  while (! thDsp2.is_closed()) {
-	    thDsp2.wait();
-	  }
-	  // DEBUG END
-
-	  
-	  // TODO: Also calc FWHMs, max pixel value, ...
-	  // TODO: Or can FWHM just do the job?!?!?!!?
-	  
-
 	  // Perform re-centroiding i.e. re-set selectionFrame in order to follow the star
 	  // ------------------------------------------------------------------------------------------------------------ //
 	  FrameT<unsigned int> newFrame;
 
 	  // IDEA: Pass current image, re-center using given method
-	  // TODO: Last but one two parameters should not be hardcoded?!?!?!
-	  PointT<float> newCenter(image.width() / 2, image.height() / 2);
-	  bool insideBounds = StarFrameSelectorT::calc(image, 0 /*bitPix - HACK: not needed */,
-						       newCenter, & newFrame,
+	  PointT<float> assumedCenter((float) image.width() / 2.0, (float) image.height() / 2.0); // We assume that the star did not move too far from the image center
+
+	  LOG(trace) << "image.width(): " << image.width() << ", image.height(): " << image.height()
+		     << ", --> assumed center: " << assumedCenter << endl;
+
+	  // TODO: Do not pass StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY,CentroidT::CentroidTypeT::IWC...
+	  //       Instead pass what has been selected by parameters..
+	  bool insideBounds = StarFrameSelectorT::calc(image, 0 /*bitPix - TODO / HACK: not needed */,
+						       assumedCenter, & newFrame,
 						       StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY,
 						       CentroidT::CentroidTypeT::IWC, inSelectionFrame.get<2>() /*frameSize*/);
+
+	  AT_ASSERT(StarFrameSelector, insideBounds, "Expected frame to be inside bounds.");
  
 	  // Calculate new imageFrame
 	  PointT<float> newLocalCenterPos = frameToCenterPos(newFrame); // In "imageFrame" coordinates
-	  float deltaX = newLocalCenterPos.get<0>() - ((float) imageFrame.get<2>() / 2.0);
-	  float deltaY = newLocalCenterPos.get<1>() - ((float) imageFrame.get<3>() / 2.0);
+	  float deltaX = ((float) imageFrame.get<2>() / 2.0) - newLocalCenterPos.get<0>();
+	  float deltaY = ((float) imageFrame.get<3>() / 2.0) - newLocalCenterPos.get<1>();
+	  PointT<float> oldCenterPos = frameToCenterPos(imageFrame); // In "full frame" coordinates
+	  PointT<float> newCenterPos(oldCenterPos.get<0>() - deltaX, oldCenterPos.get<1>() - deltaY); // In "full frame" coordinates
+	  FrameT<unsigned int> newImageFrame = centerPosToFrame(newCenterPos, imageFrame.get<2>(), imageFrame.get<3>());
 
-	  LOG(trace) << "Old imageFrame: " << imageFrame << endl;
-	  LOG(trace) << "frameSize used: " << inSelectionFrame.get<2>() << ", newCenter: " << newCenter
+	  LOG(debug) << "Old imageFrame: " << imageFrame << ", oldCenterPos: " << oldCenterPos << endl;
+	  LOG(trace) << "frameSize used: " << inSelectionFrame.get<2>() << ", assumedCenter: " << assumedCenter
 		     << ", newFrame: " << newFrame << " --> newLocalCenterPos: " << newLocalCenterPos
 		     << ", --> deltaX: " << deltaX << ", deltaY: " << deltaY << endl;
-	    
-	  AT_ASSERT(StarFrameSelector, insideBounds, "Expected frame to be inside bounds.");
-	  
+	  LOG(debug) << "New imageFrame: " << newImageFrame << ", newCenterPos: " << newCenterPos << endl;
 
-	  PointT<float> oldCenterPos = frameToCenterPos(imageFrame); // In "full frame" coordinates
-	  PointT<float> newCenterPos(oldCenterPos.get<0>() + deltaX, oldCenterPos.get<1>() +  deltaY);
-	  LOG(trace) << "oldCenterPos: " << oldCenterPos << " --> newCenterPos: " << newCenterPos << endl;
+	  // TODO / FIXME: Check if it hits boundaries!!??
 	  
+	  // Get sub-frame for analysis
+	  // ------------------------------------------------------------------------------------------------------------ //
+	  // Convert to imageFrame coordinates
+	  FrameT<float> selectionFrame(newFrame);
+
+	  CImg<float> subImg = image.get_crop(selectionFrame.get<0>() /*x0*/,
+	   				      selectionFrame.get<1>() /*y0*/,
+	   				      selectionFrame.get<0>() + selectionFrame.get<2>() - 1/*x1=x0+w-1*/,
+	   				      selectionFrame.get<1>() + selectionFrame.get<3>() - 1/*y1=y0+h-1*/);
+
+	  // Calculate star data
+	  // ------------------------------------------------------------------------------------------------------------ //
+	  // TODO: try catch?
+	  HfdT hfd(subImg); // NOTE: HfdT takes image center as centroid, it does not matter if image is bigger
+	  hfdValue = hfd.getValue();
+	  // TODO: Also calc FWHMs, max pixel value, ...
+	  // TODO: Or can FWHM just do the job?!?!?!!?
+
+	  // DEBUG START
+	  // CImg<unsigned char> tmpNormalizedImage(normalize(subImg, 65535.0, 5.0));
+	  // CImgDisplay thDsp(tmpNormalizedImage, "SUB-IMG...");
+	  // while (! thDsp.is_closed()) {
+	  //   thDsp.wait();
+	  // }
+
+	  // CImg<unsigned char> hfdView = hfd.genView();
+	  // CImgDisplay thDsp2(hfdView, "HFD-VIEW...");
+	  // while (! thDsp2.is_closed()) {
+	  //   thDsp2.wait();
+	  // }
+	  // DEBUG END
 
 	  
 	  // Finally, scale and display the image
 	  // ------------------------------------------------------------------------------------------------------------ //
 	  // TODO: Calculate value below instead of hard-coding it...
 	  float maxPossiblePixelValue = 65535.0;
-	  CImg<unsigned char> normalizedImage(normalize(subImg, maxPossiblePixelValue, 25.0 /*TODO: HACK FIXME! 5%*/));
+	  CImg<unsigned char> normalizedImage(normalize(image, maxPossiblePixelValue, 5.0 /*TODO: HACK FIXME! Should not be hardcoded*/));
 
 	  // Zoom image so that the star can be seen better...
 	  // NOTE: RGB because we may add additional things in color to indicate for example the centroid / frame...
@@ -285,39 +270,90 @@ namespace AT {
 	  rgbImg.resize(scaleFactor * normalizedImage.width(), scaleFactor * normalizedImage.height(),
 			-100 /*size_z*/, -100 /*size_c*/, 1 /*interpolation_type*/);
 
+	  // Draw selected region
+	  const unsigned char red[3] = { 255, 0, 0 }, green[3] = { 0, 255, 0 }, blue[3] = { 0, 0, 255 };
+	  rgbImg.draw_rectangle(floor(scaleFactor * selectionFrame.get<0>() + 0.5), floor(scaleFactor * selectionFrame.get<1>() + 0.5),
+	  			floor(scaleFactor * (selectionFrame.get<0>() + selectionFrame.get<2>()) + 0.5),
+	  			floor(scaleFactor * (selectionFrame.get<1>() + selectionFrame.get<3>()) + 0.5),
+	  			green, 1 /*opacity*/, ~0 /*pattern*/);
+
 	  // Draw center
-	  const unsigned char red[3] = { 255, 0, 0 };
 	  const size_t cCrossSize = 3;
-	  PointT<float> localNewCenterPos(newCenterPos.get<0>() - imageFrame.get<0>() - selectionFrame.get<0>(),
-					  newCenterPos.get<1>() - imageFrame.get<1>() - selectionFrame.get<1>());
 
-	  LOG(trace) << "newCenterPos: " << newCenterPos << ", localNewCenterPos: " << localNewCenterPos << endl;
-
-	  rgbImg.draw_line(floor(scaleFactor * (localNewCenterPos.get<0>() - cCrossSize) + 0.5), floor(scaleFactor * localNewCenterPos.get<1>() + 0.5),
-			   floor(scaleFactor * (localNewCenterPos.get<0>() + cCrossSize) + 0.5), floor(scaleFactor * localNewCenterPos.get<1>() + 0.5), red, 1 /*opacity*/);
+	  // TODO: Write "drawCross" function...
+	  // PointT<float> localNewCenterPos(newCenterPos.get<0>() - imageFrame.get<0>() - selectionFrame.get<0>(),
+	  // 				  newCenterPos.get<1>() - imageFrame.get<1>() - selectionFrame.get<1>());
+	  PointT<float> localOldCenterPos(oldCenterPos.get<0>() - imageFrame.get<0>(),
+	   				  oldCenterPos.get<1>() - imageFrame.get<1>());
+	  // TODO:  +1 ?!!
+	  // rgbImg.draw_line(floor(scaleFactor * (localOldCenterPos.get<0>() - cCrossSize + 1) + 0.5), floor(scaleFactor * (localOldCenterPos.get<1>() + 1) + 0.5),
+	  // 		   floor(scaleFactor * (localOldCenterPos.get<0>() + cCrossSize + 1) + 0.5), floor(scaleFactor * (localOldCenterPos.get<1>() + 1) + 0.5),
+	  // 		   blue, 1 /*opacity*/);
 	  
-	  rgbImg.draw_line(floor(scaleFactor * localNewCenterPos.get<0>() + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() - cCrossSize) + 0.5),
-			   floor(scaleFactor * localNewCenterPos.get<0>() + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() + cCrossSize) + 0.5), red, 1 /*opacity*/);
+	  // rgbImg.draw_line(floor(scaleFactor * (localOldCenterPos.get<0>() + 1) + 0.5), floor(scaleFactor * (localOldCenterPos.get<1>() - cCrossSize + 1) + 0.5),
+	  // 		   floor(scaleFactor * (localOldCenterPos.get<0>() + 1) + 0.5), floor(scaleFactor * (localOldCenterPos.get<1>() + cCrossSize + 1) + 0.5),
+	  // 		   blue, 1 /*opacity*/);
 
+
+	  
+	  // PointT<float> localNewCenterPos(newCenterPos.get<0>() - imageFrame.get<0>(),
+	  //  				  newCenterPos.get<1>() - imageFrame.get<1>());
+
+	  // rgbImg.draw_line(floor(scaleFactor * (localNewCenterPos.get<0>() - cCrossSize + 1) + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() + 1) + 0.5),
+	  // 		   floor(scaleFactor * (localNewCenterPos.get<0>() + cCrossSize + 1) + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() + 1) + 0.5),
+	  // 		   red, 1 /*opacity*/);
+	  
+	  // rgbImg.draw_line(floor(scaleFactor * (localNewCenterPos.get<0>() + 1) + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() - cCrossSize + 1) + 0.5),
+	  // 		   floor(scaleFactor * (localNewCenterPos.get<0>() + 1) + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() + cCrossSize + 1) + 0.5),
+	  // 		   red, 1 /*opacity*/);
+
+
+	  rgbImg.draw_line(scaleFactor * (localOldCenterPos.get<0>() - cCrossSize), scaleFactor * (localOldCenterPos.get<1>()),
+	  		   scaleFactor * (localOldCenterPos.get<0>() + cCrossSize), scaleFactor * (localOldCenterPos.get<1>()),
+			   blue, 1 /*opacity*/);
+	  
+	  rgbImg.draw_line(scaleFactor * (localOldCenterPos.get<0>()), scaleFactor * (localOldCenterPos.get<1>() - cCrossSize),
+	  		   scaleFactor * (localOldCenterPos.get<0>()), scaleFactor * (localOldCenterPos.get<1>() + cCrossSize),
+			   blue, 1 /*opacity*/);
+
+
+	  
+	  PointT<float> localNewCenterPos(newCenterPos.get<0>() - imageFrame.get<0>(),
+	   				  newCenterPos.get<1>() - imageFrame.get<1>());
+
+	  rgbImg.draw_line(scaleFactor * (localNewCenterPos.get<0>() - cCrossSize), scaleFactor * (localNewCenterPos.get<1>()),
+	  		   scaleFactor * (localNewCenterPos.get<0>() + cCrossSize), scaleFactor * (localNewCenterPos.get<1>()),
+			   red, 1 /*opacity*/);
+	  
+	  rgbImg.draw_line(scaleFactor * (localNewCenterPos.get<0>()), scaleFactor * (localNewCenterPos.get<1>() - cCrossSize),
+	  		   scaleFactor * (localNewCenterPos.get<0>()), scaleFactor * (localNewCenterPos.get<1>() + cCrossSize),
+			   red, 1 /*opacity*/);
+
+
+	  
 	  currentImageDisp.display(rgbImg);
 
-
 	  
-	  // Finally, set new frame
-	  // ------------------------------------------------------------------------------------------------------------ //
-	  imageFrame = centerPosToFrame(newCenterPos, imageFrame.get<2>(), imageFrame.get<3>());
-	  LOG(trace) << "New imageFrame: " << imageFrame << endl;
-	  
-	  // TODO / FIXME: Check if it hits boundaries!!
-
-	  
-	} // TODO: handle else?!?!?
-
-
-
+	  if (inFollowStar) {
+	    // If star following is enabled, the camera sub-frame is re-centered after each image
+	    imageFrame = newImageFrame;
+	  }
+	} else {
+	  LOG(debug) << "Received something unexpected! Expected image size: " << imageFrame.get<2>() << " x " << imageFrame.get<3>()
+		     << " but received " << image.width() << " x " << image.height() << " -> ignoring." << endl;
+	}
 	
 	// Start new exposure
 	// ------------------------------------------------------------------------------------------------------------ //
+	LOG(trace) << "setBinning(" << inBinning << ")..." << endl;
+	inCameraDevice->setBinning(inBinning);
+	LOG(trace) << "setBinnedFrame(" << imageFrame << ", " << inBinning << ")..." << endl;
+	inCameraDevice->setBinnedFrame(imageFrame, inBinning);
+	LOG(trace) << "setFrameType(" << FrameTypeT::asStr(FrameTypeT::LIGHT) << ")..." << endl;
+	inCameraDevice->setFrameType(FrameTypeT::LIGHT);
+	LOG(trace) << "setCompressed(false)..." << endl;
+	inCameraDevice->setCompressed(false); // No compression when moving image to CImg
+
 	LOG(trace) << "startExposure(" << inExposureTimeSec << "s)..." << endl;
 	inCameraDevice->startExposure(inExposureTimeSec); // Non-blocking call...!!
       }
@@ -498,7 +534,8 @@ namespace AT {
       const unsigned int vcurveFitEpsAbs = cmdLineMap["vcurve_fit_eps_abs"].as<unsigned int>();
       const unsigned int vcurveFitEpsRel = cmdLineMap["vcurve_fit_eps_rel"].as<unsigned int>();
       const string & focusMode = cmdLineMap["focus_mode"].as<string>();
-
+      const bool followStar = cmdLineMap["follow_star"].as<bool>();
+  
       LOG(info) << "Indi server: " << hostnameAndPort
 		<< ", cameraDeviceName: " << cameraDeviceName << ", focuserDeviceName: " << focuserDeviceName
 		<< ", focuserDevicePort: " << focuserDevicePort << ", exposureTimeSec: " << exposureTimeSec
@@ -512,7 +549,8 @@ namespace AT {
 		<< ", roughFocusGranularitySteps: " << fineFocusRecordNumCurves << ", fineFocusGranularitySteps: " << fineFocusGranularitySteps
 		<< ", fineSearchRangeSteps: " << fineSearchRangeSteps << ", vcurveFitEpsAbs: " << vcurveFitEpsAbs
 		<< ", vcurveFitEpsRel: " << vcurveFitEpsRel
-		<< ", focusMode: " << focusMode << endl;
+		<< ", focusMode: " << focusMode
+		<< ", followStar: " << followStar << endl;
 
       IndiClientT indiClient(hostnameAndPort.getHostname(), hostnameAndPort.getPort(), true /* autoconnect*/);
 
@@ -581,8 +619,10 @@ namespace AT {
 	typename CentroidT::CentroidTypeT::TypeE centroidMethod = cmdLineMap["centroid_method"].as<typename CentroidT::CentroidTypeT::TypeE>();
 	FrameT<unsigned int> selectedFrame = getStarFrame(image, bitPix, starSelectMethod, starRecognitionMethod, centroidMethod);
 
+	LOG(debug) << "Selected frame by click: " << selectedFrame << endl;
+	
 	if (! strcmp(focusMode.c_str(), "manual")) { // Manual focusing
-	  manualConsoleFocusCntl(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning);
+	  manualConsoleFocusCntl(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning, followStar);
 	} else { // Automatic focusing
 	  FocusFinderLinearInterpolationImplT ffli(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning);
 
@@ -789,6 +829,7 @@ namespace AT {
     DEFINE_OPTION(optVCurveFitEpsRel, "vcurve_fit_eps_rel", po::value<unsigned int>()->default_value(1), "VCurve fit eps rel.");
 
     DEFINE_OPTION(optFocusMode, "focus_mode", po::value<string>()->default_value("manual"), "Focus mode [manual|auto].");
+    DEFINE_OPTION(optFollowStar, "follow_star", po::value<bool>()->default_value(true), "Follow a selected star by adjusting the selected camera sub-frame.");
 
     
 
@@ -827,6 +868,7 @@ namespace AT {
     focusFindDescr.add(optVCurveFitEpsAbs);
     focusFindDescr.add(optVCurveFitEpsRel);
     focusFindDescr.add(optFocusMode);
+    focusFindDescr.add(optFollowStar);
     
     //focusFindDescr.add_options()("display_picture", "Display picture.");
     REGISTER_CONSOLE_CMD_LINE_COMMAND("focus_find", focusFindDescr, (& FocusFinderActionT::performAction));

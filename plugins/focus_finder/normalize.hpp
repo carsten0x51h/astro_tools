@@ -35,25 +35,39 @@ namespace AT {
   {
     // TODO: We can avoid copy by passing a pointer..
     CImg<unsigned char> normalizedImage(inImg.width(), inImg.height());
-    const CImg<float> histogram = inImg.get_histogram(inNumBuckets);
+
+    float maxPixelValue;
+    float minPixValue = inImg.min_max(maxPixelValue);
     
-    float sum = 0, prod = 0;
-    cimg_forX(histogram, x) {
-      prod = x * histogram(x);
-      sum += histogram(x);
-    }
-    float cog = prod / sum;
+    if (inNumBuckets > maxPixelValue) {
+      // Not saturated
+      cimg_forXY(inImg, x, y) {
+	float value = 255.0 * (inImg(x,y) - minPixValue) / (maxPixelValue - minPixValue);
+	unsigned char valueCut = (value > 255 ? 255 : value); // TODO: Is this cutting necessary here?!?!?!?
+	normalizedImage(x, y) = valueCut;
+      }
+    } else {
+      // Saturated
+      const CImg<float> histogram = inImg.get_histogram(inNumBuckets);
+    
+      float sum = 0, prod = 0;
+      cimg_forX(histogram, x) {
+	prod = x * histogram(x);
+	sum += histogram(x);
+      }
+      float cog = prod / sum;
 
-    float delta = (inPercent / 100.0) * inNumBuckets;
-    float min = (cog - delta < 0 ? 0 : cog - delta);
-    float max = (cog - delta > inNumBuckets ? inNumBuckets : cog + delta);
+      float delta = (inPercent / 100.0) * inNumBuckets;
+      float min = (cog - delta < 0 ? 0 : cog - delta);
+      float max = (cog - delta > inNumBuckets ? inNumBuckets : cog + delta);
 	
-    cimg_forXY(inImg, x, y) {
-      float value = 255.0 * (inImg(x,y) - min) / (max - min);
-      unsigned char valueCut = (value > 255 ? 255 : value);
-      normalizedImage(x, y) = valueCut;
+      cimg_forXY(inImg, x, y) {
+	float value = 255.0 * (inImg(x,y) - min) / (max - min);
+	unsigned char valueCut = (value > 255 ? 255 : value);
+	normalizedImage(x, y) = valueCut;
+      }
     }
-
+    
     return normalizedImage;
   }
 }; // end AT
