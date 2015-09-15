@@ -91,13 +91,21 @@ namespace AT {
 
 	// Re-center frame of same size around max pixel pos.
 	// NOTE: maxRecenteredFrame cannot hit the boundary because search frame was 3 * inFrameSize.
+	// NOTE: We decided to use int instead of float since sub-pixel accuracy is not needed here.
 	FrameT<int> maxRecenteredFrame = centerPosToFrame(maxPixelPos, inFrameSize);
 	LOG(debug) << "maxRecenteredFrame: " << maxRecenteredFrame << endl;
 	
 	// Calc centroid given the new frame
-	PointT<float> centroid;
-	CentroidT::calc(inImg, maxRecenteredFrame, & centroid, 0 /*centeredImg not required*/, CoordTypeT::ABSOLUTE, inCentroidMethod);
-	    
+	CentroidT centroidObj(inImg, maxRecenteredFrame, inCentroidMethod);
+	PointT<float> centroid(centroidObj.getCentroid(CoordTypeT::ABSOLUTE));
+	
+	// DEBUG START - Remove again
+	// CImgDisplay thDsp3(centroidObj.genView(), "STAR-FRAME SELECTOR - CENTROID");
+	// while (! thDsp3.is_closed()) {
+	//   thDsp3.wait();
+	// }
+	// DEBUG END
+	
 	// Re-center frame to calculated centroid
 	// NOTE: centroidRecenteredFrame cannot hit the boundary because search frame was 3 * inFrameSize.
 	FrameT<int> centroidRecenteredFrame = centerPosToFrame(centroid, inFrameSize);

@@ -38,7 +38,11 @@ namespace AT {
 
   class CentroidT {
   private:  
-
+    CImg<float> mImg;
+    PointT<float> mCentroidRel;
+    FrameT<float> mSelectionFrame;
+    float mScaleFactor;
+    
     /** 
      * The star centroid algorithm is based on the code from: http://aladin.u-strasbg.fr/java/Plugins/Centroid.java
      * Further information on image moments can be found on wikipedia: http://de.wikipedia.org/wiki/Moment_%28Bildverarbeitung%29
@@ -365,6 +369,8 @@ namespace AT {
 
 
   public:
+    static const float defaultScaleFactor;
+
     struct CentroidTypeT {
       enum TypeE {
 	IWC,
@@ -383,95 +389,67 @@ namespace AT {
       }
       MAC_AS_TYPE(Type, E, _Count);  
     };
-  
+      
+    CentroidT() : mScaleFactor(defaultScaleFactor)  {}
+    CentroidT(const CImg<float> & inImg, const FrameT<float> & inSelectionFrame, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inScaleFactor = defaultScaleFactor, bool inSubMean = true) {
+      this->set(inImg, inSelectionFrame, inCalcType, inScaleFactor, inSubMean);
+    }
+    CentroidT(const CImg<float> & inImg, const PointT<float> & inSelecionCenter, unsigned int inWindowSize /* width = height */, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inScaleFactor = defaultScaleFactor, bool inSubMean = true) {
+      this->set(inImg, inSelecionCenter, inWindowSize, inCalcType, inScaleFactor, inSubMean);
+    }
 
+    
+    inline void
+    set(const CImg<float> & inImg, const FrameT<float> & inSelectionFrame, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inScaleFactor = defaultScaleFactor, bool inSubMean = true) {
+      mScaleFactor = inScaleFactor;
+      mSelectionFrame = inSelectionFrame;
+      CentroidT::calc(inImg, mSelectionFrame, & mCentroidRel, & mImg, CoordTypeT::RELATIVE, inCalcType, inScaleFactor, inSubMean);
+    }
+
+    inline void
+    set(const CImg<float> & inImg, const PointT<float> & inSelecionCenter, unsigned int inWindowSize /* width = height */, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inScaleFactor = defaultScaleFactor, bool inSubMean = true) {
+      mScaleFactor = inScaleFactor;
+      mSelectionFrame = centerPosToFrame(inSelecionCenter, inWindowSize);
+      CentroidT::calc(inImg, mSelectionFrame, & mCentroidRel, & mImg, CoordTypeT::RELATIVE, inCalcType, inScaleFactor, inSubMean);
+    }    
+
+    
     // Input:  full image, selection-frame, optional: calculation method, abs / rel coordinates (?)
     //   or
-    // Input:  full image, centerposition, selection size, optional: calculation method, abs / rel coordinates (?)
+    // Input:  full image, center position, selection size, optional: calculation method, abs / rel coordinates (?)
     //
     // Output: centroid position (relative / absoulte), optional: sub-image, frame
     static void
-    calc(const CImg<float> & inImg, const FrameT<float> & inSelectionFrame, PointT<float> * outCenter, CImg<float> * outImg,
-	 CoordTypeT::TypeE inCoordType = CoordTypeT::RELATIVE, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inZoomFactor = 4.0) {
-
-      AT_ASSERT(Centroid, outCenter, "outCenter expected to be set.");
-
-      PointT<float> relCenter;
+    calc(const CImg<float> & inImg, const FrameT<float> & inSelectionFrame, PointT<float> * outCenter, CImg<float> * outImg, CoordTypeT::TypeE inCoordType = CoordTypeT::RELATIVE, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inZoomFactor = 4.0, bool inSubMean = true);
     
-      // Check if selection hits any image boundary...
-      if (! insideBounds(DimensionT<float>(inImg.width(), inImg.height()), inSelectionFrame)) {
-	throw CentroidExceptionT("Frame hits image bounds.");
-      }
-      
-      // Extract sub-image, check corner cases...
-      CImg<float> subImg = inImg.get_crop(inSelectionFrame.get<0>() /*x0*/,
-					  inSelectionFrame.get<1>() /*y0*/,
-					  inSelectionFrame.get<0>() + inSelectionFrame.get<2>() - 1 /*x1=x0+w*/,
-					  inSelectionFrame.get<1>() + inSelectionFrame.get<3>() - 1/*y1=y0+h*/);
-
-      // TODO: "zoom" (interpolate) image by factor...
-
-      switch(inCalcType) {
-      case CentroidTypeT::IWC: {
-	calcIntensityWeightedCenter(subImg, & relCenter); // center is relative
-	break;
-      }
-      case CentroidTypeT::IWC_SUB: {
-	PointT<float> centerIwc;
-	calcIntensityWeightedCenter(subImg, & centerIwc); // center is relative
-	calcCentroidSubPixel(subImg, centerIwc, & relCenter, 20 /*numIterations*/);
-	break;
-      }
-      case CentroidTypeT::MOMENT2: {
-	calcCentroid2ndMoment(subImg, & relCenter); // center is relative
-	break;
-      }
-      default: {
-	AT_ASSERT(Centroid, false, "Invalid CentroidTypeT.");
-      }
-      }
-
-      // Calculate new centered frame
-      PointT<float> absCenter(relCenter.get<0>() + inSelectionFrame.get<0>(), relCenter.get<1>() + inSelectionFrame.get<1>());
-      FrameT<float> centeredSelectionFrameAbs = centerPosToFrame(absCenter, inSelectionFrame.get<2>() /*w*/, inSelectionFrame.get<3>() /*h*/);
-
-      // Check if selection hits any image boundary (corner cases)...
-      if (! insideBounds(DimensionT<float>(inImg.width(), inImg.height()), centeredSelectionFrameAbs)) {
-	throw CentroidExceptionT("Centered frame hits image bounds.");
-      }
-    
-      /**
-       * We return a copy of the zoomed (interpolated), centered image
-       * with the boundaries of the passed frame. The boundaries are
-       * checked after "re-centering" again.
-       */
-      if (outImg) {     
-	// Extract sub-image
-	CImg<float> centeredSubImg = inImg.get_crop(centeredSelectionFrameAbs.get<0>() /*x0*/,
-						    centeredSelectionFrameAbs.get<1>() /*y0*/,
-						    centeredSelectionFrameAbs.get<0>() + centeredSelectionFrameAbs.get<2>() /*x1 = x0 + w*/,
-						    centeredSelectionFrameAbs.get<1>() + centeredSelectionFrameAbs.get<3>() /*y1 = y0 + h*/);
-
-	// TODO: Zoom image
-
-	// Finally, return a copy
-	*outImg = centeredSubImg;
-      }
-    
-      // Transform to absolute coordinates if required
-      *outCenter = (CoordTypeT::ABSOLUTE == inCoordType ? absCenter : relCenter);
-      LOG(info) << "calc - final centroid coords (x y)=" << *outCenter << endl;
-    }
-
-  
     static void
-    calc(const CImg<float> & inImg, const PointT<float> & inSelecionCenter, unsigned int inWindowSize /* width = height */, PointT<float> * outCenter, CImg<float> * outImg = 0, CoordTypeT::TypeE inCoordType = CoordTypeT::RELATIVE, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inZoomFactor = 4.0) {
+    calc(const CImg<float> & inImg, const PointT<float> & inSelecionCenter, unsigned int inWindowSize /* width = height */, PointT<float> * outCenter, CImg<float> * outImg = 0, CoordTypeT::TypeE inCoordType = CoordTypeT::RELATIVE, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inZoomFactor = 4.0, bool inSubMean = true) {
 
       FrameT<float> frame = centerPosToFrame(inSelecionCenter, inWindowSize);
-      calc(inImg, frame, outCenter, outImg, inCoordType, inCalcType, inZoomFactor);
+      calc(inImg, frame, outCenter, outImg, inCoordType, inCalcType, inZoomFactor, inSubMean);
     }
+
+    static CImg<unsigned char>
+    genView(const CImg<float> & inImage, const PointT<float> & inCenter, float inScaleFactor = defaultScaleFactor);  
+
+    inline bool valid() const { return (mImg.width() > 0 && mImg.height() > 0); }
+    inline const CImg<float> & getResultImage() const { return mImg; }
+    inline PointT<float> getCentroid(CoordTypeT::TypeE inCoordType = CoordTypeT::ABSOLUTE) const {
+      if (inCoordType == CoordTypeT::ABSOLUTE) {
+	PointT<float> centroidAbs(mCentroidRel.get<0>() + mSelectionFrame.get<0>(), mCentroidRel.get<1>() + mSelectionFrame.get<1>());
+	return centroidAbs;
+      } else if (inCoordType == CoordTypeT::ABSOLUTE) {
+	return mCentroidRel;
+      } else {
+	AT_ASSERT(Centroid, false, "Invalid CoordType!");
+      }
+    }
+    CImg<unsigned char> genView() const { return CentroidT::genView(mImg, mCentroidRel, mScaleFactor); }
+    
   };
 
+
+  
 
   /**
    * NOTE: This validate belongs to AT::CentroidT::CentroidTypeT.

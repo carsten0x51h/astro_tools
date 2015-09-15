@@ -240,14 +240,12 @@ namespace AT {
 	  // while (! thDsp.is_closed()) {
 	  //   thDsp.wait();
 	  // }
-
 	  // CImg<unsigned char> hfdView = hfd.genView();
 	  // CImgDisplay thDsp2(hfdView, "HFD-VIEW...");
 	  // while (! thDsp2.is_closed()) {
 	  //   thDsp2.wait();
 	  // }
 	  // DEBUG END
-
 	  
 	  // Finally, scale and display the image
 	  // ------------------------------------------------------------------------------------------------------------ //
@@ -307,28 +305,22 @@ namespace AT {
 	  // 		   floor(scaleFactor * (localNewCenterPos.get<0>() + 1) + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() + cCrossSize + 1) + 0.5),
 	  // 		   red, 1 /*opacity*/);
 
-
-	  rgbImg.draw_line(scaleFactor * (localOldCenterPos.get<0>() - cCrossSize), scaleFactor * (localOldCenterPos.get<1>()),
-	  		   scaleFactor * (localOldCenterPos.get<0>() + cCrossSize), scaleFactor * (localOldCenterPos.get<1>()),
+	  rgbImg.draw_line(floor(scaleFactor * (localOldCenterPos.get<0>() - cCrossSize) + 0.5), floor(scaleFactor * localOldCenterPos.get<1>() + 0.5),
+			   floor(scaleFactor * (localOldCenterPos.get<0>() + cCrossSize) + 0.5), floor(scaleFactor * localOldCenterPos.get<1>() + 0.5),
 			   blue, 1 /*opacity*/);
 	  
-	  rgbImg.draw_line(scaleFactor * (localOldCenterPos.get<0>()), scaleFactor * (localOldCenterPos.get<1>() - cCrossSize),
-	  		   scaleFactor * (localOldCenterPos.get<0>()), scaleFactor * (localOldCenterPos.get<1>() + cCrossSize),
+	  rgbImg.draw_line(floor(scaleFactor * localOldCenterPos.get<0>() + 0.5), floor(scaleFactor * (localOldCenterPos.get<1>() - cCrossSize) + 0.5),
+			   floor(scaleFactor * localOldCenterPos.get<0>() + 0.5), floor(scaleFactor * (localOldCenterPos.get<1>() + cCrossSize) + 0.5),
 			   blue, 1 /*opacity*/);
-
 
 	  
 	  PointT<float> localNewCenterPos(newCenterPos.get<0>() - imageFrame.get<0>(),
 	   				  newCenterPos.get<1>() - imageFrame.get<1>());
 
-	  rgbImg.draw_line(scaleFactor * (localNewCenterPos.get<0>() - cCrossSize), scaleFactor * (localNewCenterPos.get<1>()),
-	  		   scaleFactor * (localNewCenterPos.get<0>() + cCrossSize), scaleFactor * (localNewCenterPos.get<1>()),
-			   red, 1 /*opacity*/);
-	  
-	  rgbImg.draw_line(scaleFactor * (localNewCenterPos.get<0>()), scaleFactor * (localNewCenterPos.get<1>() - cCrossSize),
-	  		   scaleFactor * (localNewCenterPos.get<0>()), scaleFactor * (localNewCenterPos.get<1>() + cCrossSize),
-			   red, 1 /*opacity*/);
-
+	  rgbImg.draw_line(floor(scaleFactor * (localNewCenterPos.get<0>() - cCrossSize) + 0.5), floor(scaleFactor * localNewCenterPos.get<1>() + 0.5),
+			   floor(scaleFactor * (localNewCenterPos.get<0>() + cCrossSize) + 0.5), floor(scaleFactor * localNewCenterPos.get<1>() + 0.5), red, 1 /*opacity*/);
+	  rgbImg.draw_line(floor(scaleFactor * localNewCenterPos.get<0>() + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() - cCrossSize) + 0.5),
+			   floor(scaleFactor * localNewCenterPos.get<0>() + 0.5), floor(scaleFactor * (localNewCenterPos.get<1>() + cCrossSize) + 0.5), red, 1 /*opacity*/);
 
 	  
 	  currentImageDisp.display(rgbImg);
