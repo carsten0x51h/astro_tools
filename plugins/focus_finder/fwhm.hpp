@@ -93,6 +93,8 @@ namespace AT {
     static void fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::CurveParamsT::TypeT * outGaussParms, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
     
   public:
+    static const float defaultScaleFactor;
+
     FwhmT() { }
     FwhmT(const vector<float> & inValues, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
     void set(const vector<float> & inValues, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
@@ -118,6 +120,11 @@ namespace AT {
 
     ostream & print(ostream & os, bool inPrintDetails = false) const;
     friend ostream & operator<<(ostream & os, const FwhmT & inFwhm);
+
+    static CImg<unsigned char>
+    genView(const vector<float> & inImgValues, const vector<float> & inFitValues, float inScaleFactor = defaultScaleFactor);
+    //CImg<unsigned char> genView() const { return CentroidT::genView(mImg, mCentroidRel, mScaleFactor); }
+
   };
   
   void validate(boost::any & v, const vector<string> & values, DirectionT::TypeE * target_type, int);

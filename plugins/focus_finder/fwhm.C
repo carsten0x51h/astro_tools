@@ -25,6 +25,7 @@
 #include "fwhm.hpp"
 
 namespace AT {
+  const float FwhmT::defaultScaleFactor = 4.0;
 
   // Class which provides access to image vector values by curve fit algorithm.
   class ImgAccessorT {
@@ -128,5 +129,40 @@ namespace AT {
 
     return os;
   }
+
+  CImg<unsigned char>
+  FwhmT::genView(const vector<float> & inImgValues, const vector<float> & inFitValues, float inScaleFactor) {
+    const size_t width = inScaleFactor * inImgValues.size();
+    const size_t height = inScaleFactor * inImgValues.size();
+    CImg<unsigned char> rgbImg(width, height, 1 /*depth*/, 3 /*3 channels - RGB*/);    
+
+    const unsigned char red[3] = { 255, 0, 0 };
+    const size_t cCrossSize = 2;
+
+    for (vector<float>::const_iterator it = inImgValues.begin(); it != inImgValues.end(); ++it) {
+      int x = std::distance(inImgValues.begin(), it);
+
+      // TOOD: What is max y value? ist it 1 (noirmalized?) or do we have to find it out?
+      // --> Calc y!
+      float y = *it;
+
+      cerr << "x: " << x << ", y: " << y << endl;
+
+      // TODO: We may use a generic draw-cross function since this is needed multiple times...
+      rgbImg.draw_line(floor(inScaleFactor * (x - cCrossSize) + 0.5), floor(inScaleFactor * y + 0.5),
+		       floor(inScaleFactor * (x + cCrossSize) + 0.5), floor(inScaleFactor * y + 0.5), red, 1 /*opacity*/);
+      rgbImg.draw_line(floor(inScaleFactor * x + 0.5), floor(inScaleFactor * (y - cCrossSize) + 0.5),
+		       floor(inScaleFactor * x + 0.5), floor(inScaleFactor * (y + cCrossSize) + 0.5), red, 1 /*opacity*/);
+    }
+
+    for (vector<float>::const_iterator it = inFitValues.begin(); it != inFitValues.end(); ++it) {
+      // TODO...
+    }
+
+
+
+    return rgbImg; // Make a copy...
+  }
+
 
 }; // end namespace AT
