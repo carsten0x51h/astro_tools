@@ -68,6 +68,23 @@ using namespace std;
 using namespace INDI;
 using namespace boost::serialization;
 
+#define HAS_PROP(__type__)						\
+  bool has##__type__##Vec(const string & inVecPropName) const {		\
+    AT_ASSERT(IndiDevice, mBaseDevice, "Expected mBaseDevice to be set."); \
+    I##__type__##VectorProperty * vec = mBaseDevice->get##__type__(inVecPropName.c_str()); \
+    return (vec != 0);							\
+  }									\
+									\
+  static inline bool has##__type__(I##__type__##VectorProperty * inVec, const string & inPropName) { \
+    I##__type__ * p = IUFind##__type__(inVec, inPropName.c_str());	\
+    return (p != 0);							\
+  }									\
+									\
+  inline bool has##__type__(const string & inVecPropName, const string & inPropName) const { \
+    I##__type__##VectorProperty * vec = get##__type__##Vec(inVecPropName); \
+    if (! vec) { return false; }					\
+    return this->has##__type__(vec, inPropName);		        \
+  }									\
 
 #define GET_PROP_VEC(__type__, __wocheck__)				\
   I##__type__##VectorProperty * get##__type__##Vec(const string & inVecPropName) const { \
@@ -369,7 +386,6 @@ public:
   void disconnect(int inTimeoutMs = sDefaultTimeoutMs);
 
   // TODO: Verify of this function works
-  // TODO: Implement hasVecProp(string...)
   // TODO: also add for PropT
   template<typename TraitsT>
   bool hasVecProp(typename TraitsT::VecPropsT::TypeE inVecProp) const {
@@ -393,7 +409,16 @@ public:
     return hasVecProp;
   }
 
+  // TODO: Implement the same for hasProVal()
 
+  // bool hasPropVal(const string & inVecPropName, const string & inPropName) const {
+  //   // TODO...
+  // }
+
+
+  
+  
+  
   // TODO: Pointers passed as const?!
   static inline string getUniqueDeviceId(IndiClientT * inIndiClient, BaseDevice * inBaseDevice) {
     return inIndiClient->getConnectionName() + string("_") + inBaseDevice->getDeviceName();
@@ -411,14 +436,16 @@ public:
    * Light
    *
    */
+  HAS_PROP(Light);
   GET_PROP_VEC(Light, false);
   GET_PROP(Light, false);
   GET_PROP_VAL(Light, IPState, p.s);
-
+  
   /**
    * BLOB
    *
    */
+  HAS_PROP(BLOB);
   GET_PROP_VEC(BLOB, IP_WO == vec->p);
   GET_PROP(BLOB, IP_WO == vec->p);
   GET_PROP_VAL(BLOB, void *, p.blob);
@@ -432,6 +459,7 @@ public:
    * Text
    *
    */
+  HAS_PROP(Text);
   GET_PROP_VEC(Text, IP_WO == vec->p);
   GET_PROP(Text, IP_WO == vec->p);
   GET_PROP_VAL(Text, const char *, p.text);
@@ -463,6 +491,7 @@ public:
    * Number
    *
    */
+  HAS_PROP(Number);
   GET_PROP_VEC(Number, IP_WO == vec->p);
   GET_PROP(Number, IP_WO == vec->p);
   GET_PROP_VAL(Number, double, p.value);
@@ -497,6 +526,7 @@ public:
    * Switch
    *
    */
+  HAS_PROP(Switch);
   GET_PROP_VEC(Switch, IP_WO == vec->p);
   GET_PROP(Switch, IP_WO == vec->p);
   GET_PROP_VAL(Switch, bool, (p.s == ISS_ON));

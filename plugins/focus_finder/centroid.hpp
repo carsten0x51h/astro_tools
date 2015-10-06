@@ -415,13 +415,12 @@ namespace AT {
 
     
     // Input:  full image, selection-frame, optional: calculation method, abs / rel coordinates (?)
-    //   or
-    // Input:  full image, center position, selection size, optional: calculation method, abs / rel coordinates (?)
-    //
     // Output: centroid position (relative / absoulte), optional: sub-image, frame
     static void
     calc(const CImg<float> & inImg, const FrameT<float> & inSelectionFrame, PointT<float> * outCenter, CImg<float> * outImg, CoordTypeT::TypeE inCoordType = CoordTypeT::RELATIVE, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inZoomFactor = 4.0, bool inSubMean = true);
     
+    // Input:  full image, center position, selection size, optional: calculation method, abs / rel coordinates (?)
+    // Output: centroid position (relative / absoulte), optional: sub-image, frame
     static void
     calc(const CImg<float> & inImg, const PointT<float> & inSelecionCenter, unsigned int inWindowSize /* width = height */, PointT<float> * outCenter, CImg<float> * outImg = 0, CoordTypeT::TypeE inCoordType = CoordTypeT::RELATIVE, CentroidTypeT::TypeE inCalcType = CentroidTypeT::IWC, float inZoomFactor = 4.0, bool inSubMean = true) {
 

@@ -310,6 +310,7 @@ struct CoordTypeT {
 
 DEF_Exception(ExtractLine);
 
+// TODO: DirectionT::TypeE could just be supplied as template parameter!
 static vector<float>
 extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection) {
   CImg<float> img(inImage); // Make a copy
@@ -317,6 +318,7 @@ extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection) 
   vector<float> values;
 
   // Subtract median image
+  // TODO: Should this be here???? It does actually do more than just extracting a line....
   double med = img.median();
   cimg_forXY(img, x, y) {
     img(x, y) = (img(x, y) > med ? img(x, y) - med : 0);
@@ -361,7 +363,6 @@ extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, 
 }
 
 // TODO: Do not pass back vector as copy!
-// TODO: Move to utils?!
 static vector<float>
 extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, PointT<float> inCenter, size_t inWindowSizePx) {
   AT_ASSERT(ExtractLine, inWindowSizePx > 0, "Specify inWindowSizePx > 0.");

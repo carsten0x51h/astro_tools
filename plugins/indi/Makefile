@@ -16,7 +16,7 @@ LIBS=
 
 #-lindiclient
 all: $(PLUGIN_OBJECTS)
-	g++ $(PLUGIN_OBJECTS) -shared -Wl,-soname,libat$(PLUGIN_NAME).so $(CXXFLAGS) -lboost_serialization -lindi -o $(BUILD_DIR)/libat$(PLUGIN_NAME).so
+	g++ $(PLUGIN_OBJECTS) -shared -Wl,-soname,libat$(PLUGIN_NAME).so $(CXXFLAGS) -lboost_serialization -lindi -lindiclient -o $(BUILD_DIR)/libat$(PLUGIN_NAME).so
 
 
 clean:

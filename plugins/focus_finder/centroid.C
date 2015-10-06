@@ -125,7 +125,6 @@ namespace AT {
 
   CImg<unsigned char>
   CentroidT::genView(const CImg<float> & inImage, const PointT<float> & inCenter, float inScaleFactor) {
-    // TODO: Move this to a "genView" function!
     CImg<unsigned char> rgbImg(inImage.width(), inImage.height(), 1 /*depth*/, 3 /*3 channels - RGB*/);    
 
     // TODO: We may use the normalize function instead...

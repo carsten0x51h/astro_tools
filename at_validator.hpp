@@ -82,8 +82,6 @@ namespace boost {
   void validate(boost::any & v, const vector<string> & values, PointT<float> * target_type, int) {
     using namespace boost::program_options;
 
-    cerr << "validate(boost::any & v, const vector<string> & values, PointT<float> * target_type, int...."  << endl;
-    
     static regex r("([0-9]*\\.?[0-9]+)(x|,)([0-9]*\\.?[0-9]+)");
     validators::check_first_occurrence(v);
     const string & s = validators::get_single_string(values);

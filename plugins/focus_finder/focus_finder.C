@@ -63,7 +63,7 @@ namespace AT {
   // TODO / IDEA: Better console menu: Move to different entries with up/down, change their values by left/right or +/-...
   //              Just for Abort & Quit (and maybe some other operations) add specific keys - like ESC for abort, q for quit...
   static void
-  manualConsoleFocusCntl(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice,
+  manualConsoleFocusCntl(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice,
 			 const FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec,
 			 BinningT inBinning, bool inFollowStar = true)
   {
@@ -75,11 +75,16 @@ namespace AT {
     const float borderFactor = 3.0; // TODO: Pass as argument?!
     PointT<float> centerPos = frameToCenterPos(inSelectionFrame);
     FrameT<float> imageFrame = centerPosToFrame(centerPos, borderFactor * inSelectionFrame.get<2>(), borderFactor * inSelectionFrame.get<3>());
+
+    bool haveFocalDistance = (inCmdLineMap.count("focal_distance") > 0);
+    bool havePixelSize = (inCmdLineMap.count("pixel_size") > 0);
+    unsigned int focalDistance = inCmdLineMap["focal_distance"].as<unsigned int>();
+    const DimensionT<float> & pixelSize = inCmdLineMap["pixel_size"].as<DimensionT<float> >();
     
     LOG(trace) << "Initial selectionFrame(by click): " << inSelectionFrame
 	       << ", centerPos: " << centerPos << ", initial imageFrame: " << imageFrame << endl;
     
-    CImgDisplay currentImageDisp;
+    CImgDisplay currentImageDisp, currentFwhmHorzDisp, currentFwhmVertDisp, currentHfdDisp;
     CImg<float> image;
     int key;
 
@@ -87,7 +92,10 @@ namespace AT {
     int stepFactor = 10;
     int focusPos = inFocuserDevice->getAbsPos();
     float hfdValue = -1;
-  
+    float fwhmHorzValue = -1;
+    float fwhmVertValue = -1;
+    float maxPixelValue = -1;
+    
     initscr();
     crmode();
     keypad(stdscr, TRUE);
@@ -164,13 +172,44 @@ namespace AT {
 
       
       if (hfdValue > 0) {
-	mv_print(infoColumn, 15, "HFD: %f\"", hfdValue);
+	stringstream hfdArcSecSs;
+	if (haveFocalDistance && havePixelSize) {
+	  hfdArcSecSs << " = " << FwhmT::pxToArcsec(hfdValue, focalDistance, pixelSize, inBinning) << "\"";
+	}
+	mv_print(infoColumn, 15, "HFD: %fpx%s", hfdValue, hfdArcSecSs.str().c_str());
       } else {
 	mv_print(infoColumn, 15, "HFD: n.a.");
       }
-      mv_print(infoColumn, 16, "FWHM(horz): %f\"", 2.5);
-      mv_print(infoColumn, 17, "FWHM(vert): %f\"", 3.5);
-    
+
+      if (fwhmHorzValue > 0) {
+	stringstream fwhmHorzArcSecSs;
+
+	if (haveFocalDistance && havePixelSize) {
+	  fwhmHorzArcSecSs << " = " << FwhmT::pxToArcsec(fwhmHorzValue, focalDistance, pixelSize, inBinning) << "\"";
+	}
+	mv_print(infoColumn, 16, "FWHM(horz): %fpx%s", fwhmHorzValue, fwhmHorzArcSecSs.str().c_str());
+      } else {
+	mv_print(infoColumn, 16, "FWHM(horz): n.a.");
+      }
+      
+      if (fwhmVertValue > 0) {
+	stringstream fwhmVertArcSecSs;
+
+	if (haveFocalDistance && havePixelSize) {
+	  fwhmVertArcSecSs << " = " << FwhmT::pxToArcsec(fwhmVertValue, focalDistance, pixelSize, inBinning) << "\"";
+	}
+	mv_print(infoColumn, 17, "FWHM(vert): %fpx%s", fwhmVertValue, fwhmVertArcSecSs.str().c_str());
+      } else {
+	mv_print(infoColumn, 17, "FWHM(vert): n.a.");
+      }
+
+      if (maxPixelValue > 0) {
+	mv_print(infoColumn, 18, "MAX: %f", maxPixelValue);
+      } else {
+	mv_print(infoColumn, 18, "MAX: n.a.");
+      }
+
+      
       // Keep exposure running...
       if (! inCameraDevice->isExposureInProgress()) {
 	// Get previous image (if any)
@@ -229,11 +268,34 @@ namespace AT {
 	  // Calculate star data
 	  // ------------------------------------------------------------------------------------------------------------ //
 	  // TODO: try catch?
-	  HfdT hfd(subImg); // NOTE: HfdT takes image center as centroid, it does not matter if image is bigger
-	  hfdValue = hfd.getValue();
-	  // TODO: Also calc FWHMs, max pixel value, ...
-	  // TODO: Or can FWHM just do the job?!?!?!!?
+	  try {
+	    // TODO: HFD value INCREASES if coming to focus using the simulator... !!! Maybe a simulator problem?! --> need real test!!!
+	    HfdT hfd(subImg); // NOTE: HfdT takes image center as centroid, it does not matter if image is bigger
+	    hfdValue = hfd.getValue();
+	    currentHfdDisp.display(hfd.genView());
+	  } catch(std::exception & exc) {
+	    LOG(warning) << "HFD calculation failed!"  << endl;
+	  }
 
+	  try {
+	    FwhmT fwhmHorz(extractLine(subImg, DirectionT::HORZ));
+	    fwhmHorzValue = fwhmHorz.getValue();
+	    currentFwhmHorzDisp.display(fwhmHorz.genView());
+	  } catch(std::exception & exc) {
+	    LOG(warning) << "FWHM(horz) calculation failed!"  << endl;
+	  }
+	  
+	  try {
+	    FwhmT fwhmVert(extractLine(subImg, DirectionT::VERT));
+	    fwhmVertValue = fwhmVert.getValue();
+	    currentFwhmVertDisp.display(fwhmVert.genView());
+	  } catch(std::exception & exc) {
+	    LOG(warning) << "FWHM(horz) calculation failed!"  << endl;
+	  }
+	  
+	  maxPixelValue = subImg.max();
+
+	  
 	  // DEBUG START
 	  // CImg<unsigned char> tmpNormalizedImage(normalize(subImg, 65535.0, 5.0));
 	  // CImgDisplay thDsp(tmpNormalizedImage, "SUB-IMG...");
@@ -249,6 +311,7 @@ namespace AT {
 	  
 	  // Finally, scale and display the image
 	  // ------------------------------------------------------------------------------------------------------------ //
+	  // TODO: Move this code below to a genView function of e.g. CentroidT? Does this make sense??
 	  // TODO: Calculate value below instead of hard-coding it...
 	  float maxPossiblePixelValue = 65535.0;
 	  CImg<unsigned char> normalizedImage(normalize(image, maxPossiblePixelValue, 5.0 /*TODO: HACK FIXME! Should not be hardcoded*/));
@@ -614,7 +677,7 @@ namespace AT {
 	LOG(debug) << "Selected frame by click: " << selectedFrame << endl;
 	
 	if (! strcmp(focusMode.c_str(), "manual")) { // Manual focusing
-	  manualConsoleFocusCntl(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning, followStar);
+	  manualConsoleFocusCntl(cmdLineMap, cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning, followStar);
 	} else { // Automatic focusing
 	  FocusFinderLinearInterpolationImplT ffli(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning);
 
@@ -737,7 +800,7 @@ namespace AT {
 	AT_ASSERT(FocusFinderPlugin, inCmdLineMap.count("binning") > 0, "Expecting binning option being set.");
 
 	unsigned int focalDistance = inCmdLineMap["focal_distance"].as<unsigned int>();
-	const DimensionT<int> & pixelSize = inCmdLineMap["pixel_size"].as<DimensionT<int> >();
+	const DimensionT<float> & pixelSize = inCmdLineMap["pixel_size"].as<DimensionT<float> >();
 	const BinningT & binning = inCmdLineMap["binning"].as<BinningT>();
 
 	hfdArcSec = FwhmT::pxToArcsec(hfd.getValue(), focalDistance, pixelSize, binning);
@@ -784,7 +847,7 @@ namespace AT {
     DEFINE_OPTION(optStarRecognition, "star_recognition", po::value<typename StarFrameSelectorT::StarRecognitionTypeT::TypeE>()->default_value(StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY), "Star select [proximity|clustering|none]");
 
     DEFINE_OPTION(optFocalDistance, "focal_distance", po::value<unsigned int>(), "Telescope focal distance in mm."); 
-    DEFINE_OPTION(optPixelSize, "pixel_size", po::value<DimensionT<int> >(), "Pixel size (W x H) um.");
+    DEFINE_OPTION(optPixelSize, "pixel_size", po::value<DimensionT<float> >(), "Pixel size (W x H) um.");
     DEFINE_OPTION(optCentroidMethod, "centroid_method", po::value<typename CentroidT::CentroidTypeT::TypeE>()->default_value(CentroidT::CentroidTypeT::IWC), "Centroid method (iwc|iwc_sub|moment2).");
     DEFINE_OPTION(optExportFolder, "export", po::value<string>(), "Export folder.");
 
@@ -841,6 +904,8 @@ namespace AT {
     focusFindDescr.add(optFilterDeviceName);
     focusFindDescr.add(optFilter);
     focusFindDescr.add(optTimeout);
+    focusFindDescr.add(optFocalDistance);
+    focusFindDescr.add(optPixelSize);
 
     // Additional focus finder parameter
     focusFindDescr.add(optWindowSize);

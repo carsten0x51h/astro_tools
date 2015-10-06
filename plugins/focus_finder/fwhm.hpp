@@ -85,19 +85,19 @@ namespace AT {
   private:
     vector<float> mImgValues, mFitValues;
     GaussMatcherT::CurveParamsT::TypeT mGaussParms;
-    
+    float mScaleFactor;
+
     static const double SIGMA_TO_FWHM;
     static const size_t MAX_PTS;
     
-    static float calcGaussianValue(const GaussMatcherT::CurveParamsT::TypeT & inGaussParms, float x);
     static void fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::CurveParamsT::TypeT * outGaussParms, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
     
   public:
     static const float defaultScaleFactor;
 
-    FwhmT() { }
-    FwhmT(const vector<float> & inValues, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
-    void set(const vector<float> & inValues, double inEpsAbs = 1e-2, double inEpsRel = 1e-2);
+    FwhmT() : mScaleFactor(defaultScaleFactor) { }
+    FwhmT(const vector<float> & inValues, double inEpsAbs = 1e-2, double inEpsRel = 1e-2, float inScaleFactor = defaultScaleFactor);
+    void set(const vector<float> & inValues, double inEpsAbs = 1e-2, double inEpsRel = 1e-2, float inScaleFactor = defaultScaleFactor);
     
     inline bool valid() const { return (mImgValues.size() > 0 && mFitValues.size() > 0); }
 
@@ -115,6 +115,8 @@ namespace AT {
     
     inline const vector<float> & getImgValues() const { return mImgValues; }
     inline const vector<float> & getFitValues() const { return mFitValues; }
+
+    static float calcGaussianValue(const GaussMatcherT::CurveParamsT::TypeT & inGaussParms, float x);
     inline float calcGaussianValue(float x) const { return calcGaussianValue(mGaussParms, x); }
     float getStandardDeviation() const;
 
@@ -122,8 +124,10 @@ namespace AT {
     friend ostream & operator<<(ostream & os, const FwhmT & inFwhm);
 
     static CImg<unsigned char>
-    genView(const vector<float> & inImgValues, const vector<float> & inFitValues, float inScaleFactor = defaultScaleFactor);
-    //CImg<unsigned char> genView() const { return CentroidT::genView(mImg, mCentroidRel, mScaleFactor); }
+    genView(const GaussMatcherT::CurveParamsT::TypeT & inCurveParams, const vector<float> & inImgValues, const vector<float> & inFitValues, float inScaleFactor = defaultScaleFactor);
+    CImg<unsigned char> genView() const {
+      return FwhmT::genView(mGaussParms, mImgValues, mFitValues, mScaleFactor);
+    }
 
   };
   

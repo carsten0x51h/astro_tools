@@ -48,11 +48,28 @@ namespace AT {
 					  centeredSelectionFrame.get<0>() + centeredSelectionFrame.get<2>() /*x1 = x0 + w*/,
 					  centeredSelectionFrame.get<1>() + centeredSelectionFrame.get<3>() /*y1 = y0 + h*/);
 
+    // TODO: Is this ok here???
+    // Noise reduction
+    // AD noise reduction --> In: Loaded image, Out: Noise reduced image
+    // http://cimg.sourceforge.net/reference/structcimg__library_1_1CImg.html
+    CImg<float> & aiImg = subImg.blur_anisotropic(130.0f, /*amplitude*/
+						  0.7f, /*sharpness*/
+						  0.3f, /*anisotropy*/
+						  0.6f, /*alpha*/
+						  1.1f, /*sigma*/
+						  0.8f, /*dl*/
+						  30,   /*da*/
+						  2,    /*gauss_prec*/
+						  0,    /*interpolation_type*/
+						  false /*fast_approx*/
+						  );
+
+    
     // Sub mean image if desired
     if (inSubMean) {
-      double mean = subImg.mean();
-      cimg_forXY(subImg, x, y) {
-	subImg(x, y) = (subImg(x, y) < mean ? 0 : subImg(x, y) - mean);
+      double mean = aiImg.mean();
+      cimg_forXY(aiImg, x, y) {
+	aiImg(x, y) = (aiImg(x, y) < mean ? 0 : aiImg(x, y) - mean);
       }
     }
     
@@ -62,17 +79,17 @@ namespace AT {
     // Sum up all pixel values in whole circle
     float outerRadius = (float) inOuterDiameter / 2.0;
     float sum = 0, sumDist = 0;
-    cimg_forXY(subImg, x, y) {
+    cimg_forXY(aiImg, x, y) {
       if (insideCircle(x, y, outerRadius /*centerX*/, outerRadius /*centerY*/, outerRadius)) {
-	sum += subImg(x, y);
-	sumDist += subImg(x, y) * sqrt(pow((float) x - outerRadius /*centerX*/, 2.0f) + pow((float) y - outerRadius /*centerX*/, 2.0f));
+	sum += aiImg(x, y);
+	sumDist += aiImg(x, y) * sqrt(pow((float) x - outerRadius /*centerX*/, 2.0f) + pow((float) y - outerRadius /*centerX*/, 2.0f));
       }
     }
 
     // Make a copy of the image part which was used for calculation
     if (outCenteredImg) {
       // TODO: Zoom image? 
-      *outCenteredImg = subImg;
+      *outCenteredImg = aiImg;
     }
     
     // NOTE: Multiplying with 2 is required since actually just the HFR is calculated above

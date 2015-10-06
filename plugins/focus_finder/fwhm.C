@@ -24,6 +24,8 @@
 
 #include "fwhm.hpp"
 
+#include <algorithm> // max_element
+
 namespace AT {
   const float FwhmT::defaultScaleFactor = 4.0;
 
@@ -63,15 +65,17 @@ namespace AT {
     return inFwhm.print(os);
   }
 
-  FwhmT::FwhmT(const vector<float> & inValues, double inEpsAbs, double inEpsRel) {
-    this->set(inValues, inEpsAbs, inEpsRel);
+  FwhmT::FwhmT(const vector<float> & inValues, double inEpsAbs, double inEpsRel, float inScaleFactor) {
+    this->set(inValues, inEpsAbs, inEpsRel, inScaleFactor);
   }
-
+  
   void
-  FwhmT::set(const vector<float> & inValues, double inEpsAbs, double inEpsRel) {
-    FwhmT::fitValues(inValues, & mFitValues, & mGaussParms, inEpsAbs, inEpsRel);
+  FwhmT::set(const vector<float> & inValues, double inEpsAbs, double inEpsRel, float inScaleFactor) {
+    mScaleFactor = inScaleFactor;
+    mImgValues = inValues; // Make a copy
+    FwhmT::fitValues(mImgValues, & mFitValues, & mGaussParms, inEpsAbs, inEpsRel);
   }
-
+  
   void
   FwhmT::fitValues(const vector<float> & imgValues, vector<float> * outFitValues, GaussMatcherT::CurveParamsT::TypeT * outGaussParms, double inEpsAbs, double inEpsRel) {
     AT_ASSERT(Fwhm, outGaussParms, "outGaussParms not set!");
@@ -131,36 +135,63 @@ namespace AT {
   }
 
   CImg<unsigned char>
-  FwhmT::genView(const vector<float> & inImgValues, const vector<float> & inFitValues, float inScaleFactor) {
+  FwhmT::genView(const GaussMatcherT::CurveParamsT::TypeT & inCurveParams, const vector<float> & inImgValues, const vector<float> & inFitValues, float inScaleFactor) {
+    LOG(debug) << "FwhmT - rgbImg size inImgValues.size(): " << inImgValues.size() << ", inScaleFactor: " << inScaleFactor << endl;
+
     const size_t width = inScaleFactor * inImgValues.size();
     const size_t height = inScaleFactor * inImgValues.size();
-    CImg<unsigned char> rgbImg(width, height, 1 /*depth*/, 3 /*3 channels - RGB*/);    
+    CImg<unsigned char> rgbImg(width, height, 1 /*depth*/, 3 /*3 channels - RGB*/);
+    rgbImg.fill(0);
+  
+    LOG(debug) << "FwhmT -  rgbImg size w x h: " << width << " x " << height << endl;
+    
+    const unsigned char red[3] = { 255, 0, 0 }, green[3] = { 0, 255, 0 };
+    const size_t cCrossSize = 1;
 
-    const unsigned char red[3] = { 255, 0, 0 };
-    const size_t cCrossSize = 2;
+    // TODO: Get max from inImgValues AND inFitValues!
+    vector<float>::const_iterator maxIt = max_element(inImgValues.begin(), inImgValues.end());
+    float max = (*maxIt);
+    const float yValueToDispScaleFactor = height / (max * inScaleFactor);
 
+    LOG(debug) << "FwhmT - max: " << max << ", height: " << height << ", yValueToDispScaleFactor: " << yValueToDispScaleFactor << endl;
+
+    // TODO: Eliminate duplicated code... coord transformation...
     for (vector<float>::const_iterator it = inImgValues.begin(); it != inImgValues.end(); ++it) {
-      int x = std::distance(inImgValues.begin(), it);
-
-      // TOOD: What is max y value? ist it 1 (noirmalized?) or do we have to find it out?
-      // --> Calc y!
-      float y = *it;
-
-      cerr << "x: " << x << ", y: " << y << endl;
+      int x = floor(inScaleFactor * std::distance(inImgValues.begin(), it) + 0.5);
+      float y = (height - yValueToDispScaleFactor * floor(inScaleFactor * (*it) + 0.5));
 
       // TODO: We may use a generic draw-cross function since this is needed multiple times...
-      rgbImg.draw_line(floor(inScaleFactor * (x - cCrossSize) + 0.5), floor(inScaleFactor * y + 0.5),
-		       floor(inScaleFactor * (x + cCrossSize) + 0.5), floor(inScaleFactor * y + 0.5), red, 1 /*opacity*/);
-      rgbImg.draw_line(floor(inScaleFactor * x + 0.5), floor(inScaleFactor * (y - cCrossSize) + 0.5),
-		       floor(inScaleFactor * x + 0.5), floor(inScaleFactor * (y + cCrossSize) + 0.5), red, 1 /*opacity*/);
+      rgbImg.draw_line(x - cCrossSize, y, x + cCrossSize, y, red, 1 /*opacity*/);
+      rgbImg.draw_line(x, y - cCrossSize, x, y + cCrossSize, red, 1 /*opacity*/);
     }
 
+    
+    // TODO: Eliminate duplicated code... coord transformation...
     for (vector<float>::const_iterator it = inFitValues.begin(); it != inFitValues.end(); ++it) {
       // TODO...
+      int x = floor(inScaleFactor * std::distance(inFitValues.begin(), it) + 0.5);
+      float y = (height - yValueToDispScaleFactor * floor(inScaleFactor * (*it) + 0.5));
+
+      // TODO: We may use a generic draw-cross function since this is needed multiple times...
+      rgbImg.draw_line(x - cCrossSize, y, x + cCrossSize, y, green, 1 /*opacity*/);
+      rgbImg.draw_line(x, y - cCrossSize, x, y + cCrossSize, green, 1 /*opacity*/);
     }
 
+    // TODO: Eliminate duplicated code... coord transformation...
+    // Draw calculated curve values using the curve parameters 
+    size_t i = 0;
+    float x = (float) i * ((float) inFitValues.size() / (float) width);
+    float y = height - yValueToDispScaleFactor * inScaleFactor * FwhmT::calcGaussianValue(inCurveParams, x);
+    
+    for (i = 1; i < width; ++i) {
+      float xNew = (float) i * ((float) inFitValues.size() / (float) width);
+      float yNew = height - yValueToDispScaleFactor * inScaleFactor * FwhmT::calcGaussianValue(inCurveParams, xNew);
+      rgbImg.draw_line(i, y, i+1, yNew, green, 1 /*opacity*/);
+      y = yNew;
+    }
 
-
+    // TODO: Draw blue rectangles which show the quadratic error between Fit and Image...
+    
     return rgbImg; // Make a copy...
   }
 

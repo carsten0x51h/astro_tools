@@ -69,7 +69,105 @@ namespace AT {
       }
     }
   };
-  
+
+
+  // TODO: MOVE
+  struct FindDeviceByNameT : std::unary_function<INDI::BaseDevice *, bool> {
+    string mDeviceName;
+    FindDeviceByNameT(const string & inDeviceName) : mDeviceName(inDeviceName) { }
+    bool operator()(INDI::BaseDevice * inBaseDevice) const {
+      return (! strcmp(inBaseDevice->getDeviceName(), mDeviceName.c_str()));
+    }
+  };
+
+  class IndiGetRawActionT {
+  public:
+    static void performAction(void) {
+      const po::variables_map & cmdLineMap = CommonAstroToolsAppT::getCmdLineOptionsMap();
+      
+      // Check cmdline args - depends
+      AT_ASSERT(IndiPlugin, cmdLineMap.count("indi_server") > 0, "Expecting indi_server option being set.");
+      AT_ASSERT(IndiPlugin, cmdLineMap.count("device_name") > 0, "Expecting device_name option being set.");
+      AT_ASSERT(IndiPlugin, cmdLineMap.count("vec_prop_name") > 0, "Expecting vec_prop_name option being set.");
+      AT_ASSERT(IndiPlugin, cmdLineMap.count("prop_name") > 0, "Expecting prop_name option being set.");
+      
+      const HostnameAndPortT & hostnameAndPort = cmdLineMap["indi_server"].as<HostnameAndPortT>();
+      const string & deviceName = cmdLineMap["device_name"].as<string>();
+      const string & vecPropName = cmdLineMap["vec_prop_name"].as<string>();
+      const string & propName = cmdLineMap["prop_name"].as<string>();
+      
+      LOG(info) << "Indi server: " << dec << hostnameAndPort << endl;
+      LOG(info) << "Device name: " << dec << deviceName << endl;
+      LOG(info) << "Vec prop name: " << dec << vecPropName << ", Prop name: " << dec << propName << endl;
+      
+      IndiClientT indiClient(hostnameAndPort.getHostname(), hostnameAndPort.getPort(), true);
+      
+      if (indiClient.isConnected()) {
+	//IndiDeviceT * device = indiClient.getDevice(deviceName.c_str(), DeviceTypeT::TypeE inDeviceType);
+	
+ 	const vector<INDI::BaseDevice *> & baseDevices = indiClient.getBaseDevices();
+	vector<INDI::BaseDevice *>::const_iterator deviceIt = std::find_if(baseDevices.begin(), baseDevices.end(), FindDeviceByNameT(deviceName.c_str()));
+
+	if (deviceIt != baseDevices.end()) {
+	  INDI::BaseDevice * baseDevice = *deviceIt;
+	  IndiDeviceT indiDevice(& indiClient, baseDevice, DeviceTypeT::CUSTOM);
+ 
+	  if (indiDevice.hasVecProp(vecPropName)) {
+	    if (hasNumber(vecPropName, propName)) { ss << getNumberVal(vecPropName, propName); }
+	    TODO... we may just use getNumber() which returns a Number*... and check if this one is 0... disable try catch by param instead...
+	    // TODO: Not so nice... we can introduce hasTestVal(), hasNumberVal etc. functions into indi_device class instead!....
+	    // stringstream ss;
+	    // bool foundProp = false;
+	    // try {
+	    //   ss << indiDevice.getTextVal(vecPropName, propName);
+	    //   foundProp = true;
+	    // } catch(PropNotFoundExceptionT & exc) {}
+	    
+	    // try {
+	    //   ss << indiDevice.getNumberVal(vecPropName, propName);
+	    //   foundProp = true;
+	    // } catch(PropNotFoundExceptionT & exc) {}
+	    
+	    // try {
+	    //   ss << indiDevice.getSwitchVal(vecPropName, propName);
+	    //   foundProp = true;
+	    // } catch(PropNotFoundExceptionT & exc) {}
+
+	    // try {
+	    //   ss << indiDevice.getLightVal(vecPropName, propName);
+	    //   foundProp = true;
+	    // } catch(PropNotFoundExceptionT & exc) {}
+
+	    // try {
+	    //   ss << indiDevice.getBLOBVal(vecPropName, propName);
+	    //   foundProp = true;
+	    // } catch(PropNotFoundExceptionT & exc) {}
+
+	    // if (foundProp) {
+	    //   cout << "Propery '" << vecPropName << "'->'" << propName << "' has value: " << ss.str() << endl;
+	    // } else {
+	    //   cout << "Property '" << vecPropName << "'->'" << propName << "' not found!" << endl;
+	    // }
+	  } else {
+	    cout << "Vector property '" << vecPropName << "' not found!" << endl;
+	  }
+
+	} else {
+	  cout << "Device '" << deviceName << "' not found!" << endl;
+	}
+	
+	// cout << "Found " << baseDevices.size() << " devices" << (baseDevices.size() > 0 ? ":" : ".") << endl;
+
+	// for (vector<INDI::BaseDevice *>::const_iterator it = baseDevices.begin(); it != baseDevices.end(); ++it) {
+	//   BaseDevice * baseDevice = *it;
+	//   const char * deviceName = baseDevice->getDeviceName();
+	//   cout << distance(baseDevices.begin(), it) + 1 << ". " << deviceName << endl;
+	// }
+      }
+    }
+  };
+
+    
   template <typename DeviceT, typename ActionT>
   class IndiDeviceActionT {
   public:
@@ -462,6 +560,8 @@ namespace AT {
  
     DEFINE_OPTION(optIndiServer, "indi_server", po::value<HostnameAndPortT>()->default_value(HostnameAndPortT(IndiClientT::sDefaultIndiHostname, IndiClientT::sDefaultIndiPort)), "INDI server name and port.");
     DEFINE_OPTION(optDeviceName, "device_name", po::value<string>()->required(), "INDI device name.");
+    DEFINE_OPTION(optVecPropName, "vec_prop_name", po::value<string>()->required(), "INDI vector property name.");
+    DEFINE_OPTION(optPropName, "prop_name", po::value<string>()->required(), "INDI property name.");
     DEFINE_OPTION(optExposureTime, "exposure_time", po::value<float>()->required(), "Camera exposure time in seconds.");
     DEFINE_OPTION(optFrameType, "frame_type", po::value<FrameTypeT::TypeE>()->default_value(FrameTypeT::LIGHT), "Frame type (light|dark|flat|bias).");
     DEFINE_OPTION(optFrameSize, "frame_size", po::value< FrameT<int> >()->default_value(FrameT<int>(0, 0, 0, 0)), "Frame size (X x Y x W x H).");
@@ -480,6 +580,27 @@ namespace AT {
     po::options_description deviceListDescr("device_list command options");
     deviceListDescr.add(optIndiServer);
     REGISTER_CONSOLE_CMD_LINE_COMMAND("device_list", deviceListDescr, (& IndiDeviceListActionT::performAction));
+
+    /**
+     * indi_get_raw command.
+     */
+    po::options_description indiGetRawDescr("indi_get_raw command options");
+    indiGetRawDescr.add(optIndiServer);
+    indiGetRawDescr.add(optDeviceName);
+    indiGetRawDescr.add(optVecPropName);
+    indiGetRawDescr.add(optPropName);
+    REGISTER_CONSOLE_CMD_LINE_COMMAND("indi_get_raw", indiGetRawDescr, (& IndiGetRawActionT::performAction));
+
+    /**
+     * TODO: Implement! Maybe generalize set and get?
+     * indi_set_raw command.
+     */
+    // po::options_description indiSetRawDescr("indi_set_raw command options");
+    // indiSetRawDescr.add(optIndiServer);
+    // indiSetRawDescr.add(optDeviceName);
+    // indiSetRawDescr.add(optVecPropName);
+    // indiSetRawDescr.add(optPropName);
+    // REGISTER_CONSOLE_CMD_LINE_COMMAND("indi_set_raw", indiSetRawDescr, (& IndiSetRawActionT::performAction));
 
     /**
      * take_picture command.
