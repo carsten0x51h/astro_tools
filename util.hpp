@@ -317,13 +317,6 @@ extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection) 
   PointT<float> center(img.width() / 2, img.height() / 2);
   vector<float> values;
 
-  // Subtract median image
-  // TODO: Should this be here???? It does actually do more than just extracting a line....
-  double med = img.median();
-  cimg_forXY(img, x, y) {
-    img(x, y) = (img(x, y) > med ? img(x, y) - med : 0);
-  }
-
   // Extract slices through centroid for profiles
   switch(inDirection) {
   case DirectionT::HORZ: {

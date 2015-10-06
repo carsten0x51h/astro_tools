@@ -277,8 +277,15 @@ namespace AT {
 	    LOG(warning) << "HFD calculation failed!"  << endl;
 	  }
 
+	  // Subtract median image
+	  double med = subImg.median();
+	  CImg<float> imageSubMed(subImg.width(), subImg.height());
+	  cimg_forXY(subImg, x, y) {
+	    imageSubMed(x, y) = (subImg(x, y) > med ? subImg(x, y) - med : 0);
+	  }
+	  
 	  try {
-	    FwhmT fwhmHorz(extractLine(subImg, DirectionT::HORZ));
+	    FwhmT fwhmHorz(extractLine(imageSubMed, DirectionT::HORZ));
 	    fwhmHorzValue = fwhmHorz.getValue();
 	    currentFwhmHorzDisp.display(fwhmHorz.genView());
 	  } catch(std::exception & exc) {
@@ -286,7 +293,7 @@ namespace AT {
 	  }
 	  
 	  try {
-	    FwhmT fwhmVert(extractLine(subImg, DirectionT::VERT));
+	    FwhmT fwhmVert(extractLine(imageSubMed, DirectionT::VERT));
 	    fwhmVertValue = fwhmVert.getValue();
 	    currentFwhmVertDisp.display(fwhmVert.genView());
 	  } catch(std::exception & exc) {
@@ -790,9 +797,16 @@ namespace AT {
       
       HfdT hfd(inImage, centroid);
 
+      // Subtract median image
+      double med = inImage.median();
+      CImg<float> imageSubMed;
+      cimg_forXY(inImage, x, y) {
+	imageSubMed(x, y) = (inImage(x, y) > med ? inImage(x, y) - med : 0);
+      }
+      
       // FIXMEFIXME - TODO: ???
-      FwhmT fwhmHorz(extractLine(inImage, DirectionT::HORZ, centroid, inSquareFrame.get<2>() /*w*/));
-      FwhmT fwhmVert(extractLine(inImage, DirectionT::VERT, centroid, inSquareFrame.get<3>() /*h*/));
+      FwhmT fwhmHorz(extractLine(imageSubMed, DirectionT::HORZ, centroid, inSquareFrame.get<2>() /*w*/));
+      FwhmT fwhmVert(extractLine(imageSubMed, DirectionT::VERT, centroid, inSquareFrame.get<3>() /*h*/));
 
       double hfdArcSec = 0, fwhmHorzArcSec = 0, fwhmVertArcSec = 0;
 

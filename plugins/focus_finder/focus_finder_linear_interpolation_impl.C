@@ -221,10 +221,16 @@ namespace AT {
 						   subImgFrame.get<1>() /*y*/,
 						   subImgFrame.get<0>() /*x*/ + subImgFrame.get<2>() /*w*/,
 						   subImgFrame.get<1>() /*y*/ + subImgFrame.get<3>() /*h*/);
-
+	// Subtract median image
+	double med = subImg.median();
+	CImg<float> imageSubMed(subImg.width(), subImg.height());
+	cimg_forXY(subImg, x, y) {
+	  imageSubMed(x, y) = (subImg(x, y) > med ? subImg(x, y) - med : 0);
+	}
+	
 	// Extract image window
-	outStarData->getFwhmHorz().set(extractLine(subImg, DirectionT::HORZ));
-	outStarData->getFwhmVert().set(extractLine(subImg, DirectionT::VERT));
+	outStarData->getFwhmHorz().set(extractLine(imageSubMed, DirectionT::HORZ));
+	outStarData->getFwhmVert().set(extractLine(imageSubMed, DirectionT::VERT));
 	outStarData->getHfd().set(subImg, mOuterHfdRadiusPx);
 	break; // success
 
