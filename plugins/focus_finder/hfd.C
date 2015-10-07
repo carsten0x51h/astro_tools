@@ -120,13 +120,9 @@ namespace AT {
     const unsigned char red[3] = { 255, 0, 0 }, white[3] = { 255, 255, 255 }, black[3] = { 0, 0, 0 }, yellow[3] = { 255, 255, 0 };
     const size_t cCrossSize = 3;
     PointT<float> center((float) inImage.width() / 2.0, (float)inImage.height() / 2.0);
+    drawCross(& rgbImg, floor(inScaleFactor * center.get<0>() + 0.5), floor(inScaleFactor * center.get<1>() + 0.5), cCrossSize, red, 1 /*opacity*/);
 
-    rgbImg.draw_line(floor(inScaleFactor * (center.get<0>() - cCrossSize) + 0.5), floor(inScaleFactor * center.get<1>() + 0.5),
-		     floor(inScaleFactor * (center.get<0>() + cCrossSize) + 0.5), floor(inScaleFactor * center.get<1>() + 0.5), red, 1 /*opacity*/);
     
-    rgbImg.draw_line(floor(inScaleFactor * center.get<0>() + 0.5), floor(inScaleFactor * (center.get<1>() - cCrossSize) + 0.5),
-		     floor(inScaleFactor * center.get<0>() + 0.5), floor(inScaleFactor * (center.get<1>() + cCrossSize) + 0.5), red, 1 /*opacity*/);
-
     // Draw HFD
     rgbImg.draw_circle(floor(inScaleFactor * center.get<0>() + 0.5), floor(inScaleFactor * center.get<1>() + 0.5),
 		       inScaleFactor * inOuterDiameter / 2, yellow, 1 /*pattern*/, 1 /*opacity*/);

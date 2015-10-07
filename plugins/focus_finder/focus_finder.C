@@ -285,7 +285,7 @@ namespace AT {
 	  }
 	  
 	  try {
-	    FwhmT fwhmHorz(extractLine(imageSubMed, DirectionT::HORZ));
+	    FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(imageSubMed));
 	    fwhmHorzValue = fwhmHorz.getValue();
 	    currentFwhmHorzDisp.display(fwhmHorz.genView());
 	  } catch(std::exception & exc) {
@@ -293,7 +293,7 @@ namespace AT {
 	  }
 	  
 	  try {
-	    FwhmT fwhmVert(extractLine(imageSubMed, DirectionT::VERT));
+	    FwhmT fwhmVert(extractLine<DirectionT::VERT>(imageSubMed));
 	    fwhmVertValue = fwhmVert.getValue();
 	    currentFwhmVertDisp.display(fwhmVert.genView());
 	  } catch(std::exception & exc) {
@@ -805,8 +805,8 @@ namespace AT {
       }
       
       // FIXMEFIXME - TODO: ???
-      FwhmT fwhmHorz(extractLine(imageSubMed, DirectionT::HORZ, centroid, inSquareFrame.get<2>() /*w*/));
-      FwhmT fwhmVert(extractLine(imageSubMed, DirectionT::VERT, centroid, inSquareFrame.get<3>() /*h*/));
+      FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(imageSubMed, centroid, inSquareFrame.get<2>() /*w*/));
+      FwhmT fwhmVert(extractLine<DirectionT::VERT>(imageSubMed, centroid, inSquareFrame.get<3>() /*h*/));
 
       double hfdArcSec = 0, fwhmHorzArcSec = 0, fwhmVertArcSec = 0;
 

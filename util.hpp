@@ -310,15 +310,14 @@ struct CoordTypeT {
 
 DEF_Exception(ExtractLine);
 
-// TODO: DirectionT::TypeE could just be supplied as template parameter!
-static vector<float>
-extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection) {
+template<DirectionT::TypeE D> static vector<float>
+extractLine(const CImg<float> & inImage) {
   CImg<float> img(inImage); // Make a copy
   PointT<float> center(img.width() / 2, img.height() / 2);
   vector<float> values;
 
   // Extract slices through centroid for profiles
-  switch(inDirection) {
+  switch(D) {
   case DirectionT::HORZ: {
     values.resize(img.width());
     LOG(trace) << "DirectionT::HORZ sliced values - width: " << img.width() << ": " << endl;
@@ -344,25 +343,25 @@ extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection) 
   return values;
 }
 
-static vector<float>
-extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, const FrameT<float> & inFrame) {
+template<DirectionT::TypeE D> static vector<float>
+extractLine(const CImg<float> & inImage, const FrameT<float> & inFrame) {
   // TODO: Check if in bounds?!
   // TODO: is +1 correct?!
   CImg<float> resImage = inImage.get_crop(inFrame.get<0>() + 1 /* x */, inFrame.get<1>() + 1 /* y */,
 					  inFrame.get<1>() /* x */ + inFrame.get<2>() /* w */,
 					  inFrame.get<1>() /* y */ + inFrame.get<3>() /* h */);
 
-  return extractLine(resImage, inDirection);
+  return extractLine<D>(resImage);
 }
 
 // TODO: Do not pass back vector as copy!
-static vector<float>
-extractLine(const CImg<float> & inImage, const DirectionT::TypeE & inDirection, PointT<float> inCenter, size_t inWindowSizePx) {
+template<DirectionT::TypeE D> static vector<float>
+extractLine(const CImg<float> & inImage, PointT<float> inCenter, size_t inWindowSizePx) {
   AT_ASSERT(ExtractLine, inWindowSizePx > 0, "Specify inWindowSizePx > 0.");
     
   // TODO: Check if in bounds?!
   FrameT<float> imgWindow = centerPosToFrame(inCenter, inWindowSizePx);
-  return extractLine(inImage, inDirection, imgWindow);
+  return extractLine<D>(inImage, imgWindow);
 }
 
 
@@ -427,6 +426,15 @@ static void
 getMinPixel(const CImg<float> & inImg, const FrameT<int> * inFrame = 0, CoordTypeT::TypeE inCoordType = CoordTypeT::ABSOLUTE,
 	    float * outMin = 0, PointT<unsigned int> * outMinPixelPos = 0) {
   getMinMaxPixel(inImg, inFrame, inCoordType, outMin, outMinPixelPos, 0 /* outMax */, 0 /* outMaxPixelPos */);
+}
+
+/**
+ * Little draw helper function to draw a cross...
+ */
+static void
+drawCross(CImg<unsigned char> * outRgbImg, size_t inX, size_t inY, size_t inCrossSize, const unsigned char * inColor, size_t inOpacity) {
+  outRgbImg->draw_line(inX - inCrossSize, inY, inX + inCrossSize, inY, inColor, inOpacity);
+  outRgbImg->draw_line(inX, inY - inCrossSize, inX, inY + inCrossSize, inColor, inOpacity);
 }
 
 

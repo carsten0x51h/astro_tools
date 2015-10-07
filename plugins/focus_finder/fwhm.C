@@ -1,5 +1,3 @@
-//TODO: Test all constructors / set methods with existing test data!
-
 /*****************************************************************************
  *
  *  AstroTools
@@ -23,6 +21,7 @@
  ****************************************************************************/
 
 #include "fwhm.hpp"
+#include "util.hpp"
 
 #include <algorithm> // max_element
 
@@ -159,22 +158,15 @@ namespace AT {
     for (vector<float>::const_iterator it = inImgValues.begin(); it != inImgValues.end(); ++it) {
       int x = floor(inScaleFactor * std::distance(inImgValues.begin(), it) + 0.5);
       float y = (height - yValueToDispScaleFactor * floor(inScaleFactor * (*it) + 0.5));
-
-      // TODO: We may use a generic draw-cross function since this is needed multiple times...
-      rgbImg.draw_line(x - cCrossSize, y, x + cCrossSize, y, red, 1 /*opacity*/);
-      rgbImg.draw_line(x, y - cCrossSize, x, y + cCrossSize, red, 1 /*opacity*/);
+      drawCross(& rgbImg, x, y, cCrossSize, red, 1 /*opacity*/);
     }
 
     
     // TODO: Eliminate duplicated code... coord transformation...
     for (vector<float>::const_iterator it = inFitValues.begin(); it != inFitValues.end(); ++it) {
-      // TODO...
       int x = floor(inScaleFactor * std::distance(inFitValues.begin(), it) + 0.5);
       float y = (height - yValueToDispScaleFactor * floor(inScaleFactor * (*it) + 0.5));
-
-      // TODO: We may use a generic draw-cross function since this is needed multiple times...
-      rgbImg.draw_line(x - cCrossSize, y, x + cCrossSize, y, green, 1 /*opacity*/);
-      rgbImg.draw_line(x, y - cCrossSize, x, y + cCrossSize, green, 1 /*opacity*/);
+      drawCross(& rgbImg, x, y, cCrossSize, green, 1 /*opacity*/);
     }
 
     // TODO: Eliminate duplicated code... coord transformation...

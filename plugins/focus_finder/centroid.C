@@ -140,18 +140,12 @@ namespace AT {
 
     // Draw center cross
     const unsigned char red[3] = { 255, 0, 0 };
-    const size_t cCrossSize = 3;
 
     // Scale image
     rgbImg.resize(inScaleFactor * rgbImg.width(), inScaleFactor * rgbImg.height(),
 		  -100 /*size_z*/, -100 /*size_c*/, 1 /*interpolation_type*/);
-
-    // TODO: We may use a generic draw-cross function since this is needed multiple times...
-    rgbImg.draw_line(floor(inScaleFactor * (inCenter.get<0>() - cCrossSize) + 0.5), floor(inScaleFactor * inCenter.get<1>() + 0.5),
-		     floor(inScaleFactor * (inCenter.get<0>() + cCrossSize) + 0.5), floor(inScaleFactor * inCenter.get<1>() + 0.5), red, 1 /*opacity*/);
-    rgbImg.draw_line(floor(inScaleFactor * inCenter.get<0>() + 0.5), floor(inScaleFactor * (inCenter.get<1>() - cCrossSize) + 0.5),
-		     floor(inScaleFactor * inCenter.get<0>() + 0.5), floor(inScaleFactor * (inCenter.get<1>() + cCrossSize) + 0.5), red, 1 /*opacity*/);
-
+    drawCross(& rgbImg, floor(inScaleFactor * inCenter.get<0>() + 0.5), floor(inScaleFactor * inCenter.get<1>() + 0.5), 3 /*cross-size*/, red, 1 /*opacity*/);
+    
     return rgbImg; // Make a copy...
   }
 
