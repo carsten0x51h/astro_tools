@@ -518,23 +518,32 @@ public:
     }
   }
 
-
   /**
    * Cooler
    */
-  bool isCoolerEnabled() const { return this->getSwitchVal<CameraTraitsT>(VecPropsT::COOLER_CONNECTION, PropsT::CONNECT_COOLER); }
-  void setCoolerEnabled(bool inEnableCooler, int inTimeout = sDefaultTimeoutMs) {
+  inline bool hasCooler() const { return this->hasVecProp<CameraTraitsT>(VecPropsT::COOLER_CONNECTION); }
+  inline bool isCoolerEnabled() const { return this->getSwitchVal<CameraTraitsT>(VecPropsT::COOLER_CONNECTION, PropsT::CONNECT_COOLER); }
+  inline void setCoolerEnabled(bool inEnableCooler, int inTimeout = sDefaultTimeoutMs) {
     this->sendSwitchVal<CameraTraitsT>(VecPropsT::COOLER_CONNECTION, PropsT::CONNECT_COOLER, inEnableCooler, inTimeout);
   }
 
-  double getTemperature() const { return this->getNumberVal<CameraTraitsT>(VecPropsT::CCD_TEMPERATURE, PropsT::CCD_TEMPERATURE_VALUE); }
-  void setTemperature(double inTemperature, int inTimeout = sDefaultTimeoutMs) {
+  inline double getTemperature() const { return this->getNumberVal<CameraTraitsT>(VecPropsT::CCD_TEMPERATURE, PropsT::CCD_TEMPERATURE_VALUE); }
+  inline void setTemperature(double inTemperature, int inTimeout = sDefaultTimeoutMs) {
     sendNumberVal<CameraTraitsT>(VecPropsT::CCD_TEMPERATURE, PropsT::CCD_TEMPERATURE_VALUE, inTemperature, inTimeout);
   }
 
-  bool isTemperatureReached() const {
+  inline bool isTemperatureReached() const {
     INumberVectorProperty * nVec = this->getNumberVec<CameraTraitsT>(VecPropsT::CCD_TEMPERATURE);
     return (nVec->s != IPS_BUSY && nVec->s != IPS_ALERT);
+  }
+
+  inline double getMaxTemperature() const {
+    const INumber & nTemp = this->getNumber<CameraTraitsT>(VecPropsT::CCD_TEMPERATURE, PropsT::CCD_TEMPERATURE_VALUE);
+    return nTemp.max;
+  }
+  inline double getMinTemperature() const {
+    const INumber & nTemp = this->getNumber<CameraTraitsT>(VecPropsT::CCD_TEMPERATURE, PropsT::CCD_TEMPERATURE_VALUE);
+    return nTemp.min;
   }
 
 

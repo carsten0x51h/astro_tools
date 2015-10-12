@@ -57,6 +57,11 @@ namespace AT {
     virtual string getValueAsStr() const = 0;
   };
 
+  class SeparatorT : public MenuEntryT {
+    virtual const char * getName() const { return ""; }
+    virtual string getValueAsStr() const { return ""; }
+    virtual void execute(int inKey) { }
+  };
 
   class SetFocusStepSizeT : public MenuEntryT {
   private:
@@ -65,7 +70,7 @@ namespace AT {
     
   public:
     SetFocusStepSizeT() : mFocusStepSize(10) {}
-    virtual const char * getName() const { return "Step size"; }
+    virtual const char * getName() const { return "Step size :"; }
     virtual float getStepSize() const { return mFocusStepSize; }
     virtual string getValueAsStr() const { stringstream ss; ss << mFocusStepSize; return ss.str(); }
     virtual void execute(int inKey) {
@@ -83,7 +88,7 @@ namespace AT {
       }
     }
   };
-
+  
   class MoveFocusT : public MenuEntryT {
   private:
     IndiFocuserT * mFocuserDevice;
@@ -94,7 +99,7 @@ namespace AT {
     MoveFocusT(IndiFocuserT * inFocuserDevice, SetFocusStepSizeT * inFocusStepSize) : mFocuserDevice(inFocuserDevice), mFocusStepSize(inFocusStepSize) {
       mFocusPos = mFocuserDevice->getAbsPos();
     }
-    virtual const char * getName() const { return "Focus pos (dest)"; }
+    virtual const char * getName() const { return "Focus pos (dest) :"; }
     virtual float getFocusPos() const { return mFocusPos; }
     virtual string getValueAsStr() const { stringstream ss; ss << mFocusPos; return ss.str(); }
     virtual void execute(int inKey) {
@@ -152,7 +157,7 @@ namespace AT {
 										  mExposureMode(ExposureModeT::SINGLE),
 										  mExposureDone(false) { }
     
-    virtual const char * getName() const { return "Exposure time [s]"; }
+    virtual const char * getName() const { return "Exposure time [s] :"; }
     virtual string getValueAsStr() const {
       stringstream ss;
       ss << mExposureTimeSec << " [" << ExposureModeT::asStr(mExposureMode) << "]";
@@ -227,7 +232,7 @@ namespace AT {
     
   public:
     ControlBinningT(IndiCameraT * inCameraDevice, BinningT inBinning) : mCameraDevice(inCameraDevice), mBinning(inBinning) { }
-    virtual const char * getName() const { return "Exposure time [s]"; }
+    virtual const char * getName() const { return "Binning :"; }
     virtual BinningT getBinning() const { return mBinning; }
     virtual string getValueAsStr() const { stringstream ss; ss << mBinning.get<0>() << " x " << mBinning.get<1>(); return ss.str(); }
     virtual void execute(int inKey) {
@@ -253,6 +258,37 @@ namespace AT {
     }
   };
 
+  class ControlCameraTemperatureT : public MenuEntryT {
+  private:
+    IndiCameraT * mCameraDevice;
+    int mTemperature;
+    
+  public:
+    ControlCameraTemperatureT(IndiCameraT * inCameraDevice, int inTemperature = -15) : mCameraDevice(inCameraDevice),
+										       mTemperature(inTemperature) { }
+    virtual const char * getName() const { return "Temperature [\0xf8 C] :"; }
+    virtual BinningT getTemperature() const { return mTemperature; }
+    virtual string getValueAsStr() const { stringstream ss; ss << mTemperature << "\0xf8 C ["
+							       << (mCameraDevice->isCoolerEnabled() ? "ON" : "OFF") << "]"; return ss.str(); }
+    virtual void execute(int inKey) {
+      switch(inKey) {
+      case KEY_LEFT: {
+	if (mTemperature >= mCameraDevice->getMinTemperature()) {
+	  mTemperature--;
+	}
+	mStatusText = "";
+	break;
+      }
+      case KEY_RIGHT: {
+	if (mTemperature <= mCameraDevice->getMaxTemperature()) {
+	  mTemperature++;
+	}
+	mStatusText = "";
+	break;
+      }
+      }
+    }
+  };
 
 
   
@@ -322,8 +358,14 @@ namespace AT {
     ControlBinningT * controlBinning = new ControlBinningT(inCameraDevice, inBinning);
     menuActions.push_back(focusStepSize);
     menuActions.push_back(new MoveFocusT(inFocuserDevice, focusStepSize));
+    menuActions.push_back(new SeparatorT());
+    menuActions.push_back(new SeparatorT());
+
     menuActions.push_back(controlExposure);
     menuActions.push_back(controlBinning);
+    if (inCameraDevice->hasCooler()) {
+      menuActions.push_back(new ControlCameraTemperatureT(inCameraDevice, inCameraDevice->getTemperature()));
+    }
     
     int position = 0;
     int numEntries = menuActions.size();
@@ -548,18 +590,31 @@ namespace AT {
       
       switch(key) {
       case KEY_UP:
-	position = (position > 0 ? position - 1 : 0);
+	while (position > 0) {
+	  position--;
+	  bool isSeparator =  ! strcmp(menuActions[position]->getName(), "");
+	  if (! isSeparator) { break; }
+	}
 	break;
 	
       case KEY_DOWN:
-	position = (position < (numEntries - 1) ? position + 1 : (numEntries - 1));
+	while (position < numEntries - 1) {
+	  position++;
+	  bool isSeparator =  ! strcmp(menuActions[position]->getName(), "");
+	  if (! isSeparator) { break; }
+	}
 	break;
 	
       case 9: /* TAB */
-	position++;
-	position = position % numEntries;
+	bool isSeparator;
+	do {
+	  position++;
+	  position = position % numEntries;
+	  
+	  isSeparator =  ! strcmp(menuActions[position]->getName(), "");
+	} while (isSeparator);
 	break;
-	
+
       default: {
 	menuActions[position]->execute(key);
 	break;
@@ -576,7 +631,7 @@ namespace AT {
 	int pos = std::distance(menuActions.begin(), it);
 
 	if (pos == position) { attron(A_STANDOUT); }
-	mv_print(cLeftMenuBorder, cTopMenuBorder + pos, "%s :", menuEntry->getName());
+	mv_print(cLeftMenuBorder, cTopMenuBorder + pos, "%s", menuEntry->getName());
 	if (pos == position) { attroff(A_STANDOUT); }
 
 	mv_print(cLeftMenuBorder + cLeftMenuWidth, cTopMenuBorder + pos, "%s", menuEntry->getValueAsStr().c_str());
@@ -587,7 +642,10 @@ namespace AT {
       string focuserStatus = (inFocuserDevice->isMovementInProgess() ? "busy" : "ready"); 
       mv_print(infoColumn, 1, "Focus status: %s", focuserStatus.c_str());
       mv_print(infoColumn, 2, "Focus pos (is): %d", inFocuserDevice->getAbsPos());
-
+      if (inFocuserDevice->supportsTemperature()) {
+	mv_print(infoColumn, 3, "Focus temp: %d\0xf8 C", inFocuserDevice->getTemperature());
+      }
+      
       stringstream ssCameraStatus;
       if (inCameraDevice->isExposureInProgress()) {
 	ssCameraStatus << "exposing..." << inCameraDevice->getExposureTime() << "s";
@@ -595,10 +653,12 @@ namespace AT {
 	ssCameraStatus << "ready";
       }
 
-      mv_print(infoColumn, 9, "Camera status: %s", ssCameraStatus.str().c_str());
-      mv_print(infoColumn, 10, "Cooler status: ");
-      mv_print(infoColumn, 11, "Temperature: ");
+      mv_print(infoColumn, 5, "Camera status: %s", ssCameraStatus.str().c_str());
 
+      if (inCameraDevice->hasCooler()) {
+	mv_print(infoColumn, 6, "Cooler status: ");
+	mv_print(infoColumn, 7, "Temperature: ");
+      }
       
       if (hfdValue > 0) {
 	stringstream hfdArcSecSs;

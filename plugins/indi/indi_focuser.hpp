@@ -254,7 +254,6 @@ public:
    */
   inline bool supportsTemperature() const { return this->hasVecProp<FocuserTraitsT>(VecPropsT::FOCUS_TEMPERATURE); }
   inline double getTemperature() const { return this->getNumberVal<FocuserTraitsT>(VecPropsT::FOCUS_TEMPERATURE, PropsT::TEMPERATURE); }
-
   
   /**
    * Focus relative position
