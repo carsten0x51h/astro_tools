@@ -36,7 +36,10 @@ namespace AT {
     
     // Check if selection hits any image boundary...
     if (! insideBounds(DimensionT<float>(inImg.width(), inImg.height()), inSelectionFrame)) {
-      throw CentroidExceptionT("Frame hits image bounds.");
+      stringstream ss;
+      ss << "Frame hits image bounds. Image dimension (w x h)=(" << inImg.width() << " x "
+	 << inImg.height() << "), selection-frame: " << inSelectionFrame << endl;
+      throw CentroidExceptionT(ss.str().c_str());
     }
       
     // Extract sub-image, check corner cases...

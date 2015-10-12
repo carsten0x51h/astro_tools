@@ -96,7 +96,7 @@ py:
 
 # shortcut - remove later...
 sim_indiserver:
-	indiserver -m 500 -v /usr/bin/indi_simulator_ccd /usr/bin/indi_simulator_focus /usr/bin/indi_simulator_telescope /usr/bin/indi_simulator_wheel
+	indiserver -m 500 -vv /usr/bin/indi_simulator_ccd /usr/bin/indi_simulator_focus /usr/bin/indi_simulator_telescope /usr/bin/indi_simulator_wheel
 
 sim_indiserver_dbg:
 	indiserver -m 500 -vvv /usr/bin/indi_simulator_ccd /usr/bin/indi_simulator_focus /usr/bin/indi_simulator_telescope /usr/bin/indi_simulator_wheel

@@ -401,7 +401,12 @@ public:
     return boost::make_tuple(this->getNumberVal<CameraTraitsT>(VecPropsT::CCD_BINNING, PropsT::HOR_BIN), 
 			     this->getNumberVal<CameraTraitsT>(VecPropsT::CCD_BINNING, PropsT::VER_BIN));
   }
-
+  inline BinningT getMaxBinning() const {
+    const INumber & nHor = this->getNumber<CameraTraitsT>(VecPropsT::CCD_BINNING, PropsT::HOR_BIN);
+    const INumber & nVer = this->getNumber<CameraTraitsT>(VecPropsT::CCD_BINNING, PropsT::VER_BIN);
+    return BinningT(nHor.max, nVer.max);
+  }
+  
   inline void setBinning(unsigned int inHorzBinning, unsigned int inVertBinning, int inTimeout = sDefaultTimeoutMs) {
     INumberVectorProperty * nVec = this->getNumberVec<CameraTraitsT>(VecPropsT::CCD_BINNING);
     this->updateNumberVal<CameraTraitsT>(nVec, PropsT::HOR_BIN, inHorzBinning);
@@ -498,13 +503,18 @@ public:
   }
   void abortExposure(int inTimeoutMs = sDefaultTimeoutMs) {
     ISwitchVectorProperty * vec = this->getSwitchVec<CameraTraitsT>(VecPropsT::CCD_ABORT_EXPOSURE);
+    
     if (this->isExposureInProgress()) {
+      LOG(debug) << "abortExposure - sending ABORT request..." << endl;
       this->sendSwitchVal<CameraTraitsT>(VecPropsT::CCD_ABORT_EXPOSURE, PropsT::ABORT, true, inTimeoutMs);
-
+      LOG(debug) << "abortExposure - ABORT request sent..." << endl;
+      
       // Since state of ABORT seems to leave busy state before exposure has been actually stopped, we wait here until it finally happens.
       ostringstream oss;
       oss << "abortExposure - Hit timeout (" << inTimeoutMs << "ms) setting while setting value.";
       WAIT_MAX_FOR(! this->isExposureInProgress(), inTimeoutMs, oss.str());
+
+      LOG(debug) << "abortExposure - ABORTED." << endl;
     }
   }
 

@@ -21,6 +21,8 @@
  ****************************************************************************/
 
 /**
+ * TODO: FwhMT class extension, Noise reduction, hot pixel filter(?), 
+ *
  * Use of non-linear-curve fitting to calculaze parameters of the gaussian curve.
  * We use the gsl (GNU scientific library) to do the curve fitting with the
  * Marquart-Levenberg algorithm.

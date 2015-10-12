@@ -111,47 +111,22 @@ namespace AT {
 	if (deviceIt != baseDevices.end()) {
 	  INDI::BaseDevice * baseDevice = *deviceIt;
 	  IndiDeviceT indiDevice(& indiClient, baseDevice, DeviceTypeT::CUSTOM);
- 
+	  stringstream ss;
+	  
 	  if (indiDevice.hasVecProp(vecPropName)) {
-	    if (hasNumber(vecPropName, propName)) { ss << getNumberVal(vecPropName, propName); }
-	    TODO... we may just use getNumber() which returns a Number*... and check if this one is 0... disable try catch by param instead...
-	    // TODO: Not so nice... we can introduce hasTestVal(), hasNumberVal etc. functions into indi_device class instead!....
-	    // stringstream ss;
-	    // bool foundProp = false;
-	    // try {
-	    //   ss << indiDevice.getTextVal(vecPropName, propName);
-	    //   foundProp = true;
-	    // } catch(PropNotFoundExceptionT & exc) {}
-	    
-	    // try {
-	    //   ss << indiDevice.getNumberVal(vecPropName, propName);
-	    //   foundProp = true;
-	    // } catch(PropNotFoundExceptionT & exc) {}
-	    
-	    // try {
-	    //   ss << indiDevice.getSwitchVal(vecPropName, propName);
-	    //   foundProp = true;
-	    // } catch(PropNotFoundExceptionT & exc) {}
-
-	    // try {
-	    //   ss << indiDevice.getLightVal(vecPropName, propName);
-	    //   foundProp = true;
-	    // } catch(PropNotFoundExceptionT & exc) {}
-
-	    // try {
-	    //   ss << indiDevice.getBLOBVal(vecPropName, propName);
-	    //   foundProp = true;
-	    // } catch(PropNotFoundExceptionT & exc) {}
-
-	    // if (foundProp) {
-	    //   cout << "Propery '" << vecPropName << "'->'" << propName << "' has value: " << ss.str() << endl;
-	    // } else {
-	    //   cout << "Property '" << vecPropName << "'->'" << propName << "' not found!" << endl;
-	    // }
+	    if (indiDevice.hasNumber(vecPropName, propName)) { ss << indiDevice.getNumberVal(vecPropName, propName); }
+	    else if (indiDevice.hasSwitch(vecPropName, propName)) { ss << indiDevice.getSwitchVal(vecPropName, propName); }
+	    else if (indiDevice.hasLight(vecPropName, propName)) { ss << indiDevice.getLightVal(vecPropName, propName); }
+	    else if (indiDevice.hasText(vecPropName, propName)) { ss << indiDevice.getTextVal(vecPropName, propName); }
+	    else if (indiDevice.hasBLOB(vecPropName, propName)) { ss << indiDevice.getBLOBVal(vecPropName, propName); }
+	    else {
+	      stringstream ss;
+	      ss << "Unknown property '" << vecPropName << "' -> '" << propName << "'." << endl;
+	      AT_ASSERT(IndiPlugin, false, ss.str().c_str());
+	    }
 	  } else {
 	    cout << "Vector property '" << vecPropName << "' not found!" << endl;
 	  }
-
 	} else {
 	  cout << "Device '" << deviceName << "' not found!" << endl;
 	}

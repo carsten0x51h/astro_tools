@@ -1,5 +1,3 @@
-//TODO: FwhMT class extension, Noise reduction, hot pixel filter(?), 
-
 /*****************************************************************************
  *
  *  AstroTools
@@ -47,6 +45,218 @@
 
 namespace AT {
 
+  class MenuEntryT {
+  protected:
+    string mStatusText;
+    
+  public:
+    MenuEntryT() : mStatusText("") {}
+    inline const string & getStatusText() { return mStatusText; };
+    virtual void execute(int inKey) = 0;
+    virtual const char* getName() const = 0;
+    virtual string getValueAsStr() const = 0;
+  };
+
+
+  class SetFocusStepSizeT : public MenuEntryT {
+  private:
+    int mFocusStepSize;
+    const int cStepFactor = 10;
+    
+  public:
+    SetFocusStepSizeT() : mFocusStepSize(10) {}
+    virtual const char * getName() const { return "Step size"; }
+    virtual float getStepSize() const { return mFocusStepSize; }
+    virtual string getValueAsStr() const { stringstream ss; ss << mFocusStepSize; return ss.str(); }
+    virtual void execute(int inKey) {
+      switch(inKey) {
+      case KEY_LEFT: {
+	if (mFocusStepSize > 1) { mFocusStepSize =  mFocusStepSize / cStepFactor; }
+	mStatusText = "";
+	break;
+      }
+      case KEY_RIGHT: {
+	if (mFocusStepSize < 10000) { mFocusStepSize =  mFocusStepSize * cStepFactor; }
+	mStatusText = "";
+	break;
+      }
+      }
+    }
+  };
+
+  class MoveFocusT : public MenuEntryT {
+  private:
+    IndiFocuserT * mFocuserDevice;
+    SetFocusStepSizeT * mFocusStepSize;
+    int mFocusPos;
+    
+   public:
+    MoveFocusT(IndiFocuserT * inFocuserDevice, SetFocusStepSizeT * inFocusStepSize) : mFocuserDevice(inFocuserDevice), mFocusStepSize(inFocusStepSize) {
+      mFocusPos = mFocuserDevice->getAbsPos();
+    }
+    virtual const char * getName() const { return "Focus pos (dest)"; }
+    virtual float getFocusPos() const { return mFocusPos; }
+    virtual string getValueAsStr() const { stringstream ss; ss << mFocusPos; return ss.str(); }
+    virtual void execute(int inKey) {
+      switch(inKey) {
+      case KEY_LEFT: {
+	mFocusPos -= mFocusStepSize->getStepSize();
+	mFocuserDevice->setAbsPos(mFocusPos, 0 /* non-blocking */);
+	mStatusText = "";
+	break;
+      }
+      case KEY_RIGHT: {
+	mFocusPos += mFocusStepSize->getStepSize();
+	mFocuserDevice->setAbsPos(mFocusPos, 0 /* non-blocking */);
+	mStatusText = "";
+	break;
+      }
+      case 27: {
+	//mv_print(statusPosX, statusPosY, "Stopping focus motion.");
+	mStatusText = "Stopping focus motion.";
+	mFocuserDevice->abortMotion(0 /*non blocking*/);
+      }
+      }
+    }
+  };
+
+  class ControlExposureT : public MenuEntryT {
+  public:
+    struct ExposureModeT {
+      enum TypeE {
+	SINGLE,
+	LOOP,
+	_Count
+      };
+
+      static const char * asStr(const TypeE & inType) {
+	switch (inType) {
+	case SINGLE: return "SINGLE";
+	case LOOP: return "LOOP";
+	default: return "<?>";
+	}
+      }
+
+      MAC_AS_TYPE(Type, E, _Count);
+    };
+
+  private:
+    IndiCameraT * mCameraDevice;
+    float mExposureTimeSec;
+    ExposureModeT::TypeE mExposureMode;
+    bool mExposureDone;
+				      
+  public:
+    ControlExposureT(IndiCameraT * inCameraDevice, float inExposureTimeSec = 1) : mCameraDevice(inCameraDevice),
+										  mExposureTimeSec(inExposureTimeSec),
+										  mExposureMode(ExposureModeT::SINGLE),
+										  mExposureDone(false) { }
+    
+    virtual const char * getName() const { return "Exposure time [s]"; }
+    virtual string getValueAsStr() const {
+      stringstream ss;
+      ss << mExposureTimeSec << " [" << ExposureModeT::asStr(mExposureMode) << "]";
+      return ss.str();
+    }
+    virtual void execute(int inKey) {
+      switch(inKey) {
+      case KEY_LEFT:
+	mExposureMode = ExposureModeT::SINGLE;
+	
+	if (mExposureTimeSec <= 1 && mExposureTimeSec > 0.001) {
+	  mExposureTimeSec /= 2;
+	} else if (mExposureTimeSec > 1) {
+	  mExposureTimeSec--;
+	}
+	mStatusText = "";
+	break;
+      
+      case KEY_RIGHT:
+	mExposureMode = ExposureModeT::SINGLE;
+	
+	if (mExposureTimeSec <= 1) {
+	  mExposureTimeSec *= 2;
+	} else if (mExposureTimeSec < 10000) {
+	  mExposureTimeSec++;
+	}
+	mStatusText = "";
+	break;
+      
+      // case KEY_ENTER:
+      // 	//NOTE: Enter does not work for some reason...
+      // 	//this->startExposure();
+      // 	break;
+      
+      case 27: /*ESC*/
+      case 'a':
+	LOG(debug) << "Aborting exposure... Is exposure in progress? " << (mCameraDevice->isExposureInProgress() ? "yes" : "no") << endl;
+	mExposureMode = ExposureModeT::SINGLE;
+	
+	if (mCameraDevice->isExposureInProgress()) {
+	  LOG(debug) << "Ok, initiating abort procedure..." << endl;
+	  mCameraDevice->abortExposure();
+	  mExposureDone = false;
+	  mStatusText = "Exposure aborted.";
+	}
+	break;
+
+      case 'l':
+	LOG(debug) << "Switching to LOOP mode..." << endl;
+	mExposureDone = false;
+	mExposureMode = ExposureModeT::LOOP;
+	break;
+
+      case 's':
+	LOG(debug) << "Switching to SINGLE mode..." << endl;
+	mExposureDone = false;
+	mExposureMode = ExposureModeT::SINGLE;
+	break;
+      } /* end switch*/
+    }
+    inline float getExposureTime() const { return mExposureTimeSec; }
+    inline ExposureModeT::TypeE getExposureMode() const { return mExposureMode; }
+    inline bool getExposureDone() const { return mExposureDone; }
+    inline void setExposureDone(bool inExposureDone) { mExposureDone = inExposureDone; }
+  };
+
+
+  class ControlBinningT : public MenuEntryT {
+  private:
+    IndiCameraT * mCameraDevice;
+    BinningT mBinning;
+    
+  public:
+    ControlBinningT(IndiCameraT * inCameraDevice, BinningT inBinning) : mCameraDevice(inCameraDevice), mBinning(inBinning) { }
+    virtual const char * getName() const { return "Exposure time [s]"; }
+    virtual BinningT getBinning() const { return mBinning; }
+    virtual string getValueAsStr() const { stringstream ss; ss << mBinning.get<0>() << " x " << mBinning.get<1>(); return ss.str(); }
+    virtual void execute(int inKey) {
+      switch(inKey) {
+      case KEY_LEFT: {
+	if (mBinning.get<0>() > 1  /* We just use hor binning here...*/) {
+	  mBinning.get<0>()--;
+	  mBinning.get<1>()--;
+	}
+	mStatusText = "";
+	break;
+      }
+      case KEY_RIGHT: {
+	BinningT maxBinning = mCameraDevice->getMaxBinning();
+	if (mBinning.get<0>() < maxBinning.get<0>() /* We just use hor binning here...*/) {
+	  mBinning.get<0>()++;
+	  mBinning.get<1>()++;
+	}
+	mStatusText = "";
+	break;
+      }
+      }
+    }
+  };
+
+
+
+  
+  
   DEF_Exception(FocusFinderPlugin);
   DEF_Exception(UnknownFocusFinderImpl);
   DEF_Exception(RequireOption);
@@ -60,8 +270,7 @@ namespace AT {
     mvprintw(y, x, c, std::forward<Args>(args)...);
   }
 
-  // TODO / IDEA: Better console menu: Move to different entries with up/down, change their values by left/right or +/-...
-  //              Just for Abort & Quit (and maybe some other operations) add specific keys - like ESC for abort, q for quit...
+  // TODO: Create ManualConsoleFocusCntl class....
   static void
   manualConsoleFocusCntl(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice,
 			 const FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec,
@@ -69,7 +278,7 @@ namespace AT {
   {
     const unsigned int statusPosX = 5;
     const unsigned int statusPosY = 27;
-    const size_t infoColumn = 5;
+    const size_t infoColumn = 50;
 
     // TODO FIXME: getSelectionFrame() needs to take care of border!! Use borderFactor below...
     const float borderFactor = 3.0; // TODO: Pass as argument?!
@@ -88,8 +297,6 @@ namespace AT {
     CImg<float> image;
     int key;
 
-    int stepSize = 10;
-    int stepFactor = 10;
     int focusPos = inFocuserDevice->getAbsPos();
     float hfdValue = -1;
     float fwhmHorzValue = -1;
@@ -101,123 +308,36 @@ namespace AT {
     keypad(stdscr, TRUE);
     noecho();
     clear();
-    move(7,5);
+    move(7 /*y*/,5 /*x*/);
     refresh();
 
     timeout(10);
     key = getch();
+
+    // Build the menu
+    vector<MenuEntryT *> menuActions;
+    
+    SetFocusStepSizeT * focusStepSize = new SetFocusStepSizeT();
+    ControlExposureT * controlExposure = new ControlExposureT(inCameraDevice, inExposureTimeSec);
+    ControlBinningT * controlBinning = new ControlBinningT(inCameraDevice, inBinning);
+    menuActions.push_back(focusStepSize);
+    menuActions.push_back(new MoveFocusT(inFocuserDevice, focusStepSize));
+    menuActions.push_back(controlExposure);
+    menuActions.push_back(controlBinning);
+    
+    int position = 0;
+    int numEntries = menuActions.size();
     
     while(key != 'q') {
-    
-      if ((key >= 'A' && key <= 'Z') || (key >= 'a' && key <= 'z')) {
-	//printw("Key was %c", (char) key);
-      } else {
-	switch(key){
-	case KEY_LEFT:
-	  if (stepSize > 1) {
-	    stepSize =  stepSize / stepFactor;
-	  }
-	  break;
-	
-	case KEY_RIGHT:
-	  if (stepSize < 10000) {
-	    stepSize =  stepSize * stepFactor;
-	  }
-	  break;
 
-	case KEY_UP:
-	  focusPos += stepSize;
-	  inFocuserDevice->setAbsPos(focusPos, 0 /* non-blocking */);
-	  break;
-	
-	case KEY_DOWN:
-	  focusPos -= stepSize;
-	  inFocuserDevice->setAbsPos(focusPos, 0 /* non-blocking */);
-	  break;
-	
-	case 27 /*LOCAL_ESCAPE_KEY*/:
-	  mv_print(statusPosX, statusPosY, "Stopping focus motion.");
-	  inFocuserDevice->abortMotion(0 /*non blocking*/);
-	  break;
-	
-	  // case KEY_END:
-	  // 	printw("%s", "END key");
-	  // 	break;
-	  
-	default:
-	  //printw("Unmatched - %d", key);
-	  break;
-	} /* switch */
-      } /*else*/
-
-
-      // Update measurement data
-      string focuserStatus = (inFocuserDevice->isMovementInProgess() ? "busy" : "ready"); 
-      stringstream ssCameraStatus;
-      if (inCameraDevice->isExposureInProgress()) {
-	ssCameraStatus << "exposing..." << inCameraDevice->getExposureTime() << "s";
-      } else {
-	ssCameraStatus << "ready";
-      }
-
-      mv_print(5, 25, "Focus finder. Press 'q' to quit");
-      mv_print(infoColumn, 1, "Focus status: %s", focuserStatus.c_str());
-      mv_print(infoColumn, 2, "Step size: %d", stepSize);
-      mv_print(infoColumn, 3, "Focus pos (is): %d", inFocuserDevice->getAbsPos());
-      mv_print(infoColumn, 4, "Focus pos (dest): %d", focusPos);
-      
-      mv_print(infoColumn, 9, "Camera status: %s", ssCameraStatus.str().c_str());
-      mv_print(infoColumn, 10, "Cooler status: ");
-      mv_print(infoColumn, 11, "Temperature: ");
-
-      
-      if (hfdValue > 0) {
-	stringstream hfdArcSecSs;
-	if (haveFocalDistance && havePixelSize) {
-	  hfdArcSecSs << " = " << FwhmT::pxToArcsec(hfdValue, focalDistance, pixelSize, inBinning) << "\"";
-	}
-	mv_print(infoColumn, 15, "HFD: %fpx%s", hfdValue, hfdArcSecSs.str().c_str());
-      } else {
-	mv_print(infoColumn, 15, "HFD: n.a.");
-      }
-
-      if (fwhmHorzValue > 0) {
-	stringstream fwhmHorzArcSecSs;
-
-	if (haveFocalDistance && havePixelSize) {
-	  fwhmHorzArcSecSs << " = " << FwhmT::pxToArcsec(fwhmHorzValue, focalDistance, pixelSize, inBinning) << "\"";
-	}
-	mv_print(infoColumn, 16, "FWHM(horz): %fpx%s", fwhmHorzValue, fwhmHorzArcSecSs.str().c_str());
-      } else {
-	mv_print(infoColumn, 16, "FWHM(horz): n.a.");
-      }
-      
-      if (fwhmVertValue > 0) {
-	stringstream fwhmVertArcSecSs;
-
-	if (haveFocalDistance && havePixelSize) {
-	  fwhmVertArcSecSs << " = " << FwhmT::pxToArcsec(fwhmVertValue, focalDistance, pixelSize, inBinning) << "\"";
-	}
-	mv_print(infoColumn, 17, "FWHM(vert): %fpx%s", fwhmVertValue, fwhmVertArcSecSs.str().c_str());
-      } else {
-	mv_print(infoColumn, 17, "FWHM(vert): n.a.");
-      }
-
-      if (maxPixelValue > 0) {
-	mv_print(infoColumn, 18, "MAX: %f", maxPixelValue);
-      } else {
-	mv_print(infoColumn, 18, "MAX: n.a.");
-      }
-
-      
-      // Keep exposure running...
       if (! inCameraDevice->isExposureInProgress()) {
 	// Get previous image (if any)
 	inCameraDevice->getImage(& image);
 
 	LOG(trace) << "Received image [subframe: " << imageFrame << "] from camera - size: " << image.width() << " x " << image.height() << endl;
 	LOG(trace) << "image.width(): " << image.width() << ", image.height(): " << image.height() << endl;
-	LOG(trace) << "inBinning.get<0>(): " << inBinning.get<0>() << ", inBinning.get<1>(): " << inBinning.get<1>() << endl;
+	LOG(trace) << "controlBinning->getBinning().get<0>(): " << controlBinning->getBinning().get<0>()
+		   << ", controlBinning->getBinning().get<1>(): " << controlBinning->getBinning().get<1>() << endl;
 
 	if (image.width() == imageFrame.get<2>() && image.height() == imageFrame.get<3>()) {
 	  // Perform re-centroiding i.e. re-set selectionFrame in order to follow the star
@@ -394,9 +514,8 @@ namespace AT {
 
 	  
 	  currentImageDisp.display(rgbImg);
-
 	  
-	  if (inFollowStar) {
+	  if (inFollowStar && controlExposure->getExposureMode() != ControlExposureT::ExposureModeT::SINGLE) {
 	    // If star following is enabled, the camera sub-frame is re-centered after each image
 	    imageFrame = newImageFrame;
 	  }
@@ -405,25 +524,135 @@ namespace AT {
 		     << " but received " << image.width() << " x " << image.height() << " -> ignoring." << endl;
 	}
 	
-	// Start new exposure
-	// ------------------------------------------------------------------------------------------------------------ //
-	LOG(trace) << "setBinning(" << inBinning << ")..." << endl;
-	inCameraDevice->setBinning(inBinning);
-	LOG(trace) << "setBinnedFrame(" << imageFrame << ", " << inBinning << ")..." << endl;
-	inCameraDevice->setBinnedFrame(imageFrame, inBinning);
+	// TODO: Should this be moved to the menu items?!
+	LOG(trace) << "setBinning(" << controlBinning->getBinning() << ")..." << endl;
+	inCameraDevice->setBinning(controlBinning->getBinning());
+
+	//TODO: setBinning after first selection of imageFrame causes CentroidException (Frame hit simage bounds...) -> need to recalc imageFrame(?) - based on old binning and given new binning!
+	LOG(trace) << "setBinnedFrame(" << imageFrame << ", " << controlBinning->getBinning() << ")..." << endl;
+	inCameraDevice->setBinnedFrame(imageFrame, controlBinning->getBinning());
+	
 	LOG(trace) << "setFrameType(" << FrameTypeT::asStr(FrameTypeT::LIGHT) << ")..." << endl;
 	inCameraDevice->setFrameType(FrameTypeT::LIGHT);
 	LOG(trace) << "setCompressed(false)..." << endl;
 	inCameraDevice->setCompressed(false); // No compression when moving image to CImg
 
-	LOG(trace) << "startExposure(" << inExposureTimeSec << "s)..." << endl;
-	inCameraDevice->startExposure(inExposureTimeSec); // Non-blocking call...!!
+	if (! controlExposure->getExposureDone() || controlExposure->getExposureMode() == ControlExposureT::ExposureModeT::LOOP) {
+	  LOG(trace) << "startExposure(" << inExposureTimeSec << "s)..." << endl;
+	  inCameraDevice->startExposure(controlExposure->getExposureTime()); // Non-blocking call...!!
+	  controlExposure->setExposureDone(true);
+	}
+      } // end if - ! exposure in progress
+
+
+      
+      switch(key) {
+      case KEY_UP:
+	position = (position > 0 ? position - 1 : 0);
+	break;
+	
+      case KEY_DOWN:
+	position = (position < (numEntries - 1) ? position + 1 : (numEntries - 1));
+	break;
+	
+      case 9: /* TAB */
+	position++;
+	position = position % numEntries;
+	break;
+	
+      default: {
+	menuActions[position]->execute(key);
+	break;
       }
+      } /* switch */
+
+      const int cTopMenuBorder = 1;
+      const int cLeftMenuBorder = 10;
+      const int cLeftMenuWidth = 20;
+      
+      for (vector<MenuEntryT *>::iterator it = menuActions.begin(); it != menuActions.end(); ++it) {
+	const MenuEntryT * menuEntry = *it;
+	
+	int pos = std::distance(menuActions.begin(), it);
+
+	if (pos == position) { attron(A_STANDOUT); }
+	mv_print(cLeftMenuBorder, cTopMenuBorder + pos, "%s :", menuEntry->getName());
+	if (pos == position) { attroff(A_STANDOUT); }
+
+	mv_print(cLeftMenuBorder + cLeftMenuWidth, cTopMenuBorder + pos, "%s", menuEntry->getValueAsStr().c_str());
+      }
+
+      
+       // Update data
+      string focuserStatus = (inFocuserDevice->isMovementInProgess() ? "busy" : "ready"); 
+      mv_print(infoColumn, 1, "Focus status: %s", focuserStatus.c_str());
+      mv_print(infoColumn, 2, "Focus pos (is): %d", inFocuserDevice->getAbsPos());
+
+      stringstream ssCameraStatus;
+      if (inCameraDevice->isExposureInProgress()) {
+	ssCameraStatus << "exposing..." << inCameraDevice->getExposureTime() << "s";
+      } else {
+	ssCameraStatus << "ready";
+      }
+
+      mv_print(infoColumn, 9, "Camera status: %s", ssCameraStatus.str().c_str());
+      mv_print(infoColumn, 10, "Cooler status: ");
+      mv_print(infoColumn, 11, "Temperature: ");
+
+      
+      if (hfdValue > 0) {
+	stringstream hfdArcSecSs;
+	if (haveFocalDistance && havePixelSize) {
+	  hfdArcSecSs << " = " << FwhmT::pxToArcsec(hfdValue, focalDistance, pixelSize, controlBinning->getBinning()) << "\"";
+	}
+	mv_print(infoColumn, 15, "HFD: %fpx%s", hfdValue, hfdArcSecSs.str().c_str());
+      } else {
+	mv_print(infoColumn, 15, "HFD: n.a.");
+      }
+
+      if (fwhmHorzValue > 0) {
+	stringstream fwhmHorzArcSecSs;
+
+	if (haveFocalDistance && havePixelSize) {
+	  fwhmHorzArcSecSs << " = " << FwhmT::pxToArcsec(fwhmHorzValue, focalDistance, pixelSize, controlBinning->getBinning()) << "\"";
+	}
+	mv_print(infoColumn, 16, "FWHM(horz): %fpx%s", fwhmHorzValue, fwhmHorzArcSecSs.str().c_str());
+      } else {
+	mv_print(infoColumn, 16, "FWHM(horz): n.a.");
+      }
+      
+      if (fwhmVertValue > 0) {
+	stringstream fwhmVertArcSecSs;
+
+	if (haveFocalDistance && havePixelSize) {
+	  fwhmVertArcSecSs << " = " << FwhmT::pxToArcsec(fwhmVertValue, focalDistance, pixelSize, controlBinning->getBinning()) << "\"";
+	}
+	mv_print(infoColumn, 17, "FWHM(vert): %fpx%s", fwhmVertValue, fwhmVertArcSecSs.str().c_str());
+      } else {
+	mv_print(infoColumn, 17, "FWHM(vert): n.a.");
+      }
+
+      if (maxPixelValue > 0) {
+	mv_print(infoColumn, 18, "MAX: %f", maxPixelValue);
+      } else {
+	mv_print(infoColumn, 18, "MAX: n.a.");
+      }
+      mv_print(5, 25, "Focus finder. Press 'q' to quit");
+
+
+
+      
     
       refresh();
       timeout(10);
       key = getch();
     } /* while */
+
+    // Cleanup menu
+    for (vector<MenuEntryT *>::iterator it = menuActions.begin(); it != menuActions.end(); ++it) {
+      delete *it;
+    }
+    
     endwin();
   }
 

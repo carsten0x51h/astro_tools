@@ -534,20 +534,23 @@ public:
   SEND_PROP_VEC(Switch);
   SEND_PROP_VAL(Switch, bool);
 
-  static void updateSwitchVal(ISwitchVectorProperty * inVec, const string & inPropName, double inValue) {
+  static void updateSwitchVal(ISwitchVectorProperty * inVec, const string & inPropName, bool inValue) {
+    ISwitch * p;
+
     if (IP_RO == inVec->p) {
       const string exStr = "Vector property '" + string(inVec->name) + "' is read-only.";
       throw PropPermissionExceptionT(exStr.c_str());
-    }
-    
+    }   
+   
     switch(inVec->r) {
-    case ISR_1OFMANY: {
+    case ISR_ATMOST1:
+    case ISR_1OFMANY:
       // Only one can be active
       if (inValue) {
   	// Disable all and then enable the selected one...
   	for (size_t i=0; i < inVec->nsp; ++i) { inVec->sp[i].s = ISS_OFF; }
         // TODO: Code below we may put to a separate function (Find call including exception...)
-        ISwitch * p = IUFindSwitch(inVec, inPropName.c_str());
+        p = IUFindSwitch(inVec, inPropName.c_str());
         if (! p) {
   	  const string exStr = "Property '" + string(inVec->name) + "' in vector '" + string(inVec->name) + "' not found.";
   	  throw PropNotFoundExceptionT(exStr.c_str());
@@ -570,26 +573,21 @@ public:
   	}
       }
       break;
-    }
-    case ISR_ATMOST1: {
-      // There is only ONE switch.... - TODO: how to handle?! - on or off..?
-      AT_ASSERT(IndiDevice, false, "Not yet implemented - no such case, yet.");
-      break;
-    }
-    case ISR_NOFMANY: {
+
+    case ISR_NOFMANY:
       // Any number of switches can be on (e.g. e.g. GUIDER_RAPID_GUIDE_SETUP->AUTO_LOOP, SEND_IMAGE, SHOW_MARKER)
       // TODO: Code below we may put to a separate function (Find call including exception...)
-      ISwitch * p = IUFindSwitch(inVec, inPropName.c_str());
+      p = IUFindSwitch(inVec, inPropName.c_str());
       if (! p) {
-         const string exStr = "Property '" + inPropName  + "' in vector '" + string(inVec->name) + "' not found.";
-         throw PropNotFoundExceptionT(exStr.c_str());
+	const string exStr = "Property '" + inPropName  + "' in vector '" + string(inVec->name) + "' not found.";
+	throw PropNotFoundExceptionT(exStr.c_str());
       }
       p->s = (inValue ? ISS_ON : ISS_OFF);
       break;
-    }
-    default: {
+      
+    default:
       AT_ASSERT(IndiDevice, false, "Invalid switch rule.");
-    }
+
     } // end switch
   }
   
