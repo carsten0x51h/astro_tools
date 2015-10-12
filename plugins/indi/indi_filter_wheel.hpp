@@ -124,6 +124,14 @@ public:
       throw IndiFilterWheelIsBusyExceptionT("Cannot set new filter position - filter wheel is currently busy.");
     this->sendNumberVal<FilterWheelTraitsT>(VecPropsT::FILTER_SLOT, PropsT::FILTER_SLOT_VALUE, inPos, inTimeoutMs);
  } 
+  inline int getMinPos() const {
+    const INumber & nSlot = this->getNumber<FilterWheelTraitsT>(VecPropsT::FILTER_SLOT, PropsT::FILTER_SLOT_VALUE);
+    return nSlot.min;
+  }
+  inline int getMaxPos() const {
+    const INumber & nSlot = this->getNumber<FilterWheelTraitsT>(VecPropsT::FILTER_SLOT, PropsT::FILTER_SLOT_VALUE);
+    return nSlot.max;
+  }
 
   inline bool isMovementInProgess() const {
     // TODO: Is this the correct prop. to check for busy state?!
@@ -132,10 +140,7 @@ public:
     return (nVec->s == IPS_BUSY);
   }
 
-  inline size_t getNumSlots() const {
-    const INumber & number = this->getNumber<FilterWheelTraitsT>(VecPropsT::FILTER_SLOT, PropsT::FILTER_SLOT_VALUE);
-    return number.max;
-  }
+  inline size_t getNumSlots() const { return this->getMaxPos(); }
 };
 
 #endif // _INDI_FILTER_WHEEL_HPP_

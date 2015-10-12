@@ -36,6 +36,10 @@
 
 #include "focus_finder.hpp"
 
+#include "indi/indi_camera.hpp"
+#include "indi/indi_focuser.hpp"
+#include "indi/indi_filter_wheel.hpp"
+
 #include "threshold.hpp"
 #include "normalize.hpp"
 #include "cluster.hpp"
@@ -291,6 +295,41 @@ namespace AT {
   };
 
 
+    class FilterSelectT : public MenuEntryT {
+  private:
+    IndiFilterWheelT * mFilterWheelDevice;
+    int mSelectedFilter;
+    
+  public:
+      FilterSelectT(IndiFilterWheelT * inFilterWheelDevice, int inPos) : mFilterWheelDevice(inFilterWheelDevice),
+							      mSelectedFilter(inPos) { }
+    virtual const char * getName() const { return "Filter pos (dest) :"; }
+    virtual BinningT getSelectedFilter() const { return mSelectedFilter; }
+    virtual string getValueAsStr() const { stringstream ss; ss << mSelectedFilter; return ss.str(); }
+    virtual void execute(int inKey) {
+      switch(inKey) {
+      case KEY_LEFT:
+	if (mSelectedFilter > mFilterWheelDevice->getMinPos()) {
+	  mSelectedFilter--;
+	} else {
+	  mSelectedFilter = mFilterWheelDevice->getNumSlots();
+	}
+	mFilterWheelDevice->setPos(mSelectedFilter, 0 /* non-blocking */);
+	mStatusText = "";
+	break;
+	
+      case KEY_RIGHT:
+	if (mSelectedFilter < mFilterWheelDevice->getNumSlots()) {
+	  mSelectedFilter++;
+	} else {
+	  mSelectedFilter = mFilterWheelDevice->getMinPos();
+	}
+	mFilterWheelDevice->setPos(mSelectedFilter, 0 /* non-blocking */);
+	mStatusText = "";
+	break;
+      }
+    }
+  };
   
   
   DEF_Exception(FocusFinderPlugin);
@@ -309,7 +348,7 @@ namespace AT {
   // TODO: Create ManualConsoleFocusCntl class....
   static void
   manualConsoleFocusCntl(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice,
-			 const FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec,
+			 IndiFilterWheelT * inFilterWheelDevice, const FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec,
 			 BinningT inBinning, bool inFollowStar = true)
   {
     const unsigned int statusPosX = 5;
@@ -365,6 +404,12 @@ namespace AT {
     menuActions.push_back(controlBinning);
     if (inCameraDevice->hasCooler()) {
       menuActions.push_back(new ControlCameraTemperatureT(inCameraDevice, inCameraDevice->getTemperature()));
+    }
+
+    if (inFilterWheelDevice) {
+      menuActions.push_back(new SeparatorT());
+      menuActions.push_back(new SeparatorT());
+      menuActions.push_back(new FilterSelectT(inFilterWheelDevice, inFilterWheelDevice->getPos()));
     }
     
     int position = 0;
@@ -659,6 +704,17 @@ namespace AT {
 	mv_print(infoColumn, 6, "Cooler status: ");
 	mv_print(infoColumn, 7, "Temperature: ");
       }
+
+      if (inFilterWheelDevice) {
+	stringstream ssFilterWheelStatus;
+	if (inFilterWheelDevice->isMovementInProgess()) {
+	  ssFilterWheelStatus << "moving... is: " << inFilterWheelDevice->getPos();
+	} else {
+	  ssFilterWheelStatus << "ready";
+	}
+	mv_print(infoColumn, 9, "Filter status: %s", ssFilterWheelStatus.str().c_str());
+      }
+      
       
       if (hfdValue > 0) {
 	stringstream hfdArcSecSs;
@@ -698,9 +754,6 @@ namespace AT {
 	mv_print(infoColumn, 18, "MAX: n.a.");
       }
       mv_print(5, 25, "Focus finder. Press 'q' to quit");
-
-
-
       
     
       refresh();
@@ -863,6 +916,9 @@ namespace AT {
       const string & cameraDeviceName = cmdLineMap["camera_device"].as<string>();
       const string & focuserDeviceName = cmdLineMap["focuser_device"].as<string>();
       const string & focuserDevicePort = cmdLineMap["focuser_device_port"].as<string>();
+      const string & filterWheelDeviceName = (cmdLineMap.count("filter_device") > 0 ? cmdLineMap["filter_device"].as<string>() : "");
+      const string & filter = (cmdLineMap.count("filter") > 0 ? cmdLineMap["filter"].as<string>() : "");
+      const float timeoutMs = 1000.0 * cmdLineMap["timeout"].as<float>(); // Conversion to ms
       float exposureTimeSec = cmdLineMap["exposure_time"].as<float>();
       const BinningT & binning = cmdLineMap["binning"].as<BinningT>();
       const string & starSelectMethod = cmdLineMap["star_select"].as<string>();
@@ -889,6 +945,7 @@ namespace AT {
   
       LOG(info) << "Indi server: " << hostnameAndPort
 		<< ", cameraDeviceName: " << cameraDeviceName << ", focuserDeviceName: " << focuserDeviceName
+		<< ", filterWheelDeviceName: " << filterWheelDeviceName << ", filter: " << filter
 		<< ", focuserDevicePort: " << focuserDevicePort << ", exposureTimeSec: " << exposureTimeSec
 		<< ", binning: " << binning << ", starSelect: " << starSelectMethod
 		<< ", starRecognitionMethod: " << starRecognitionMethod
@@ -926,13 +983,53 @@ namespace AT {
 	}
 
 	focuserDevice->setDevicePort(focuserDevicePort);
-
+	
 	// Connect devices, throws if problem occurs during connect
 	cameraDevice->connect();
 	focuserDevice->connect();
 
+	// Get filter device
+	IndiFilterWheelT * filterWheelDevice = 0;
+	
+	if (strcmp(filterWheelDeviceName.c_str(), "")) {
+	  filterWheelDevice = indiClient.getFilterWheel(filterWheelDeviceName);
+
+	  if (! filterWheelDevice) {
+	    stringstream ss;
+	    ss << "Invalid device handle for device '" << filterWheelDeviceName << "' returned.";
+	    throw FocusFinderPluginExceptionT(ss.str().c_str());
+	  }
+	  filterWheelDevice->connect();
+	}
+	
 	// Crosscheck if really connected (not expected)
 	AT_ASSERT(FocusFinderPlugin, cameraDevice->isConnected() && focuserDevice->isConnected(), "Expected camera and focuser to be connected.");
+	AT_ASSERT(FocusFinderPlugin, ! filterWheelDevice || (filterWheelDevice && filterWheelDevice->isConnected()), "Expected filter_wheel to be connected.");
+
+	// Set desired filter
+	if (filterWheelDevice && strcmp(filter.c_str(), "")) {
+	  size_t pos;
+
+	  try {
+	    pos = std::stoi(filter);
+	  } catch(...) {
+	    // TODO: Ok, we try to resolve the pos by name... red / green ...
+	    //       we need a map which can be configured by user which maps name to slot no.
+	    pos = 0; // TODO...
+	  }
+
+	  if (filterWheelDevice->getPos() != pos) {
+	    filterWheelDevice->setPos(pos, 0 /* do not block */);
+
+	    WAIT_MAX_FOR_PRINT(! filterWheelDevice->isMovementInProgess(), timeoutMs, CommonAstroToolsAppT::isInQuietMode(),
+			       "[Filter pos: " << filterWheelDevice->getPos() << "]...", "Hit timeout while waiting for filter wheel.");
+
+	    cout << "New filter position: " << filterWheelDevice->getPos() << endl;
+	  } else {
+	    cout << "Filter position " << pos << " already set." << endl;
+	  }
+	}
+	
 	
 	// Get max. resolution
 	long bitPix = cameraDevice->getBitsPerPixel();
@@ -973,7 +1070,7 @@ namespace AT {
 	LOG(debug) << "Selected frame by click: " << selectedFrame << endl;
 	
 	if (! strcmp(focusMode.c_str(), "manual")) { // Manual focusing
-	  manualConsoleFocusCntl(cmdLineMap, cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning, followStar);
+	  manualConsoleFocusCntl(cmdLineMap, cameraDevice, focuserDevice, filterWheelDevice, selectedFrame, exposureTimeSec, binning, followStar);
 	} else { // Automatic focusing
 	  FocusFinderLinearInterpolationImplT ffli(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning);
 
