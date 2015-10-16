@@ -47,7 +47,7 @@ namespace AT {
     LOG(trace) << "Initial selectionFrame(by click): " << inSelectionFrame
 	       << ", centerPos: " << centerPos << ", initial imageFrame: " << imageFrame << endl;
     
-    CImgDisplay currentImageDisp, currentFwhmHorzDisp, currentFwhmVertDisp, currentHfdDisp, hfdHistoryDisp;
+    CImgDisplay currentImageDisp, currentFwhmHorzDisp, currentFwhmVertDisp, currentHfdDisp, hfdHistoryDisp, fwhmHorzHistoryDisp, fwhmVertHistoryDisp;
     CImg<float> image;
     int key;
 
@@ -95,7 +95,9 @@ namespace AT {
     int numEntries = menuActions.size();
 
     LimitedQueueT<float> limitedQueueHfd(50);
-
+    LimitedQueueT<float> limitedQueueFwhmHorz(50);
+    LimitedQueueT<float> limitedQueueFwhmVert(50);
+  
     bool exposureInProgress = false;
     bool newImage = false;
     
@@ -337,16 +339,12 @@ namespace AT {
 	  }
 	  mv_print(infoColumn, 15, "HFD: %fpx%s", hfdValue, hfdArcSecSs.str().c_str());
 	
-	  // Add values to queues
+	  // Add values to queue
 	  limitedQueueHfd.push(hfdValue);
 	} else {
 	  mv_print(infoColumn, 15, "HFD: n.a.");
 	}
-
-	//cerr << "limitedQueueHfd: " << endl;
-	//limitedQueueHfd.print(cerr);
 	hfdHistoryDisp.display(limitedQueueHfd.genView(400, 100));
-	
 	
 	if (fwhmHorzValue > 0) {
 	  stringstream fwhmHorzArcSecSs;
@@ -354,21 +352,30 @@ namespace AT {
 	  if (haveFocalDistance && havePixelSize) {
 	    fwhmHorzArcSecSs << " = " << FwhmT::pxToArcsec(fwhmHorzValue, focalDistance, pixelSize, controlBinning->getBinning()) << "\"";
 	  }
+	  // Add values to queue
+	  limitedQueueFwhmHorz.push(fwhmHorzValue);
+
 	  mv_print(infoColumn, 16, "FWHM(horz): %fpx%s", fwhmHorzValue, fwhmHorzArcSecSs.str().c_str());
 	} else {
 	  mv_print(infoColumn, 16, "FWHM(horz): n.a.");
 	}
-      
+	fwhmHorzHistoryDisp.display(limitedQueueFwhmHorz.genView(400, 100));
+
+	
 	if (fwhmVertValue > 0) {
 	  stringstream fwhmVertArcSecSs;
 
 	  if (haveFocalDistance && havePixelSize) {
 	    fwhmVertArcSecSs << " = " << FwhmT::pxToArcsec(fwhmVertValue, focalDistance, pixelSize, controlBinning->getBinning()) << "\"";
 	  }
+	  // Add values to queue
+	  limitedQueueFwhmVert.push(fwhmVertValue);
+
 	  mv_print(infoColumn, 17, "FWHM(vert): %fpx%s", fwhmVertValue, fwhmVertArcSecSs.str().c_str());
 	} else {
 	  mv_print(infoColumn, 17, "FWHM(vert): n.a.");
 	}
+	fwhmVertHistoryDisp.display(limitedQueueFwhmVert.genView(400, 100));
 
 	if (maxPixelValue > 0) {
 	  mv_print(infoColumn, 18, "MAX: %f", maxPixelValue);
