@@ -22,6 +22,7 @@
 
 #include "fwhm.hpp"
 #include "util.hpp"
+#include "at_logging.hpp"
 
 #include <algorithm> // max_element
 

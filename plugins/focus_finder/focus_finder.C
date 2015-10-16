@@ -20,8 +20,6 @@
  *
  ****************************************************************************/
 
-#include <ncurses.h>
-
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
 #include <limits>
@@ -35,6 +33,7 @@
 #include "at_validator.hpp"
 
 #include "focus_finder.hpp"
+#include "focus_finder_common.hpp"
 
 #include "indi/indi_camera.hpp"
 #include "indi/indi_focuser.hpp"
@@ -48,6 +47,18 @@
 #include "focus_finder_linear_interpolation_impl.hpp"
 #include "focuser_console_ui.hpp"
 
+// ROADMAP
+
+// TODO: Fix the binning bug...
+// TODO: Add help per menu item... explaining the available keys... also enable status?!
+// TODO: Test with real equipement (filter wheel, camera cooler, focus cooler...)
+// TODO: Add "select new region" !! --> part of camera stuff -> display selecte drame coordinates, allow to select new frame by key 's' e.g. ...
+// TODO: Add "data 'curve'" (and their visualization using CImg? - just simple - optional!) - e.g. N entires... get min, max, average, moment?... - just a container
+// TODO: Add hot pixel removal filter?!
+// TODO: Add automatic focusing! - integrate this into the console ui?!
+// TODO: Sequencer?! - python / swig?
+// TODO: Old idea with recorded images where everything is just being processed?!....?????
+  
 namespace AT {
 
   static FrameT<unsigned int>

@@ -23,12 +23,16 @@
 #ifndef __STAR_FRAME_SELECTOR_HPP__
 #define __STAR_FRAME_SELECTOR_HPP__ __STAR_FRAME_SELECTOR_HPP__
 
+
+#include <boost/algorithm/string/case_conv.hpp>
+
 #include "util.hpp"
 #include "at_exception.hpp"
 
 #include "threshold.hpp"
 #include "cluster.hpp"
 #include "normalize.hpp"
+#include "centroid.hpp"
 
 namespace AT {
 
@@ -168,21 +172,7 @@ namespace AT {
   /**
    * NOTE: This validate belongs to AT::StarFrameSelectorT::StarRecognitionTypeT.
    */
-  void validate(boost::any & v, const vector<string> & values, typename StarFrameSelectorT::StarRecognitionTypeT::TypeE * target_type, int) {
-    using namespace boost::program_options;
-    
-    validators::check_first_occurrence(v);
-    string s = validators::get_single_string(values);
-    boost::to_upper(s);
-    typename StarFrameSelectorT::StarRecognitionTypeT::TypeE type = StarFrameSelectorT::StarRecognitionTypeT::asType(s.c_str());
-
-    if (type != StarFrameSelectorT::StarRecognitionTypeT::_Count) {
-      v = any(type);
-    } else {
-      throw validation_error(validation_error::invalid_option_value);
-    }
-  }
-  
+  void validate(boost::any & v, const vector<string> & values, typename StarFrameSelectorT::StarRecognitionTypeT::TypeE * target_type, int);  
   
 };
 

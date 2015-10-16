@@ -30,7 +30,7 @@ using namespace cimg_library;
 namespace AT {
 
   // IDEA: We may offer different normalizations...
-  CImg<unsigned char>
+  static CImg<unsigned char>
   normalize(const CImg<float> & inImg, long inNumBuckets, float inPercent = 10.0)
   {
     // TODO: We can avoid copy by passing a pointer..

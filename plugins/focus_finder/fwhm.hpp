@@ -50,6 +50,7 @@
 #include <vector>
 #include <math.h>
 #include <iostream>
+#include <CImg.h>
 
 #include <boost/algorithm/string/case_conv.hpp>
 
@@ -60,6 +61,7 @@
 
 
 using namespace std;
+using namespace cimg_library;
 
 DEF_Exception(Fwhm);
 
