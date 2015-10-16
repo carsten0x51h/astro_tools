@@ -36,10 +36,10 @@ namespace AT {
     return os;
   }
 
-  // ostream & operator<<(ostream & os, const LimitedQueueT & inLimitedQueue) {
-  //   return inLimitedQueue.print(os);
-  // }
-
+  template <typename SclassT>
+  ostream & operator<<(ostream & os, const LimitedQueueT<SclassT> & inLimitedQueue) {
+    return inLimitedQueue.print(os);
+  }
   
   template ostream & LimitedQueueT<float>::print(ostream & os) const;
 };

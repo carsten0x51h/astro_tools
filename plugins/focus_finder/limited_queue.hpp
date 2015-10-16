@@ -79,8 +79,9 @@ namespace AT {
     const_iterator end() const {return mContainer.end(); }
 
     ostream & print(ostream & os) const;
-    // friend ostream & operator<<(ostream & os, const LimitedQueueT & inLimitedQueue);
-
+    template <typename SclassT>
+    friend ostream & operator<<(ostream & os, const LimitedQueueT<SclassT> & inLimitedQueue);
+    
     static CImg<unsigned char>
     genView(size_t inWidth, size_t inHeight, const deque<T> & inContainer, const T & inMax, const T & inMin, size_t inMaxNumElements, const T & inAverage) {
       LOG(debug) << "LimitedQueueT..." << endl;
