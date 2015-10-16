@@ -326,38 +326,6 @@ namespace AT {
 	}
       } // end if - ! exposure in progress
 
-      // Update data
-      string focuserStatus = (inFocuserDevice->isMovementInProgess() ? "busy" : "ready"); 
-      mv_print(infoColumn, 1, "Focus status: %s", focuserStatus.c_str());
-      mv_print(infoColumn, 2, "Focus pos (is): %d", inFocuserDevice->getAbsPos());
-      if (inFocuserDevice->supportsTemperature()) {
-	mv_print(infoColumn, 3, "Focus temp: %d\0xf8 C", inFocuserDevice->getTemperature());
-      }
-      
-      stringstream ssCameraStatus;
-      if (inCameraDevice->isExposureInProgress()) {
-	ssCameraStatus << "exposing..." << inCameraDevice->getExposureTime() << "s";
-      } else {
-	ssCameraStatus << "ready";
-      }
-
-      mv_print(infoColumn, 5, "Camera status: %s", ssCameraStatus.str().c_str());
-
-      if (inCameraDevice->hasCooler()) {
-	mv_print(infoColumn, 6, "Cooler status: ");
-	mv_print(infoColumn, 7, "Temperature: ");
-      }
-
-      if (inFilterWheelDevice) {
-	stringstream ssFilterWheelStatus;
-	if (inFilterWheelDevice->isMovementInProgess()) {
-	  ssFilterWheelStatus << "moving... is: " << inFilterWheelDevice->getPos();
-	} else {
-	  ssFilterWheelStatus << "ready";
-	}
-	mv_print(infoColumn, 9, "Filter status: %s", ssFilterWheelStatus.str().c_str());
-      }
-
       
       if (newImage) {
 	newImage = false;
@@ -412,7 +380,6 @@ namespace AT {
       
       mv_print(5, 25, "Focus finder. Press 'q' to quit");
 
-
       
       switch(key) {
       case KEY_UP:
@@ -464,7 +431,38 @@ namespace AT {
 	mv_print(cLeftMenuBorder + cLeftMenuWidth, cTopMenuBorder + pos, "%s", menuEntry->getValueAsStr().c_str());
       }
 
+
+      // Update data
+      string focuserStatus = (inFocuserDevice->isMovementInProgess() ? "busy" : "ready"); 
+      mv_print(infoColumn, 1, "Focus status: %s", focuserStatus.c_str());
+      mv_print(infoColumn, 2, "Focus pos (is): %d", inFocuserDevice->getAbsPos());
+      if (inFocuserDevice->supportsTemperature()) {
+	mv_print(infoColumn, 3, "Focus temp: %d\0xf8 C", inFocuserDevice->getTemperature());
+      }
       
+      stringstream ssCameraStatus;
+      if (inCameraDevice->isExposureInProgress()) {
+	ssCameraStatus << "exposing..." << inCameraDevice->getExposureTime() << "s";
+      } else {
+	ssCameraStatus << "ready";
+      }
+
+      mv_print(infoColumn, 5, "Camera status: %s", ssCameraStatus.str().c_str());
+
+      if (inCameraDevice->hasCooler()) {
+	mv_print(infoColumn, 6, "Cooler status: ");
+	mv_print(infoColumn, 7, "Temperature: ");
+      }
+
+      if (inFilterWheelDevice) {
+	stringstream ssFilterWheelStatus;
+	if (inFilterWheelDevice->isMovementInProgess()) {
+	  ssFilterWheelStatus << "moving... is: " << inFilterWheelDevice->getPos();
+	} else {
+	  ssFilterWheelStatus << "ready (pos=" << inFilterWheelDevice->getPos() << ").";
+	}
+	mv_print(infoColumn, 9, "Filter status: %s", ssFilterWheelStatus.str().c_str());
+      }      
       
       refresh();
       timeout(10);

@@ -271,6 +271,14 @@ public:
    */
   inline bool supportsAbsPos() const { return this->hasVecProp<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION); }
 
+  inline int getMinPos() const {
+    const INumber & nPos = this->getNumber<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION, PropsT::FOCUS_ABSOLUTE_POSITION);
+    return nPos.min;
+  }
+  inline int getMaxPos() const {
+    const INumber & nPos = this->getNumber<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION, PropsT::FOCUS_ABSOLUTE_POSITION);
+    return nPos.max;
+  }
   inline int getAbsPos() const { return this->getNumberVal<FocuserTraitsT>(VecPropsT::ABS_FOCUS_POSITION, PropsT::FOCUS_ABSOLUTE_POSITION); }
   inline void setAbsPos(unsigned int inAbsPos, int inTimeoutMs = sDefaultTimeoutMs) {
     // NOTE: Setting new absolute position should work even if focus is currently runing

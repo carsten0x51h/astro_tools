@@ -102,12 +102,14 @@ namespace AT {
       switch(inKey) {
       case KEY_LEFT:
 	mFocusPos -= mFocusStepSize->getStepSize();
+	if (mFocusPos < mFocuserDevice->getMinPos()) { mFocusPos = mFocuserDevice->getMinPos(); }
 	mFocuserDevice->setAbsPos(mFocusPos, 0 /* non-blocking */);
 	mStatusText = "";
 	break;
 	
       case KEY_RIGHT:
 	mFocusPos += mFocusStepSize->getStepSize();
+	if (mFocusPos > mFocuserDevice->getMaxPos()) { mFocusPos = mFocuserDevice->getMaxPos(); }
 	mFocuserDevice->setAbsPos(mFocusPos, 0 /* non-blocking */);
 	mStatusText = "";
 	break;

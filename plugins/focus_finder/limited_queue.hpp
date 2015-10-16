@@ -82,7 +82,7 @@ namespace AT {
     // friend ostream & operator<<(ostream & os, const LimitedQueueT & inLimitedQueue);
 
     static CImg<unsigned char>
-    genView(size_t inWidth, size_t inHeight, const deque<T> & inContainer, const T & inMax, size_t inMaxNumElements, const T & inAverage) {
+    genView(size_t inWidth, size_t inHeight, const deque<T> & inContainer, const T & inMax, const T & inMin, size_t inMaxNumElements, const T & inAverage) {
       LOG(debug) << "LimitedQueueT..." << endl;
 
       CImg<unsigned char> rgbImg(inWidth, inHeight, 1 /*depth*/, 3 /*3 channels - RGB*/);
@@ -90,7 +90,7 @@ namespace AT {
 
       for (typename deque<T>::const_iterator it = inContainer.begin(); it != inContainer.end(); ++it) {
 	// Calculate height - inHeight -- max()
-	float y = (float) *it / ((float) inMax ? (float) 2.0 * inMax : 1.0f);
+	float y = (float) (*it - inMin) / ((float) inMax ? (float) inMax : 1.0f);
 	int yDraw = inHeight - (float) inHeight * y;
 
 	int dist = distance(inContainer.begin(), it);
@@ -104,7 +104,7 @@ namespace AT {
       return rgbImg; // Make a copy...
     }
 
-    CImg<unsigned char> genView(size_t inWidth, size_t inHeight) const { return LimitedQueueT::genView(inWidth, inHeight, mContainer, max(), maxNumElements(), average()); }
+    CImg<unsigned char> genView(size_t inWidth, size_t inHeight) const { return LimitedQueueT::genView(inWidth, inHeight, mContainer, max(), min(), maxNumElements(), average()); }
   };
   
 }; // end namespace AT

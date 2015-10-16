@@ -120,8 +120,8 @@ public:
    */
   inline int getPos() const { return this->getNumberVal<FilterWheelTraitsT>(VecPropsT::FILTER_SLOT, PropsT::FILTER_SLOT_VALUE); }
   inline void setPos(unsigned int inPos, int inTimeoutMs = sDefaultTimeoutMs) {
-    if (this->isMovementInProgess())
-      throw IndiFilterWheelIsBusyExceptionT("Cannot set new filter position - filter wheel is currently busy.");
+    //if (this->isMovementInProgess())
+    // throw IndiFilterWheelIsBusyExceptionT("Cannot set new filter position - filter wheel is currently busy.");
     this->sendNumberVal<FilterWheelTraitsT>(VecPropsT::FILTER_SLOT, PropsT::FILTER_SLOT_VALUE, inPos, inTimeoutMs);
  } 
   inline int getMinPos() const {
