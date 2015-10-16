@@ -90,7 +90,7 @@ namespace AT {
 
       for (typename deque<T>::const_iterator it = inContainer.begin(); it != inContainer.end(); ++it) {
 	// Calculate height - inHeight -- max()
-	float y = (float) (*it - inMin) / ((float) inMax ? (float) inMax : 1.0f);
+	float y = (float) (*it - (float) inMin) / ((float) inMax ? (float) fabs(inMax - inMin) : 1.0f);
 	int yDraw = inHeight - (float) inHeight * y;
 
 	int dist = distance(inContainer.begin(), it);
