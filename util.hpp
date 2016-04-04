@@ -71,7 +71,7 @@ DEF_Exception(Timeout);
       __hitTimeout = ( __timeout__ >= 0 ? (__timeout__ <= __timeMs) : false); \
     }									\
     if (__hitTimeout)							\
-      throw TimeoutExceptionT(__excmsg__);			\
+      throw TimeoutExceptionT(__excmsg__);				\
   }									\
 
 

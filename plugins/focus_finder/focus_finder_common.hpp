@@ -24,6 +24,8 @@
 #ifndef _FOCUS_FINDER_COMMON_HPP_
 #define _FOCUS_FINDER_COMMON_HPP_ _FOCUS_FINDER_COMMON_HPP_
 
+#include <CImg.h>
+
 #include "fwhm.hpp"
 #include "hfd.hpp"
 #include "vcurve.hpp"
@@ -134,8 +136,70 @@ namespace AT {
   /**
    * Focus finder interface.
    */
+  struct FocusFinderInfoT {
+    struct StateT {
+      enum TypeE {
+	READY,
+	RUNNING,
+	FINISHED_SUCCESS,
+	FINISHED_FAILURE,
+	FINISHED_ABORTED,
+	_Count
+      };
+    
+      static const char * asStr(const TypeE & inType) {
+	switch (inType) {
+	case READY: return "READY";
+	case RUNNING: return "RUNNING";
+	case FINISHED_SUCCESS: return "FINISHED_SUCCESS";
+	case FINISHED_FAILURE: return "FINISHED_FAILURE";
+	case FINISHED_ABORTED: return "FINISHED_ABORTED";
+	default: return "<?>";
+	}
+      }
+    }; // end struct
+
+    FocusFinderInfoT() : mProgress(0), mState(StateT::READY) {}
+
+    int mProgress;
+    StateT::TypeE mState;
+  };
+
+
+  
+  /**
+   * Focus finder interface.
+   */
+  // TODO: To be removed
   class FocusFinderT {
   public:
+    struct StatusT {
+      enum TypeE {
+  	RUNNING,
+  	FINISHED_SUCCESS,
+  	FINISHED_FAILURE,
+  	_Count
+      };
+    
+      static const char * asStr(const TypeE & inType) {
+  	switch (inType) {
+  	case RUNNING: return "RUNNING";
+  	case FINISHED_SUCCESS: return "FINISHED_SUCCESS";
+  	case FINISHED_FAILURE: return "FINISHED_FAILURE";
+  	default: return "<?>";
+  	}
+      }
+    }; // end struct
+    
+  private:
+    StatusT::TypeE mStatus;
+    
+  public:    
+    FocusFinderT() : mStatus(StatusT::RUNNING) {}
+    inline StatusT::TypeE getStatus() const { return mStatus; }
+
+    // TODO: Do we need both??
+    virtual void step(const CImg<float> & inImage) = 0;
     virtual void findFocus() = 0;
   };
 }; // end AT namespace

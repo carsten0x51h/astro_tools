@@ -248,6 +248,8 @@ namespace AT {
     ~FocusFinderLinearInterpolationImplT() {
     }
 
+    virtual void step(const CImg<float> & inImage) { /*TODO... not yet implemented...*/ }
+
     virtual void findFocus();
     inline void stop() { mStopFlag = true; }
 

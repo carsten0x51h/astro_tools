@@ -27,3 +27,5 @@ namespace boost {}
 /*   const string & getDeviceName() const; */
 /*   double getTemperature() const; */
 /* }; */
+
+

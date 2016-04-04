@@ -3,7 +3,7 @@ FW_DIR=../..
 PLUGIN_DIR=$(FW_DIR)/plugins
 BUILD_DIR=$(FW_DIR)/build/plugins
 
-PLUGIN_SRC=$(PLUGIN_NAME).C $(FW_DIR)/io_util.C hfd.C fwhm.C focus_finder_common.C focus_finder_linear_interpolation_impl.C centroid.C limited_queue.C focuser_console_ui.C star_frame_selector.C
+PLUGIN_SRC=$(PLUGIN_NAME).C $(FW_DIR)/io_util.C hfd.C fwhm.C focus_finder_common.C centroid.C limited_queue.C focuser_console_ui.C star_frame_selector.C focus_finder_linear_interpolation_impl.C focus_finder_parabel_fit_impl.C
 
 PLUGIN_OBJECTS=$(patsubst %.C,%.o,$(PLUGIN_SRC))
 
@@ -17,7 +17,7 @@ LIBS=
 
 #-lindiclient
 all: $(PLUGIN_OBJECTS)
-	g++ $(PLUGIN_OBJECTS) -shared -Wl,-soname,libat$(PLUGIN_NAME).so $(CXXFLAGS) -lboost_serialization -lindi -lncurses -o $(BUILD_DIR)/libat$(PLUGIN_NAME).so
+	g++ $(PLUGIN_OBJECTS) -shared -Wl,-soname,libat$(PLUGIN_NAME).so $(CXXFLAGS) -lboost_serialization -lboost_atomic -lindi -lncurses -std=c++1y -o $(BUILD_DIR)/libat$(PLUGIN_NAME).so
 
 
 clean:

@@ -406,6 +406,11 @@ public:
     const INumber & nVer = this->getNumber<CameraTraitsT>(VecPropsT::CCD_BINNING, PropsT::VER_BIN);
     return BinningT(nHor.max, nVer.max);
   }
+  inline BinningT getMinBinning() const {
+    const INumber & nHor = this->getNumber<CameraTraitsT>(VecPropsT::CCD_BINNING, PropsT::HOR_BIN);
+    const INumber & nVer = this->getNumber<CameraTraitsT>(VecPropsT::CCD_BINNING, PropsT::VER_BIN);
+    return BinningT(nHor.min, nVer.min);
+  }
   
   inline void setBinning(unsigned int inHorzBinning, unsigned int inVertBinning, int inTimeout = sDefaultTimeoutMs) {
     INumberVectorProperty * nVec = this->getNumberVec<CameraTraitsT>(VecPropsT::CCD_BINNING);
