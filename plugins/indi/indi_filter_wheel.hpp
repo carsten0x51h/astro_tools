@@ -120,6 +120,10 @@ public:
    */
   inline int getPos() const { return this->getNumberVal<FilterWheelTraitsT>(VecPropsT::FILTER_SLOT, PropsT::FILTER_SLOT_VALUE); }
   inline void setPos(unsigned int inPos, int inTimeoutMs = sDefaultTimeoutMs) {
+
+    // NOTE: Calling this set-function twice causes 2 movements of Atik wheel... There is also no "abort" function
+    //       implemented in INDI for the ATIK Wheel. 
+    
     //if (this->isMovementInProgess())
     // throw IndiFilterWheelIsBusyExceptionT("Cannot set new filter position - filter wheel is currently busy.");
     this->sendNumberVal<FilterWheelTraitsT>(VecPropsT::FILTER_SLOT, PropsT::FILTER_SLOT_VALUE, inPos, inTimeoutMs);
@@ -141,6 +145,8 @@ public:
   }
 
   inline size_t getNumSlots() const { return this->getMaxPos(); }
+
+  // NOTE: There is no ABORT implemented so far in the ATIK Filter Wheel...
 };
 
 #endif // _INDI_FILTER_WHEEL_HPP_

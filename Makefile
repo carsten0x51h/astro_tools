@@ -110,14 +110,16 @@ eq6_indiserver:
 
 #/usr/bin/indi_atik_ccd /usr/bin/indi_atik_wheel
 full_indiserver:
-	indiserver -m 500 -v /usr/bin/indi_moonlite_focus  /usr/bin/indi_eqmod_telescope /usr/bin/indi_joystick
+	indiserver -m 500 -v /usr/bin/indi_moonlite_focus  /usr/bin/indi_eqmod_telescope /usr/bin/indi_joystick /usr/bin/indi_atik_ccd /usr/bin/indi_atik_wheel
 
 sim_find_focus:
 #	./build/astro_tools focus_find -vv --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=405,155
-	./build/astro_tools focus_find --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=264,574 --focus_mode=manual
+#	./build/astro_tools focus_find --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=264,574 --focus_mode=manual
+	/build/astro_tools focus_find --filter_device="Filter Simulator" --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=264,574 --focus_mode=manual
 
 atik_find_focus:
-	./build/astro_tools focus_find -v --camera_device="ATIK CCD Atik 383L+" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --star_select=2390,1267 --num_steps_to_determine_direction=300 --steps_to_reach_focus=300 --extrema_fitness_boundary=16 --rough_focus_granularity_steps=50 --fine_focus_granularity_steps=10 --fine_search_range_steps=150 --outer_hfd_radius_px=15 --fine_focus_record_num_curves=1
+	./build/astro_tools focus_find --camera_device="Atik 383L+ CCD" --filter_device="ATIK Wheel" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --star_select=264,574
+#	./build/astro_tools focus_find -v --camera_device="ATIK CCD Atik 383L+" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --star_select=2390,1267 --num_steps_to_determine_direction=300 --steps_to_reach_focus=300 --extrema_fitness_boundary=16 --rough_focus_granularity_steps=50 --fine_focus_granularity_steps=10 --fine_search_range_steps=150 --outer_hfd_radius_px=15 --fine_focus_record_num_curves=1
 
 atik_take_picture:
 	./build/astro_tools take_picture -v --device_name="ATIK CCD Atik 383L+" --exposure_time=1

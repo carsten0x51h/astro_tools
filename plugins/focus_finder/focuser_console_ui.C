@@ -77,7 +77,6 @@ namespace AT {
 			inColor, 1 /*opacity*/);
   }
 
-
   void
   genSelectionView(const CImg<float> & inCurrSubImg, const FrameT<unsigned int> & inFrame, CImg<unsigned char> * outRgbImg, float inScaleFactor = 3.0) {
     const unsigned char red[3] = { 255, 0, 0 }, green[3] = { 0, 255, 0 }, blue[3] = { 0, 0, 255 };
@@ -144,9 +143,6 @@ namespace AT {
     }
     MAC_AS_TYPE(Type, E, _Count);
   };
-
-  
-
 
 
   /******************************************************************************
@@ -265,90 +261,6 @@ namespace AT {
   }
 
 
-  /******************************************************************************
-   * MOVE FOCUS TASK
-   ******************************************************************************/
-  struct MoveFocusStatusDataT {
-    bool isRunning;
-    int progress;
-    int absPos;
-    MoveFocusStatusDataT() : isRunning(false), progress(0), absPos(0) {}
-  };
-
-  void moveFocusTask(int inDestPos, IndiFocuserT * inFocuserDevice, atomic<MoveFocusStatusDataT> * statusData) {
-    const float delta = fabs((int) inFocuserDevice->getAbsPos() - (int) inDestPos);
-
-    MoveFocusStatusDataT status;
-    status.isRunning = true;
-    statusData->store(status);  // updates the variable safely
-
-    // TODO: Can we call setAbsPos() from the thread???
-    // TODO / FIXME
-    inFocuserDevice->setAbsPos(inDestPos, 0); // 0 = do not block
-
-    do {
-      // Wait..., update status...
-      status.progress = 100 * (1.0 - ((float)((int) inFocuserDevice->getAbsPos() - (int) inDestPos) / delta));
-      status.absPos = inFocuserDevice->getAbsPos();
-      statusData->store(status);  // updates the variable safely
-
-      try {
-	chrono::milliseconds dura(10);
-	this_thread::sleep_for(dura); // Sleeps for a bit
-	boost::this_thread::interruption_point();
-      } catch(boost::thread_interrupted const& ) {
-	status.isRunning = false;
-	statusData->store(status);  // updates the variable safely
-	return;
-      }
-    } while(inFocuserDevice->getAbsPos() != inDestPos);
-  
-    status.isRunning = false;
-    statusData->store(status);  // updates the variable safely
-  
-    return;
-  }
-
-
-  /******************************************************************************
-   * SELECT FILTER TASK
-   ******************************************************************************/
-  struct SelectFilterStatusDataT {
-    bool isRunning;
-    int progress;
-    int selFilterIdx;
-    SelectFilterStatusDataT() : isRunning(false), progress(0), selFilterIdx(0) {}
-  };
-
-  void selectFilterTask(atomic<SelectFilterStatusDataT> * statusData) {
-    SelectFilterStatusDataT status;
-    status.isRunning = true;
-    statusData->store(status);  // updates the variable safely
-  
-    for(int i = 0; i < 100; i++) {
-      status.progress = i; // TODO
-      status.selFilterIdx = 3; // TODO
-    
-      statusData->store(status);  // updates the variable safely
-
-      try {
-	chrono::milliseconds dura(200);
-	this_thread::sleep_for(dura); // Sleeps for a bit
-	boost::this_thread::interruption_point();
-      } catch(boost::thread_interrupted const& ) {
-	status.isRunning = false;
-	statusData->store(status);  // updates the variable safely
-	return;
-      }
-    }
-  
-    status.isRunning = false;
-    statusData->store(status);  // updates the variable safely
-  
-    return;
-  }
-
-
   void
   manualConsoleFocusCntl(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, const FrameT<unsigned int> & inSelectionFrameFF, float inExposureTimeSec, BinningT inBinning, bool inFollowStar)  {
 
@@ -367,12 +279,6 @@ namespace AT {
     thread focusFindThread;
     atomic<FocusFindStatusDataT> focusFindStatus;
 
-    thread moveFocusThread;
-    atomic<MoveFocusStatusDataT> moveFocusStatus;
-  
-    thread selectFilterThread;
-    atomic<SelectFilterStatusDataT> selectFilterStatus;
-
     // TODO: ControlCameraTemperatureT * controlCameraTemperature = 0;
 
     // Windows - TODO: Not always available?
@@ -382,7 +288,7 @@ namespace AT {
     int expTimeVal = inExposureTimeSec;
 
     MenuFieldT<int> expTimeMenuField(& expTimeVal, "Exposure time: ", 1 /* steps */, StepModeT::LINEAR,
-				     1 /* min */, 1000 /*max*/ /*TODO: query min/max from INDI*/,
+				     1 /* min */, 10000 /*max*/ /*TODO: query min/max from INDI*/,
 				     [](int * inValPtr) { return std::to_string(*inValPtr) + "s"; });
     menuEntries.push_back(& expTimeMenuField);
 
@@ -396,37 +302,21 @@ namespace AT {
     menuEntries.push_back(& binningMenuField);
 
 
-    int filterSelect = 1;
+    int filterSelect = inFilterWheelDevice->getPos();
     MenuFieldT<int> filterSelectMenuField(& filterSelect, "Filter: ", 1 /* steps */, StepModeT::LINEAR,
-					  1 /* min */, 5 /*max*/ /*TODO: query min/max from INDI*/,
+					  inFilterWheelDevice->getMinPos() /* min */, inFilterWheelDevice->getMaxPos() /*max*/,
 					  [](int * inValPtr) { return std::to_string(*inValPtr) +  " (TODO - query...)"; },
-					  [&selectFilterThread, &selectFilterStatus](int * inValPtr) {
-					    bool running = selectFilterStatus.load().isRunning;
-					  
-					    if (*inValPtr /*dest */ != 3 /* TODO: Current value*/) {
-					      // Start thread if not yet active.
-					      if (! running) {
-						selectFilterThread = thread(selectFilterTask, & selectFilterStatus);
-					      }
-					    } else {
-					      // Abort - only interrupt if still running
-					      if (running) {
-						selectFilterThread.interrupt();
-					      }
-					    }
+					  [&](int * inValPtr) {
+					    inFilterWheelDevice->setPos(*inValPtr, 0 /* do not block */);
 					  },
-					  [&selectFilterThread, &selectFilterStatus]() {
+					  [&]() {
 					    /*ABORT handler*/
-					    bool running = selectFilterStatus.load().isRunning;
-					    if (running) {
-					      selectFilterThread.interrupt();
-					      // TODO: Set
-					      // filterSelect = INDI current value...
-					    }
+					    // TODO: abort not yet implemented - supported by INDI API?!
+					    //inFilterWheelDevice->abort();
 					  });
 
-    // TODO: Check if there is actually a filter ...
-    if (true) {
+    // Check if there is actually a filter ...
+    if (inFilterWheelDevice) {
       menuEntries.push_back(& filterSelectMenuField);
     } else {
       menuEntries.push_back(& sep);
@@ -461,25 +351,17 @@ namespace AT {
 
     int focusStepSize = 100;
     int absFocusPosDest = inFocuserDevice->getAbsPos();
+    int focusDelta = 0;
     MenuFieldT<int> absFocusPosDestMenuField(& absFocusPosDest, "Abs focus pos: ", focusStepSize /* steps */, StepModeT::LINEAR,
 					     inFocuserDevice->getMinPos() /* min */, inFocuserDevice->getMaxPos() /*max*/,
 					     [](int * inValPtr) { return std::to_string(*inValPtr) + " steps"; },
-					     [&moveFocusThread, &moveFocusStatus, &inFocuserDevice](int * inValPtr) {
-					       bool running = moveFocusStatus.load().isRunning;
-					       
-					       // Start thread if not yet active.
-					       if (! running) {
-						 moveFocusThread = thread(moveFocusTask, *inValPtr, inFocuserDevice, & moveFocusStatus);
-					       }
+					     [&](int * inValPtr) {
+					       focusDelta = fabs(inFocuserDevice->getAbsPos() - *inValPtr);
+					       inFocuserDevice->setAbsPos(*inValPtr, 0); // 0 = do not block
 					     },
-					     [&moveFocusThread, &moveFocusStatus]() {
+					     [&]() {
 					       /*ABORT handler*/
-					       bool running = moveFocusStatus.load().isRunning;
-					       if (running) {
-						 moveFocusThread.interrupt();
-						 // TODO: Set
-						 // absFocusPosDest = INDI current value...
-					       }
+					       inFocuserDevice->abortMotion();
 					     });
 
     MenuFieldT<int> focusStepSizeMenuField(& focusStepSize, "Focus step size: ", 10 /* steps */, StepModeT::FACTOR,
@@ -532,12 +414,42 @@ namespace AT {
     FrameT<float> currSelectionFrameFF = inSelectionFrameFF;
     PointT<float> currCenterPosFF = frameToCenterPos(currSelectionFrameFF);
     FrameT<float> currImageFrameFF = centerPosToFrame(currCenterPosFF, borderFactor * currSelectionFrameFF.get<2>(), borderFactor * currSelectionFrameFF.get<3>());    
+
+
     while (! consoleMenu.wantExit()) {
 
       // Handle menu
       consoleMenu.update();
 
-      // Handle exposure...
+      ////////////////////////////
+      // Handle filter selction //
+      ////////////////////////////
+      if (inFilterWheelDevice) {
+	stringstream ssFilterWheelStatus;
+	if (inFilterWheelDevice->isMovementInProgess()) {
+	  ssFilterWheelStatus << "moving... is: " << inFilterWheelDevice->getPos();
+	} else {
+	  ssFilterWheelStatus << "ready (pos=" << inFilterWheelDevice->getPos() << ").";
+	}
+	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 16, "Filter status: %s", ssFilterWheelStatus.str().c_str());
+      }
+
+
+      ////////////////////////////
+      // Handle focus           //
+      ////////////////////////////
+      if (inFocuserDevice->isMovementInProgess()) {
+	int progress = 100 * (1.0 - ((float)((int) inFocuserDevice->getAbsPos() - (int) absFocusPosDest) / focusDelta));
+	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 15, "Moving focus... pos: %d/%d - progress: %d%\n",
+			     inFocuserDevice->getAbsPos(), absFocusPosDest, progress);
+      } else {
+	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 15, "Focus ready - pos: %d\n", inFocuserDevice->getAbsPos());
+      }
+      
+      
+      ////////////////////////////
+      // Handle exposure...     //
+      ////////////////////////////
       ExposureStatusDataT exposureStatusData = exposureStatus.load();
       
       switch(exposureStatusData.taskState) {
@@ -644,12 +556,10 @@ namespace AT {
       default:
 	break;
       }
-      
 
-      
-
-
-
+      ////////////////////////////
+      // Handle focus finder    //
+      ////////////////////////////
       FocusFindStatusDataT focusFindStatusData = focusFindStatus.load();	
       if (focusFindStatusData.isRunning) {
 	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress: %d, hfd: %f\n", focusFindStatusData.progress, focusFindStatusData.hfd);
@@ -657,17 +567,8 @@ namespace AT {
 	focusFindStartAbort = StartAbortT::START;
       }
 
-      MoveFocusStatusDataT moveFocusStatusData = moveFocusStatus.load();	
-      consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 15, "Move focus progress: %d, absPos: %d\n", moveFocusStatusData.progress, moveFocusStatusData.absPos);
-
-      SelectFilterStatusDataT selectFilterStatusData = selectFilterStatus.load();	
-      if (selectFilterStatusData.isRunning) {
-	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 16, "Select filter progress: %d, filterIdx: %d\n", selectFilterStatusData.progress, selectFilterStatusData.selFilterIdx);
-      } else {
-	// TODO: Required?
-	//absFocusPosDest = new final abs pos...;
-      }
-    
+      
+      
       // Wait a moment to keep processor down...
       chrono::milliseconds dura(10);
       this_thread::sleep_for(dura); // Sleeps for a bit
