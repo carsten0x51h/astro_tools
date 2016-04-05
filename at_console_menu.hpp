@@ -191,25 +191,25 @@ namespace AT {
       switch(inKey) {
       case KEY_LEFT:
 	if (valRef > 0) {
+	  valRef = static_cast<typename T::TypeE>(valRef - 1);
 	  if (mUpdateFunc) {
 	    mUpdateFunc(& valRef);
 	  }
-	  valRef = static_cast<typename T::TypeE>(valRef - 1);
 	}
 	break;
       case KEY_RIGHT:
 	if (valRef < T::_Count - 1) {
+	  valRef = static_cast<typename T::TypeE>(valRef + 1);
 	  if (mUpdateFunc) {
 	    mUpdateFunc(& valRef);
 	  }
-	  valRef = static_cast<typename T::TypeE>(valRef + 1);
 	}
 	break;
       case 10: /*ENTER*/
+	valRef = static_cast<typename T::TypeE>((valRef + 1) % T::_Count);
 	if (mUpdateFunc) {
 	  mUpdateFunc(& valRef);
 	}
-	valRef = static_cast<typename T::TypeE>((valRef + 1) % T::_Count);
 	break;
       case 27: /*ESC*/
 	if (mAbortFunc) {

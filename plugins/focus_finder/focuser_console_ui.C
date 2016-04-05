@@ -127,6 +127,23 @@ namespace AT {
   };
 
 
+  struct CoolerStateT {
+    enum TypeE {
+      DISABLED,
+      ENABLED,
+      _Count
+    };
+
+    static const char * asStr(const TypeE & inType) {
+      switch (inType) {
+      case DISABLED: return "DISABLED";
+      case ENABLED: return "ENABLED";
+      default: return "<?>";
+      }
+    }
+    MAC_AS_TYPE(Type, E, _Count);
+  };
+  
   struct ExposureModeT {
     enum TypeE {
       SINGLE,
@@ -322,6 +339,52 @@ namespace AT {
       menuEntries.push_back(& sep);
     }
 
+
+    // Camera cooler
+    CoolerStateT::TypeE cameraCoolerState = (inCameraDevice->isCoolerEnabled() ? CoolerStateT::ENABLED : CoolerStateT::DISABLED);
+    int temperature = inCameraDevice->getTemperature();
+    
+    MenuSelectT<CoolerStateT> coolerStateMenuSelect(& cameraCoolerState, "Cooler state: ",
+						    [](CoolerStateT::TypeE * inValPtr) { return CoolerStateT::asStr(*inValPtr); },
+						    [&](CoolerStateT::TypeE * inValPtr) {
+						      if (*inValPtr == CoolerStateT::ENABLED) {
+							// Enable / disable cooler - TODO: Handle busy state?
+							// NOTE: setTemperature directly enables the cooler
+							inCameraDevice->setTemperature(temperature, 0); // 0 = do not block
+							inCameraDevice->setCoolerEnabled(true);
+						      } else {
+							inCameraDevice->setCoolerEnabled(false);
+						      }
+						    },
+						    [&]() {
+						      /*ABORT handler*/
+						      inCameraDevice->setCoolerEnabled(false);
+						    });
+
+
+    MenuFieldT<int> coolerTemperatureMenuField(& temperature, "Temperature: ", 1 /* steps */, StepModeT::LINEAR,
+					       inCameraDevice->getMinTemperature() /* min */, inCameraDevice->getMaxTemperature() /*max*/,
+					       [](int * inValPtr) {
+						 stringstream ssTemp;
+						 ssTemp << *inValPtr << " degree celsius";
+						 return ssTemp.str();
+					       },
+					       [&](int * inValPtr) {
+						 // UPDATE handler
+						 if (cameraCoolerState == CoolerStateT::ENABLED) {
+						   inCameraDevice->setTemperature(temperature, 0); // 0 = do not block
+						 }
+					       },
+					       [&]() {
+						 // ABORT handler - ESC
+						 // ...
+					       });
+
+    if (inCameraDevice->hasCooler()) {
+      menuEntries.push_back(& coolerTemperatureMenuField);
+      menuEntries.push_back(& coolerStateMenuSelect);
+    }
+
   
     ExposureModeT::TypeE expMode = ExposureModeT::SINGLE;
     MenuSelectT<ExposureModeT> expModeMenuSelect(& expMode, "Exposure mode: ",
@@ -382,7 +445,7 @@ namespace AT {
 							   [&](StartAbortT::TypeE * inValPtr) {
 							     bool running = focusFindStatus.load().isRunning;
 							   
-							     if (*inValPtr == StartAbortT::START) {
+							     if (*inValPtr == StartAbortT::ABORT) {
 							       // Start thread if not yet active.
 							       if (! running) {
 								 focusFindThread = thread(focusFindTask, & focusFindStatus);
@@ -444,6 +507,25 @@ namespace AT {
 			     inFocuserDevice->getAbsPos(), absFocusPosDest, progress);
       } else {
 	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 15, "Focus ready - pos: %d\n", inFocuserDevice->getAbsPos());
+      }
+
+      
+      /////////////////////////////////////
+      // Handle focus temperature...     //
+      /////////////////////////////////////
+      // TODO!!!
+      // if (inFocuserDevice->supportsTemperature()) {
+      //     mv_print(infoColumn, focusStepSizePos + 2, "Focus temp: %d\0xf8 C", inFocuserDevice->getTemperature());
+      // }
+
+            
+      //////////////////////////////////////
+      // Handle camera temperature...     //
+      //////////////////////////////////////
+      if (inCameraDevice->hasCooler()) {
+	// TODO: (inCameraDevice->isTemperatureReached() ? "yes" : "no") caused segfault?!
+      	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 18, "Camera cooler state: %s - Dest temp: %d C, Is temp: %f C\n",
+      			     CoolerStateT::asStr(cameraCoolerState), temperature, (float) inCameraDevice->getTemperature());
       }
       
       
