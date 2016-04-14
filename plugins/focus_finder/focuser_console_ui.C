@@ -311,6 +311,9 @@ namespace AT {
   /******************************************************************************
    * FIND FOCUS TASK
    ******************************************************************************/
+  // Aproximate parabel
+  typedef CurveFitTmplT<ParabelFitTraitsT> ParabelMatcherT;
+
   struct FocusFindCntlDataT {
     float exposureTime;
     PointT<float> centerPosFF;
@@ -337,16 +340,30 @@ namespace AT {
     FocusFinderDataSetT() {};
     FocusFinderDataSetT(const HfdT & inHfd, const FwhmT & inFwhmHorz, const FwhmT & inFwhmVert) : mHfd(inHfd), mFwhmHorz(inFwhmHorz), mFwhmVert(inFwhmVert) {}
   };
+  
+  
+  // TODO: Too many parameters... NEED NEW DESIGN...   maybe class / part of class with props as members...?!
+  static PointT<float> mapToImgCoords(const PointT<float> & inCurveCoords, float inWidth, float inHeight, float inMinX, float inMaxX, float inMinY, float inMaxY) {
+    const float facX = (inMaxX == inMinX ? 1.0f : inWidth / (inMaxX - inMinX)); 
+    const float facY = (inMaxY == inMinY ? 1.0f : inHeight / (inMaxY - inMinY)); 
+    
+    float xMap = (inMaxX == inMinX ? 0.5f * inWidth : facX * (inCurveCoords.get<0>() - inMinX) );
+    float yMap = (inMaxY == inMinY ? 0.5f * inHeight : inHeight - (facY * (inCurveCoords.get<1>() - inMinY)));
 
-
+    return PointT<float>(xMap, yMap);
+  }
+  
   static void
-  genCurve(const PointLstT<float> & inPoints, CImg<unsigned char> * outRgbImg, const unsigned char * inColor, size_t inCrossSize = 3) {
+  genCurve(const PointLstT<float> & inPoints, CImg<unsigned char> * outRgbImg, const LineT<float> * inLineL, const LineT<float> * inLineR,
+	   const ParabelMatcherT::CurveParamsT::TypeT * inParabelParms, const unsigned char * inColor, size_t inCrossSize = 3) {
+
     // TODO: ASSERT outRgbImg...
     // Map position
-
     size_t width = outRgbImg->width();
     size_t height = outRgbImg->height();
-	
+
+    outRgbImg->fill(0);
+    
     // TODO: Maybe put this code to a generic helper function...
     float minX = std::numeric_limits<float>::max();
     float maxX = std::numeric_limits<float>::min();
@@ -359,17 +376,45 @@ namespace AT {
       if (it->get<1>() < minY) { minY = it->get<1>(); }
       if (it->get<1>() > maxY) { maxY = it->get<1>(); }
     }
-	  
-    const float facX = (maxX == minX ? 1.0f : width / (maxX - minX)); 
-    const float facY = (maxY == minY ? 1.0f : height / (maxY - minY)); 
-    
+
+    // Draw points
     for (PointLstT<float>::const_iterator it = inPoints.begin(); it != inPoints.end(); ++it) {
-      float xMap = (maxX == minX ? 0.5f * width : facX * (it->get<0>() - minX) );
-      float yMap = (maxY == minY ? 0.5f * height : height - (facY * (it->get<1>() - minY)));
-      
-      drawCross(outRgbImg, PointT<float>(xMap, yMap), inColor, inCrossSize, 1.0);
+      drawCross(outRgbImg, mapToImgCoords(*it, width, height, minX, maxX, minY, maxY), inColor, inCrossSize, 1.0);
     }
+
+    // Draw lines
+    if (inLineL) {
+      for (int i = minX; i < maxX; ++i) {
+	PointT<float> mapPoint = mapToImgCoords(PointT<float>(i, inLineL->f(i)), width, height, minX, maxX, minY, maxY);
+	outRgbImg->draw_point(mapPoint.get<0>(), mapPoint.get<1>(), inColor, 1 /*opacity*/);
+      }
+    }
+
+    if (inLineR) {
+      for (int i = minX; i < maxX; ++i) {
+	PointT<float> mapPoint = mapToImgCoords(PointT<float>(i, inLineR->f(i)), width, height, minX, maxX, minY, maxY);
+	outRgbImg->draw_point(mapPoint.get<0>(), mapPoint.get<1>(), inColor, 1 /*opacity*/);
+      }
+    }
+
+    if (inParabelParms) {
+      for (int i = minX; i < maxX; ++i) {
+	PointT<float> mapPoint = mapToImgCoords(PointT<float>(i, ParabelFitTraitsT::fx(i, *inParabelParms)), width, height, minX, maxX, minY, maxY);
+	outRgbImg->draw_point(mapPoint.get<0>(), mapPoint.get<1>(), inColor, 1 /*opacity*/);
+      }
+    }
+
   }
+
+  template<typename T>
+  class PointLstAccessorT {
+  public:
+    typedef PointLstT<T> TypeT;
+    static DataPointT getDataPoint(size_t inIdx, typename TypeT::const_iterator inIt) {
+      DataPointT dp(inIt->get<0>(), inIt->get<1>());
+      return dp;
+    }
+  };
 
   
   // IDEA: My focuser is quite fine grained! Hence the step-size is much bigger than the values in the paper! The "critical area" where I was trying to find the focus and where I was tring to record the V-Curve is just the very small "red" area in the graph. Hence, I need to choose the step-size much bigger than I thought or at least I need to move in a region I did not expect. Still, this requires to determine the initial slope / direction and this requires to determine the initial step-size (if it is not specified by the user).
@@ -448,15 +493,24 @@ namespace AT {
     // TODO: We may move StarDataT into the statusData directly...
     recordedStarData[inFocuserDevice->getAbsPos()] = FocusFinderDataSetT(hfd, fwhmHorz, fwhmVert);
       
-
+    // NOTE: DISPLAY STIFF WILL BE MOVED OUT OF HERE
     CImgDisplay currImageDisp;// TODO: Should probably not be here...
-    CImgDisplay currCurveDisp;// TODO: Should probably not be here...
-      
+    CImgDisplay currHfdCurveDisp, currFwhmHorzCurveDisp, currFwhmVertCurveDisp;// TODO: Should probably not be here...
+
+    const size_t _width = 600, _height = 500;
+    const unsigned char green[3] = { 0, 255, 0 }, red[3] = { 255, 0, 0 }, blue[3] = { 0, 0, 255 };
+    const size_t cCrossSize = 5;
+    CImg<unsigned char> hfdCurveRgbImg(_width, _height, 1 /*size_z*/, 3 /*3 channels - RGB*/, 1 /*interpolation_type*/);
+    CImg<unsigned char> fwhmHorzCurveRgbImg(_width, _height, 1 /*size_z*/, 3 /*3 channels - RGB*/, 1 /*interpolation_type*/);
+    CImg<unsigned char> fwhmVertCurveRgbImg(_width, _height, 1 /*size_z*/, 3 /*3 channels - RGB*/, 1 /*interpolation_type*/);
+    
+
+    
     // Do "numSteps" steps in both directions
     int currAbsFocusDestPos = focusStartPos;
     int sign[2] = { -1, 1 };
     PointLstT<float> hfdPoints[2];
-    PointLstT<float> allHfdPoints;
+    PointLstT<float> allHfdPoints, allFwhmHorzPoints, allFwhmVertPoints;
 
     for (size_t i = 0; i < 2; ++i) {
       for (size_t step = 0; step < numSteps; ++step) {
@@ -479,21 +533,31 @@ namespace AT {
 	
 	// Save data for further calculation (TODO: Code below might be simplified / removed...)
 	// TODO: Add same for fwhms?
-	PointT<float> currPosition(inFocuserDevice->getAbsPos(), hfd.getValue());
-	hfdPoints[i].push_back(currPosition);
-	allHfdPoints.push_back(currPosition); // TODO: Required? Better solution?
+	PointT<float> currHfdPosition(inFocuserDevice->getAbsPos(), hfd.getValue());
+	hfdPoints[i].push_back(currHfdPosition);
+	allHfdPoints.push_back(currHfdPosition); // TODO: Required? Better solution?
 	LOG(error) << "hfdPoints[" << i << "] = (" << inFocuserDevice->getAbsPos() << ", " << hfd.getValue() << ")" << endl;
 
+	PointT<float> currFwhmHorzPosition(inFocuserDevice->getAbsPos(), fwhmHorz.getValue());
+	allFwhmHorzPoints.push_back(currFwhmHorzPosition); // TODO: Required? Better solution?
+	LOG(error) << "fwhmHorzPoints[" << i << "] = (" << inFocuserDevice->getAbsPos() << ", " << fwhmHorz.getValue() << ")" << endl;
+
+	PointT<float> currFwhmVertPosition(inFocuserDevice->getAbsPos(), fwhmVert.getValue());
+	allFwhmVertPoints.push_back(currFwhmVertPosition); // TODO: Required? Better solution?
+	LOG(error) << "fwhmVertPoints[" << i << "] = (" << inFocuserDevice->getAbsPos() << ", " << fwhmVert.getValue() << ")" << endl;
+
+	
 	///////////////////////////////////////////////////////////////////////
 	// DRAW START
 	// DRAW - just TMP - will be moved out of algorithm and handled by/in update handler which will be called from here...
+	genCurve(allHfdPoints, & hfdCurveRgbImg, 0, 0, 0, green, cCrossSize);
+	currHfdCurveDisp.display(hfdCurveRgbImg);
 
-	const size_t _width = 600, _height = 500;
-	const unsigned char green[3] = { 0, 255, 0 };
-	const size_t cCrossSize = 2;
-	CImg<unsigned char> curveRgbImg(_width, _height, 1 /*size_z*/, 3 /*3 channels - RGB*/, 1 /*interpolation_type*/);
-	genCurve(allHfdPoints, & curveRgbImg, green, cCrossSize);
-	currCurveDisp.display(curveRgbImg);
+	genCurve(allFwhmHorzPoints, & fwhmHorzCurveRgbImg, 0, 0, 0, red, cCrossSize);
+	currFwhmHorzCurveDisp.display(fwhmHorzCurveRgbImg);
+
+	genCurve(allFwhmVertPoints, & fwhmVertCurveRgbImg, 0, 0, 0, blue, cCrossSize);
+	currFwhmVertCurveDisp.display(fwhmVertCurveRgbImg);
 	// DRAW END
 	////////////////////////////////////////////////////////////////////////
 	
@@ -544,23 +608,50 @@ namespace AT {
     }
     // DEBUG END
 
-
-
     LineT<float> bestFitLineL(hfdPoints[0]);
     LineT<float> bestFitLineR(hfdPoints[1]);
 
+    float corrL = correlation<float>(hfdPoints[0]);
+    float corrR = correlation<float>(hfdPoints[1]);
+    
     // DEBUG START
     // TODO: LOG does not convert ostream correctly... compile error...
     LOG(error) << " > bestFitLineL: " << endl;
     cerr << bestFitLineL << endl;
+    LOG(error) << "CorrelationL: " << corrL << endl;
     
     LOG(error) << " > bestFitLineR: " << endl;
     // TODO: LOG does not convert ostream correctly... compile error...
     //LOG(error) << bestFitLineR << endl;
     cerr << bestFitLineR << endl;
-
+    LOG(error) << "CorrelationR: " << corrR << endl;
     // DEBUG END
 
+  
+    // Do the LM fit, throws CurveFitExceptionT if error boundaries are specified and NOT satisfied
+    ParabelMatcherT::CurveParamsT::TypeT parabelParms;
+    ParabelMatcherT::fitGslLevenbergMarquart<PointLstAccessorT<float> >(allHfdPoints, & parabelParms, 1 /*TODO max abs err*/, 1 /* TODO max rel err*/, false /* no ex */);
+
+    float a = parabelParms[ParabelMatcherT::CurveParamsT::A_IDX];
+    float b = parabelParms[ParabelMatcherT::CurveParamsT::B_IDX];
+    float c = parabelParms[ParabelMatcherT::CurveParamsT::C_IDX];
+      
+    LOG(error) << "Calculated parabel parms - a: " << a << ", b: " << b << ", c: " << c << endl;
+    
+    // Calculate xmin, ymin
+    float xMin = - b / (2.0f * a);
+    float yMin = - 0.25f * (b * b) / a + c;
+
+    LOG(error) << "xMin: " << xMin << ", yMin: " << yMin << endl;
+    
+    // TODO: Draw parabel ...
+    // Draw data points with lines
+    genCurve(allHfdPoints, & hfdCurveRgbImg, & bestFitLineL, & bestFitLineR, & parabelParms, green, cCrossSize);
+    currHfdCurveDisp.display(hfdCurveRgbImg);
+
+    
+
+    
     
     // Calculate intersection point
     try {
@@ -579,8 +670,8 @@ namespace AT {
 
     
     // TODO - TMP - wait
-    while (! currCurveDisp.is_closed()) {
-      currCurveDisp.wait();
+    while (! currHfdCurveDisp.is_closed()) {
+      currHfdCurveDisp.wait();
     }
 
     

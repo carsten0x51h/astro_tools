@@ -44,7 +44,6 @@ using namespace boost;
 using namespace cimg_library;
 
 DEF_Exception(Timeout);
-DEF_Exception(LineIntersection);
 
 // NOTE: Defines are not bound to any namespace...
 #define START_MEASURE(__name__)			\
@@ -463,7 +462,55 @@ template <typename T>
 using PointLstT = std::list<PointT<T> >;
 
 
+DEF_Exception(MeanCalc);
+
+template <typename T>
+static void
+calcMeans(const PointLstT<T> & inDataPoints, T * outMeanX, T * outMeanY) {
+  AT_ASSERT(MeanCalc, outMeanX && outMeanY, "outMeanX and outMeanY have to be set.");
+  T sumX = 0, sumY = 0;
+  for (typename PointLstT<T>::const_iterator it = inDataPoints.begin(); it != inDataPoints.end(); ++it) {
+    sumX += it->get<0>();
+    sumY += it->get<1>();
+  }
+  
+  *outMeanX = sumX / inDataPoints.size();
+  *outMeanY = sumY / inDataPoints.size();
+}
+
+
+// Calculate correlation Corr (Corelation coefficient (NOTE: Needs linear depenceny between variables))
+// TODO: Move to util.h - make template
+template <typename T>
+static T correlation(const PointLstT<T> & inDataPoints) {
+  T mean_x = 0, mean_y = 0;
+  calcMeans(inDataPoints, & mean_x, & mean_y);
+
+  T numeratorSum = 0, denominatorXSum = 0, denominatorYSum = 0;
+    
+  for (typename PointLstT<T>::const_iterator it = inDataPoints.begin(); it != inDataPoints.end(); ++it) {
+    const T & xi = it->get<0>();
+    const T & yi = it->get<1>();
+
+    T diff_x = xi - mean_x;
+    T diff_y = yi - mean_y;
+      
+    numeratorSum += diff_x * diff_y;
+    denominatorXSum += pow(diff_x, 2.0f);
+    denominatorYSum += pow(diff_y, 2.0f);
+  }
+    
+  T numerator = numeratorSum / inDataPoints.size();
+  T denominatorX = sqrt(denominatorXSum / inDataPoints.size());
+  T denominatorY = sqrt(denominatorYSum / inDataPoints.size());
+
+  return numerator / (denominatorX * denominatorY);
+}
+
+
+
 DEF_Exception(Line);
+DEF_Exception(LineIntersection);
 
 template <typename T>
 class LineT {
@@ -478,7 +525,8 @@ public:
   LineT(const T & inA1 = 0, const T & inA0 = 0) : mA1(inA1),mA0(inA0) {}
   const T & getA1() const { return mA1; }
   const T & getA0() const { return mA0; }
-
+  T f(const T & inX) const { return (mA1 * inX + mA0); }
+  
   ostream & print(ostream & os) {
     os << "y(x) = " << mA1 << "*x + " << mA0 << endl;
     return os;
@@ -504,17 +552,11 @@ public:
     }
     return sp;
   }
-
-  static void calcBestFitLine(const PointLstT<T> inDataPoints, T * outA1, T * outA0) {
-
-    T sumX = 0, sumY = 0;
-    for (typename PointLstT<T>::const_iterator it = inDataPoints.begin(); it != inDataPoints.end(); ++it) {
-      sumX += it->get<0>();
-      sumY += it->get<1>();
-    }
-    
-    T mean_x = sumX / inDataPoints.size();
-    T mean_y = sumY / inDataPoints.size();
+  
+  static void
+  calcBestFitLine(const PointLstT<T> & inDataPoints, T * outA1, T * outA0) {
+    T mean_x = 0, mean_y = 0;
+    calcMeans<T>(inDataPoints, & mean_x, & mean_y);
     
     T top = 0, bottom = 0;
     for (typename PointLstT<T>::const_iterator it = inDataPoints.begin(); it != inDataPoints.end(); ++it) {
