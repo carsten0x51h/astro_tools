@@ -115,7 +115,7 @@ full_indiserver:
 sim_find_focus:
 #	./build/astro_tools focus_find -vv --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=405,155
 #	./build/astro_tools focus_find --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=264,574 --focus_mode=manual
-	/build/astro_tools focus_find --filter_device="Filter Simulator" --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=264,574 --focus_mode=manual
+	./build/astro_tools focus_find --filter_device="Filter Simulator" --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=264,574 --focus_mode=manual
 
 atik_find_focus:
 	./build/astro_tools focus_find --camera_device="Atik 383L+ CCD" --filter_device="ATIK Wheel" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --star_select=264,574

@@ -44,6 +44,7 @@ using namespace boost;
 using namespace cimg_library;
 
 DEF_Exception(Timeout);
+DEF_Exception(LineIntersection);
 
 // NOTE: Defines are not bound to any namespace...
 #define START_MEASURE(__name__)			\
@@ -155,14 +156,16 @@ public:
   HostnameAndPortT(const string & inHostname = "", size_t inPort = 0) : mHostname(inHostname), mPort(inPort) { }
   const string & getHostname() const { return mHostname; }
   size_t getPort() const { return mPort; }
-  ostream & print(ostream & os) const {
+  std::ostream & print(ostream & os) const {
     os << mHostname << ":" << mPort;
     return os;
   }
-  friend ostream & operator<<(ostream & os, const HostnameAndPortT & inHostnameAndPort);
+  friend std::ostream & operator<<(std::ostream & os, const HostnameAndPortT & inHostnameAndPort);
 };
 
 ostream & operator<<(ostream & os, const HostnameAndPortT & inHostnameAndPort);
+
+
 
 /**
  * outResFrame contains subframe (FrameT) of intersection with given frame and chip dimension.
@@ -432,10 +435,106 @@ getMinPixel(const CImg<float> & inImg, const FrameT<int> * inFrame = 0, CoordTyp
  * Little draw helper function to draw a cross...
  */
 static void
-drawCross(CImg<unsigned char> * outRgbImg, size_t inX, size_t inY, size_t inCrossSize, const unsigned char * inColor, size_t inOpacity) {
-  outRgbImg->draw_line(inX - inCrossSize, inY, inX + inCrossSize, inY, inColor, inOpacity);
-  outRgbImg->draw_line(inX, inY - inCrossSize, inX, inY + inCrossSize, inColor, inOpacity);
+drawCross(CImg<unsigned char> * inoutImg, float inX, float inY, const unsigned char * inColor, size_t inCrossSize = 3, float inScaleFactor = 1.0, size_t inOpacity = 1) {
+  inoutImg->draw_line(floor(inScaleFactor * (inX - inCrossSize + 1) + 0.5), floor(inScaleFactor * (inY + 1) + 0.5),
+		      floor(inScaleFactor * (inX + inCrossSize + 1) + 0.5), floor(inScaleFactor * (inY + 1) + 0.5),
+		      inColor, inOpacity);
+  
+  inoutImg->draw_line(floor(inScaleFactor * (inX + 1) + 0.5), floor(inScaleFactor * (inY - inCrossSize + 1) + 0.5),
+		      floor(inScaleFactor * (inX + 1) + 0.5), floor(inScaleFactor * (inY + inCrossSize + 1) + 0.5),
+		      inColor, inOpacity);
 }
+static void
+drawCross(CImg<unsigned char> * inoutImg, const PointT<float> & inPos, const unsigned char * inColor, size_t inCrossSize = 3, float inScaleFactor = 1.0, size_t inOpacity = 1) {
+  drawCross(inoutImg, inPos.get<0>(), inPos.get<1>(), inColor, inCrossSize, inScaleFactor, inOpacity); 
+}
+
+static void
+drawFrame(CImg<unsigned char> * inoutImg, const FrameT<float> & inFrame, const unsigned char inColor[3], float inScaleFactor = 1.0) {
+  int x1 = floor(inScaleFactor * inFrame.get<0>() + 0.5);
+  int y1 = floor(inScaleFactor * inFrame.get<1>() + 0.5);
+  int x2 = floor(inScaleFactor * (inFrame.get<0>() + inFrame.get<2>()) + 0.5);
+  int y2 = floor(inScaleFactor * (inFrame.get<1>() + inFrame.get<3>()) + 0.5);
+  inoutImg->draw_rectangle(x1, y1, x2, y2, inColor, 1 /*opacity*/, ~0 /*pattern*/);
+}
+
+
+template <typename T>
+using PointLstT = std::list<PointT<T> >;
+
+
+DEF_Exception(Line);
+
+template <typename T>
+class LineT {
+private:
+  T mA1;
+  T mA0;
+
+public:
+  LineT(const PointLstT<T> & inDataPoints) {
+    LineT::calcBestFitLine(inDataPoints, & mA1, & mA0);
+  }
+  LineT(const T & inA1 = 0, const T & inA0 = 0) : mA1(inA1),mA0(inA0) {}
+  const T & getA1() const { return mA1; }
+  const T & getA0() const { return mA0; }
+
+  ostream & print(ostream & os) {
+    os << "y(x) = " << mA1 << "*x + " << mA0 << endl;
+    return os;
+  }
+
+  // TODO: Add non-static version - intersect with LineT... and with a1,a0 as sep. params...
+  static PointT<T> calcIntersectionPoint(const LineT<T> & inL1, const LineT<T> & inL2) {
+    return LineT::calcIntersectionPoint(inL1.mA1, inL1.mA0, inL2.mA1, inL2.mA0);
+  }
+
+  static PointT<T> calcIntersectionPoint(const T & inA1, const T & inA0, const T & inB1, const T & inB0) {
+    PointT<T> sp;
+    
+    if (inB1 - inA1) {
+      sp.get<0>() = (inA0 - inB0) / (inB1 - inA1);
+      sp.get<1>() = inA1 * sp.get<0>() + inA0;
+    } else {
+      if (inA0 == inB0) {
+	throw LineIntersectionExceptionT("Lines are equal. Infinite number of intersections.");
+      } else {
+	throw LineIntersectionExceptionT("Lines are parallel and have no intersection.");
+      }
+    }
+    return sp;
+  }
+
+  static void calcBestFitLine(const PointLstT<T> inDataPoints, T * outA1, T * outA0) {
+
+    T sumX = 0, sumY = 0;
+    for (typename PointLstT<T>::const_iterator it = inDataPoints.begin(); it != inDataPoints.end(); ++it) {
+      sumX += it->get<0>();
+      sumY += it->get<1>();
+    }
+    
+    T mean_x = sumX / inDataPoints.size();
+    T mean_y = sumY / inDataPoints.size();
+    
+    T top = 0, bottom = 0;
+    for (typename PointLstT<T>::const_iterator it = inDataPoints.begin(); it != inDataPoints.end(); ++it) {
+      top += (it->get<0>() - mean_x) * (it->get<1>() - mean_y);
+      bottom += pow(it->get<0>() - mean_x, 2.0);
+    }
+
+    AT_ASSERT(Line, outA1, "outA1 expected to be set.");
+    AT_ASSERT(Line, outA0, "outA0 expected to be set.");
+    
+    *outA1 = top / bottom;
+    *outA0 = mean_y - (*outA1) * mean_x;
+  }
+  
+  friend inline std::ostream& operator<< (std::ostream& os, LineT<T> & inLine) {
+    return inLine.print(os);
+  }
+};
+
+
 
 
 #endif /* _UTIL_HPP_ */

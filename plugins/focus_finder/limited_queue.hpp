@@ -100,7 +100,7 @@ namespace AT {
 	// Calculate width - inWidth
 	const unsigned char green[3] = { 0, 255, 0 };
 	const size_t cCrossSize = 3;
-	drawCross(& rgbImg, xDraw, yDraw, cCrossSize, green, 1 /*opacity*/);
+	drawCross(& rgbImg, xDraw, yDraw, green, cCrossSize);
       }
       return rgbImg; // Make a copy...
     }

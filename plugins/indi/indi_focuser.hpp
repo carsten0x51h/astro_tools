@@ -296,6 +296,8 @@ public:
     //    */
     //   WAIT_MAX_FOR(getAbsPos() == inAbsPos, estimatedMaxFocuserDelayMs, "Hit timeout while waiting for focuser reaching position.");
     // }
+    // TODO: test with real focuser... may not work...
+    WAIT_MAX_FOR(isMovementInProgess(), inTimeoutMs, "Hit timeout while waiting for focuser reaching position.");
   }
 
   inline bool isMovementInProgess() const {

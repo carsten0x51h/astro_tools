@@ -481,6 +481,17 @@ public:
     return (nVec->s == IPS_BUSY);
   }
 
+  inline double getMaxExposureTime() const {
+    const INumber & nTemp = this->getNumber<CameraTraitsT>(VecPropsT::CCD_EXPOSURE, PropsT::CCD_EXPOSURE_VALUE);
+    return nTemp.max;
+  }
+  inline double getMinExposureTime() const {
+    const INumber & nTemp = this->getNumber<CameraTraitsT>(VecPropsT::CCD_EXPOSURE, PropsT::CCD_EXPOSURE_VALUE);
+    return nTemp.min;
+  }
+
+
+  
   /**
    * Blocks until eposure finished or throws TimeoutExceptionT if exposure
    * camera does not finish exposure as expected. Throws IndiCameraExposureInProgressExceptionT
