@@ -297,7 +297,7 @@ public:
     //   WAIT_MAX_FOR(getAbsPos() == inAbsPos, estimatedMaxFocuserDelayMs, "Hit timeout while waiting for focuser reaching position.");
     // }
     // TODO: test with real focuser... may not work...
-    WAIT_MAX_FOR(isMovementInProgess(), inTimeoutMs, "Hit timeout while waiting for focuser reaching position.");
+    WAIT_MAX_FOR(! isMovementInProgess(), inTimeoutMs, "Hit timeout while waiting for focuser reaching position.");
   }
 
   inline bool isMovementInProgess() const {
@@ -307,6 +307,8 @@ public:
     bool relBusy = (this->hasVecProp<FocuserTraitsT>(VecPropsT::REL_FOCUS_POSITION) &&
 		    this->getNumberVec<FocuserTraitsT>(VecPropsT::REL_FOCUS_POSITION)->s == IPS_BUSY);
 
+    //cerr << "isMovementInProgess - absBusy || relBusy: " << (absBusy || relBusy) << endl;
+    
     return (absBusy || relBusy);
   }
 

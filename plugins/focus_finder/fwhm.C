@@ -27,7 +27,7 @@
 #include <algorithm> // max_element
 
 namespace AT {
-  const float FwhmT::defaultScaleFactor = 4.0;
+  const float FwhmT::defaultScaleFactor = 10.0;
 
   // Class which provides access to image vector values by curve fit algorithm.
   class ImgAccessorT {
@@ -159,7 +159,7 @@ namespace AT {
     for (vector<float>::const_iterator it = inImgValues.begin(); it != inImgValues.end(); ++it) {
       int x = floor(inScaleFactor * std::distance(inImgValues.begin(), it) + 0.5);
       float y = (height - yValueToDispScaleFactor * floor(inScaleFactor * (*it) + 0.5));
-      drawCross(& rgbImg, x, y, cCrossSize, red, 1 /*opacity*/);
+      drawCross(& rgbImg, x, y, red, cCrossSize, 1.0 /*scale factor*/, 1 /*opacity*/);
     }
 
     
@@ -167,7 +167,7 @@ namespace AT {
     for (vector<float>::const_iterator it = inFitValues.begin(); it != inFitValues.end(); ++it) {
       int x = floor(inScaleFactor * std::distance(inFitValues.begin(), it) + 0.5);
       float y = (height - yValueToDispScaleFactor * floor(inScaleFactor * (*it) + 0.5));
-      drawCross(& rgbImg, x, y, cCrossSize, green, 1 /*opacity*/);
+      drawCross(& rgbImg, x, y, green, cCrossSize, 1.0 /*scale factor*/, 1 /*opacity*/);
     }
 
     // TODO: Eliminate duplicated code... coord transformation...

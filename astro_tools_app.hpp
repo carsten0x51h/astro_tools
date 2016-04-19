@@ -148,7 +148,8 @@ namespace AT {
 	}
 	cout << "Set log-level to: " << sev << endl;
       }
-      LoggingT::init(sev);
+      // TODO: Pass "console" and "log file" as params somehow?
+      LoggingT::init(sev, false /*console*/, true /*log file*/);
 
 
       // Init plugin search paths

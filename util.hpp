@@ -462,6 +462,9 @@ template <typename T>
 using PointLstT = std::list<PointT<T> >;
 
 
+
+
+
 DEF_Exception(MeanCalc);
 
 template <typename T>
@@ -481,36 +484,106 @@ calcMeans(const PointLstT<T> & inDataPoints, T * outMeanX, T * outMeanY) {
 
 // Calculate correlation Corr (Corelation coefficient (NOTE: Needs linear depenceny between variables))
 // TODO: Move to util.h - make template
-template <typename T>
-static T correlation(const PointLstT<T> & inDataPoints) {
-  T mean_x = 0, mean_y = 0;
-  calcMeans(inDataPoints, & mean_x, & mean_y);
+// FIXME: Use gsl... this impl. is porbably not numerically stable...
+// template <typename T>
+// static T correlation(const PointLstT<T> & inDataPoints) {
+//   T mean_x = 0, mean_y = 0;
+//   calcMeans(inDataPoints, & mean_x, & mean_y);
 
-  T numeratorSum = 0, denominatorXSum = 0, denominatorYSum = 0;
+//   T numeratorSum = 0, denominatorXSum = 0, denominatorYSum = 0;
     
-  for (typename PointLstT<T>::const_iterator it = inDataPoints.begin(); it != inDataPoints.end(); ++it) {
-    const T & xi = it->get<0>();
-    const T & yi = it->get<1>();
+//   for (typename PointLstT<T>::const_iterator it = inDataPoints.begin(); it != inDataPoints.end(); ++it) {
+//     const T & xi = it->get<0>();
+//     const T & yi = it->get<1>();
 
-    T diff_x = xi - mean_x;
-    T diff_y = yi - mean_y;
+//     T diff_x = xi - mean_x;
+//     T diff_y = yi - mean_y;
       
-    numeratorSum += diff_x * diff_y;
-    denominatorXSum += pow(diff_x, 2.0f);
-    denominatorYSum += pow(diff_y, 2.0f);
-  }
+//     numeratorSum += diff_x * diff_y;
+//     denominatorXSum += pow(diff_x, 2.0f);
+//     denominatorYSum += pow(diff_y, 2.0f);
+//   }
     
-  T numerator = numeratorSum / inDataPoints.size();
-  T denominatorX = sqrt(denominatorXSum / inDataPoints.size());
-  T denominatorY = sqrt(denominatorYSum / inDataPoints.size());
+//   T numerator = numeratorSum / inDataPoints.size();
+//   T denominatorX = sqrt(denominatorXSum / inDataPoints.size());
+//   T denominatorY = sqrt(denominatorYSum / inDataPoints.size());
 
-  return numerator / (denominatorX * denominatorY);
-}
+//   return numerator / (denominatorX * denominatorY);
+// }
+
+
+// See http://www.johndcook.com/blog/standard_deviation/
+// TODO: Lmit number of values to N! (default = 0 -> no limit)
+template <typename T>
+class RunningStatT {
+private:
+  int m_n;
+  T m_oldM, m_newM, m_oldS, m_newS;
+
+public:
+  RunningStatT() : m_n(0) {}
+  inline void clear() { m_n = 0; }
+  
+  void push(const T & x) {
+    m_n++;
+    
+    // See Knuth TAOCP vol 2, 3rd edition, page 232
+    if (m_n == 1) {
+      m_oldM = m_newM = x;
+      m_oldS = 0.0;
+    } else {
+      m_newM = m_oldM + (x - m_oldM)/m_n;
+      m_newS = m_oldS + (x - m_oldM)*(x - m_newM);
+      
+      // set up for next iteration
+      m_oldM = m_newM; 
+      m_oldS = m_newS;
+    }
+  }
+  
+  inline int numDataValues() const { return m_n; }
+  inline T mean() const { return (m_n > 0) ? m_newM : 0.0; }
+  inline T variance() const { return ( (m_n > 1) ? m_newS / (m_n - 1) : 0.0 ); }
+  inline T standardDeviation() const { return sqrt( variance() ); }
+};
+
+
+
 
 
 
 DEF_Exception(Line);
 DEF_Exception(LineIntersection);
+
+
+
+
+#include <gsl/gsl_multifit.h>
+#include <gsl/gsl_randist.h>
+
+struct LineFitTypeT {
+  enum TypeE {
+    OLS,
+    BISQUARE,
+    _Count
+  };
+  
+  static const char * asStr(const TypeE & inType) {
+    switch (inType) {
+    case OLS: return "OLS";
+    case BISQUARE: return "BISQUARE";
+    default: return "<?>";
+    }
+  }
+
+  static const gsl_multifit_robust_type * asFitType(const TypeE & inType) {
+    switch (inType) {
+    case OLS: return gsl_multifit_robust_ols;
+    case BISQUARE: return gsl_multifit_robust_bisquare;
+    default: return 0;
+    }
+  }
+};
 
 template <typename T>
 class LineT {
@@ -518,14 +591,41 @@ private:
   T mA1;
   T mA0;
 
+  // SEE https://www.gnu.org/software/gsl/manual/html_node/Robust-linear-regression.html
+  // SEE https://www.gnu.org/software/gsl/manual/html_node/Fitting-Examples-for-robust-linear-regression.html#Fitting-Examples-for-robust-linear-regression
+  static int
+  dofit(const gsl_multifit_robust_type * robType,
+	const gsl_matrix *X, const gsl_vector * y,
+	gsl_vector * c, gsl_matrix * cov) {
+    int s;
+    gsl_multifit_robust_workspace * work = gsl_multifit_robust_alloc (robType, X->size1, X->size2);
+    s = gsl_multifit_robust (X, y, c, cov, work);
+    gsl_multifit_robust_free (work);
+    
+    return s;
+  }
+
+  
 public:
-  LineT(const PointLstT<T> & inDataPoints) {
-    LineT::calcBestFitLine(inDataPoints, & mA1, & mA0);
+  LineT(const PointLstT<T> & inDataPoints, LineFitTypeT::TypeE inFitType = LineFitTypeT::OLS) {
+    this->set(inDataPoints, inFitType);
   }
   LineT(const T & inA1 = 0, const T & inA0 = 0) : mA1(inA1),mA0(inA0) {}
+
+  void set(const PointLstT<T> & inDataPoints, LineFitTypeT::TypeE inFitType = LineFitTypeT::OLS) {
+    LineT::calcBestFitLine(inDataPoints, inFitType, & mA1, & mA0);
+  }
+  
   const T & getA1() const { return mA1; }
   const T & getA0() const { return mA0; }
   T f(const T & inX) const { return (mA1 * inX + mA0); }
+
+  T f_inv(const T & inY) const {
+    if (! mA1) {
+      throw LineExceptionT("Inverse function cannot be determined - a=0.");
+    }
+    return (inY - mA0) / mA1;
+  }
   
   ostream & print(ostream & os) {
     os << "y(x) = " << mA1 << "*x + " << mA0 << endl;
@@ -552,24 +652,80 @@ public:
     }
     return sp;
   }
-  
-  static void
-  calcBestFitLine(const PointLstT<T> & inDataPoints, T * outA1, T * outA0) {
-    T mean_x = 0, mean_y = 0;
-    calcMeans<T>(inDataPoints, & mean_x, & mean_y);
-    
-    T top = 0, bottom = 0;
-    for (typename PointLstT<T>::const_iterator it = inDataPoints.begin(); it != inDataPoints.end(); ++it) {
-      top += (it->get<0>() - mean_x) * (it->get<1>() - mean_y);
-      bottom += pow(it->get<0>() - mean_x, 2.0);
-    }
 
-    AT_ASSERT(Line, outA1, "outA1 expected to be set.");
-    AT_ASSERT(Line, outA0, "outA0 expected to be set.");
+
+
+  // TODO:use template param T!!!
+  static void
+  calcBestFitLine(const PointLstT<T> & inDataPoints, LineFitTypeT::TypeE inFitType = LineFitTypeT::OLS, T * outA1 = 0, T * outA0 = 0) {
+    int i;
+    size_t n = inDataPoints.size();
+    const size_t p = 2; /* linear fit */
+    gsl_matrix *X, *cov;
+    gsl_vector *x, *y, *c;
+    gsl_rng *r;
     
-    *outA1 = top / bottom;
-    *outA0 = mean_y - (*outA1) * mean_x;
+    X = gsl_matrix_alloc (n, p);
+    x = gsl_vector_alloc (n);
+    y = gsl_vector_alloc (n);
+    c = gsl_vector_alloc (p);
+    cov = gsl_matrix_alloc (p, p);
+    r = gsl_rng_alloc(gsl_rng_default);
+    
+    // Copy data do vector...
+    // TODO: vector x not required - directly use list..?
+    size_t k = 0;
+    for (typename PointLstT<T>::const_iterator it = inDataPoints.begin(); it != inDataPoints.end(); ++it, ++k) {
+      gsl_vector_set (x, k, it->get<0>());
+      gsl_vector_set (y, k, it->get<1>());
+    }
+    
+    /* construct design matrix X for linear fit */
+    for (i = 0; i < n; ++i) {
+      double xi = gsl_vector_get(x, i); // value i from vector x... 
+      
+      gsl_matrix_set (X, i, 0, 1.0);
+      gsl_matrix_set (X, i, 1, xi);
+    }
+    
+    /* perform robust and OLS fit */
+    dofit(LineFitTypeT::asFitType(inFitType), X, y, c, cov);
+    
+    /* output data and model */
+    for (i = 0; i < n; ++i) {
+      double xi = gsl_vector_get(x, i);
+      double yi = gsl_vector_get(y, i);
+      gsl_vector_view v = gsl_matrix_row(X, i);
+      double y_rob, y_err;
+      
+      // TODO: Handle case if match was not successful... --> throw...
+      // TODO: Return error?!!
+      // TODO: Return COV = stdabw?!
+      gsl_multifit_robust_est(& v.vector, c, cov, & y_rob, & y_err);
+      
+      //printf("%g %g %g\n", xi, yi, y_rob);
+    }
+    
+// #define C(i) (gsl_vector_get(c,(i)))
+// #define COV(i,j) (gsl_matrix_get(cov,(i),(j)))
+//     {
+//       printf ("# best fit: Y = %g + %g X\n", C(0), C(1));
+//       printf ("# covariance matrix:\n");
+//       printf ("# [ %+.5e, %+.5e\n", COV(0,0), COV(0,1));
+//       printf ("#   %+.5e, %+.5e\n", COV(1,0), COV(1,1));
+//     }
+
+    if (outA1) { *outA1 = gsl_vector_get(c, 1); }
+    if (outA0) { *outA0 = gsl_vector_get(c, 0); }
+    
+    gsl_matrix_free (X);
+    gsl_vector_free (x);
+    gsl_vector_free (y);
+    gsl_vector_free (c);
+    gsl_matrix_free (cov);
+    gsl_rng_free(r);
   }
+
   
   friend inline std::ostream& operator<< (std::ostream& os, LineT<T> & inLine) {
     return inLine.print(os);

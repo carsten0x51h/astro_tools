@@ -147,7 +147,7 @@ namespace AT {
     // Scale image
     rgbImg.resize(inScaleFactor * rgbImg.width(), inScaleFactor * rgbImg.height(),
 		  -100 /*size_z*/, -100 /*size_c*/, 1 /*interpolation_type*/);
-    drawCross(& rgbImg, floor(inScaleFactor * inCenter.get<0>() + 0.5), floor(inScaleFactor * inCenter.get<1>() + 0.5), 3 /*cross-size*/, red, 1 /*opacity*/);
+    drawCross(& rgbImg, floor(inScaleFactor * inCenter.get<0>() + 0.5), floor(inScaleFactor * inCenter.get<1>() + 0.5), red, 3 /*cross-size*/, 1.0 /*scale factor*/, 1 /*opacity*/);
     
     return rgbImg; // Make a copy...
   }

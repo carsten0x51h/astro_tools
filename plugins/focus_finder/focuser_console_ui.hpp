@@ -27,13 +27,10 @@
 
 #include "at_plugin.hpp"
 #include "at_exception.hpp"
-#include "limited_queue.hpp"
 
 #include "indi/indi_camera.hpp"
 #include "indi/indi_focuser.hpp"
 #include "indi/indi_filter_wheel.hpp"
-
-#include "focus_finder_parabel_fit_impl.hpp"
 
 using namespace std;
 

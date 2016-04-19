@@ -44,6 +44,7 @@
 
 #include <fstream>
 
+
 namespace logging = boost::log;
 namespace src = boost::log::sources;
 namespace sinks = boost::log::sinks;
@@ -133,25 +134,27 @@ BOOST_LOG_INLINE_GLOBAL_LOGGER_INIT(global_logger, global_logger_type)
 // TODO: Do we need channels? See http://www.boost.org/doc/libs/1_54_0/libs/log/doc/html/log/detailed/sources.html
 class LoggingT {
 private:
-
+  
 public:
-  static void init(const logging::trivial::severity_level & inLogSev = logging::trivial::debug) {
-    logging::add_console_log(
-			     std::cout,
-    			     keywords::format = "[%TimeStamp%]: %Message%", /*< log record format >*/
-    			     keywords::auto_flush = true
-			     );
-
-    // TODO / FIXME: where is logfile if just logging one line?!
-    logging::add_file_log
-      (
-       keywords::file_name = "sample_%N.log",                                        /*< file name pattern >*/
-       keywords::rotation_size = 10 * 1024 * 1024,                                   /*< rotate files every 10 MiB... >*/
-       keywords::time_based_rotation = sinks::file::rotation_at_time_point(0, 0, 0), /*< ...or at midnight >*/
-       keywords::format = "[%TimeStamp%]: %Message%",                                /*< log record format >*/
-       keywords::auto_flush = true
-       );
+  static void init(const logging::trivial::severity_level & inLogSev = logging::trivial::debug, bool inWantConsoleLog = false, bool inWantLogFile = true) {
+    if (inWantConsoleLog) {
+      logging::add_console_log(
+			       std::cout,
+			       keywords::format = "[%TimeStamp%]: %Message%", /*< log record format >*/
+			       keywords::auto_flush = true
+			       );
+    }
     
+    if (inWantLogFile) {
+      logging::add_file_log
+	(
+	 keywords::file_name = "sample_%N.log",                                        /*< file name pattern >*/
+	 keywords::rotation_size = 10 * 1024 * 1024,                                   /*< rotate files every 10 MiB... >*/
+	 keywords::time_based_rotation = sinks::file::rotation_at_time_point(0, 0, 0), /*< ...or at midnight >*/
+	 keywords::format = "[%TimeStamp%]: %Message%",                                /*< log record format >*/
+	 keywords::auto_flush = true
+	 );
+    }
     logging::core::get()->set_filter(logging::trivial::severity >= inLogSev);
 
     // TODO: Required? What exactly does this function?!

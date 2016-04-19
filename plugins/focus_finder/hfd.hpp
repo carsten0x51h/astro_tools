@@ -105,7 +105,7 @@ namespace AT {
     inline float getValue() const { return mHfdValue; }
     inline const CImg<float> & getResultImage() const { return mImg; }
     inline float getOuterDiameter() const { return mOuterDiameter; }
-    CImg<unsigned char> genView() { return HfdT::genView(mImg, mHfdValue, mOuterDiameter, mScaleFactor); }
+    CImg<unsigned char> genView() const { return HfdT::genView(mImg, mHfdValue, mOuterDiameter, mScaleFactor); }
 
     // TODO: Required??? inline void getCentroid(float * xcom, float * ycom) const { *xcom = mXCom; *ycom = mYCom; }
   };

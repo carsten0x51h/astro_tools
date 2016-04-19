@@ -30,7 +30,124 @@
 #include "hfd.hpp"
 #include "vcurve.hpp"
 
+#include "star_frame_selector.hpp"
+
 namespace AT {
+
+
+  static const int cSelectionFrameSize = 31; // TODO: Make configure by using the windowSize parameter (which already exist...)...
+  static const int cImageFrameSize = 3 * cSelectionFrameSize;
+
+  static FrameT<float> getSelectionFrame(PointT<float> inCenterPosFF) {
+    return centerPosToFrame(inCenterPosFF, cSelectionFrameSize, cSelectionFrameSize);
+  }
+  static FrameT<float> getImageFrame(PointT<float> inCenterPosFF) {
+    return centerPosToFrame(inCenterPosFF, cImageFrameSize, cImageFrameSize);
+  }
+
+  
+  struct TaskStateT {
+    enum TypeE {
+      READY,
+      RUNNING,
+      ABORTED,
+      FINISHED,
+      _Count
+    };
+
+    static const char * asStr(const TypeE & inType) {
+      switch (inType) {
+      case READY: return "READY";
+      case RUNNING: return "RUNNING";
+      case ABORTED: return "ABORTED";
+      case FINISHED: return "FINISHED";
+      default: return "<?>";
+      }
+    }
+    MAC_AS_TYPE(Type, E, _Count);
+  };
+
+  
+  // TODO: Question: Should this static function be part of the FocusFinderImpl? Actually it is more generic...
+  static void
+  calcStarValues(CImg<float> & inFrameImage, int * outDx = 0, int * outDy = 0, HfdT * outHfd = 0, FwhmT * outFwhmHorz = 0, FwhmT * outFwhmVert = 0) {
+    // Post process image... we assume that the star did not move too far from the image center
+    // NOTE: Boundaries of currSubImage are based on currImageFrameFF.
+    PointT<float> assumedCenter((float) inFrameImage.width() / 2.0, (float) inFrameImage.height() / 2.0);
+    FrameT<unsigned int> newSelectionFrameIF;
+    bool insideBounds = StarFrameSelectorT::calc(inFrameImage, 0 /*bitPix - TODO / HACK: not needed */,
+						 assumedCenter, & newSelectionFrameIF,
+						 StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY,
+						 CentroidT::CentroidTypeT::IWC, cSelectionFrameSize /*frameSize*/);
+	  
+    AT_ASSERT(StarFrameSelector, insideBounds, "Expected frame to be inside bounds.");	  
+
+    PointT<float> newCenterPosIF = frameToCenterPos(newSelectionFrameIF);
+    
+    if (outDx) {
+      *outDx = newCenterPosIF.get<0>() - assumedCenter.get<0>();
+    }
+    if (outDy) {
+      *outDy = newCenterPosIF.get<1>() - assumedCenter.get<1>();
+    }
+    
+    // Calculate star data
+    // ------------------------------------------------------------------------------------------------------------ //
+    CImg<float> subImg = inFrameImage.get_crop(newSelectionFrameIF.get<0>() /*x0*/,
+					       newSelectionFrameIF.get<1>() /*y0*/,
+					       newSelectionFrameIF.get<0>() + newSelectionFrameIF.get<2>() - 1/*x1=x0+w-1*/,
+					       newSelectionFrameIF.get<1>() + newSelectionFrameIF.get<3>() - 1/*y1=y0+h-1*/);
+    if (outHfd) {
+      try {
+	// TODO: HFD value INCREASES if coming to focus using the simulator... !!! Maybe a simulator problem?! --> need real test!!!
+	outHfd->set(subImg); // NOTE: HfdT takes image center as centroid, it does not matter if image is bigger
+      } catch(std::exception & exc) {
+	LOG(warning) << "HFD calculation failed!"  << endl;
+      }
+    }
+    
+    // Subtract median image
+    double med = subImg.median();
+    CImg<float> imageSubMed(subImg.width(), subImg.height());
+    cimg_forXY(subImg, x, y) {
+      imageSubMed(x, y) = (subImg(x, y) > med ? subImg(x, y) - med : 0);
+    }
+
+    if (outFwhmHorz) {
+      try {
+	outFwhmHorz->set(extractLine<DirectionT::HORZ>(imageSubMed));
+      } catch(std::exception & exc) {
+	LOG(warning) << "FWHM(horz) calculation failed!"  << endl;
+      }
+    }
+
+    if (outFwhmVert) {
+      try {
+	outFwhmVert->set(extractLine<DirectionT::VERT>(imageSubMed));
+      } catch(std::exception & exc) {
+	LOG(warning) << "FWHM(horz) calculation failed!"  << endl;
+      }
+    }
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  /////////////////////////////////////////////////////////////
+  // NELOW HERE IS OLD STUFF....
+  /////////////////////////////////////////////////////////////
   /*
    * StarDataT
    */

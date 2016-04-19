@@ -33,7 +33,6 @@
 #include "at_logging.hpp"
 #include "util.hpp"
 
-#include "indi_listener.hpp"
 #include "indi_utils.hpp"
 
 #include "indiapi.h"

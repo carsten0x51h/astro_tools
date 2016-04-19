@@ -44,7 +44,6 @@
 #include "cluster.hpp"
 #include "centroid.hpp"
 #include "star_frame_selector.hpp"
-#include "focus_finder_linear_interpolation_impl.hpp"
 #include "focuser_console_ui.hpp"
 
 // ROADMAP
@@ -364,35 +363,39 @@ namespace AT {
 	if (! strcmp(focusMode.c_str(), "manual")) { // Manual focusing
 	  manualConsoleFocusCntl(cmdLineMap, cameraDevice, focuserDevice, filterWheelDevice, selectedFrame, exposureTimeSec, binning, followStar);
 	} else { // Automatic focusing
-	  FocusFinderLinearInterpolationImplT ffli(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning);
+	  cerr << "NOT IMPLEMENTED!" << endl;
+	  exit(1);
+				     
+	  // TODO: Integrate new FocusFinder!
+	  // FocusFinderLinearInterpolationImplT ffli(cameraDevice, focuserDevice, selectedFrame, exposureTimeSec, binning);
 
-	  // TODO: Introduce typedef for signals2::connection!, do we need x?!
-	  signals2::connection focusFinderUpdateHandle = ffli.registerFocusFinderUpdateListener(boost::bind(& FocusFinderActionT::focusFinderStatusUpdates, _1));
+	  // // TODO: Introduce typedef for signals2::connection!, do we need x?!
+	  // signals2::connection focusFinderUpdateHandle = ffli.registerFocusFinderUpdateListener(boost::bind(& FocusFinderActionT::focusFinderStatusUpdates, _1));
 
-	  // Set further configurations
-	  // TODO: Question is - do we pass this as optional cmd line parms? or do we provide an additional cfg file with focus finder settings?
-	  //       If so, whee do we store the file?
-	  ffli.setWindowSize(windowSize);
-	  ffli.setNumStepsToDetermineDirection(numStepsToDetermineDirection);
-	  ffli.setStepsToReachFocus(stepsToReachFocus);
-	  ffli.setExtremaFitnessBoundary(extremaFitnessBoundary);
-	  ffli.setOuterHfdRadiusPx(outerHfdRadiusPx);
-	  ffli.setRoughFocusMaxIterCnt(roughFocusMaxIterCnt);
-	  ffli.setTakePictureFitGaussCurveMaxRetryCnt(takePictureFitGaussCurveMaxRetryCnt);
-	  //ffli.setDebugShowTakePictureImage(debugShowTakePictureImage);
-	  ffli.setRoughFocusSearchRangePerc(roughFocusSearchRangePerc);
-	  ffli.setRoughFocusRecordNumCurves(roughFocusRecordNumCurves);
-	  ffli.setRoughFocusGranularitySteps(roughFocusGranularitySteps);
-	  ffli.setFineFocusRecordNumCurves(fineFocusRecordNumCurves);
-	  ffli.setFineFocusGranularitySteps(fineFocusGranularitySteps);
-	  ffli.setFineSearchRangeSteps(fineSearchRangeSteps);
-	  ffli.setVCurveFitEpsAbs(vcurveFitEpsAbs);
-	  ffli.setVCurveFitEpsRel(vcurveFitEpsRel);
+	  // // Set further configurations
+	  // // TODO: Question is - do we pass this as optional cmd line parms? or do we provide an additional cfg file with focus finder settings?
+	  // //       If so, whee do we store the file?
+	  // ffli.setWindowSize(windowSize);
+	  // ffli.setNumStepsToDetermineDirection(numStepsToDetermineDirection);
+	  // ffli.setStepsToReachFocus(stepsToReachFocus);
+	  // ffli.setExtremaFitnessBoundary(extremaFitnessBoundary);
+	  // ffli.setOuterHfdRadiusPx(outerHfdRadiusPx);
+	  // ffli.setRoughFocusMaxIterCnt(roughFocusMaxIterCnt);
+	  // ffli.setTakePictureFitGaussCurveMaxRetryCnt(takePictureFitGaussCurveMaxRetryCnt);
+	  // //ffli.setDebugShowTakePictureImage(debugShowTakePictureImage);
+	  // ffli.setRoughFocusSearchRangePerc(roughFocusSearchRangePerc);
+	  // ffli.setRoughFocusRecordNumCurves(roughFocusRecordNumCurves);
+	  // ffli.setRoughFocusGranularitySteps(roughFocusGranularitySteps);
+	  // ffli.setFineFocusRecordNumCurves(fineFocusRecordNumCurves);
+	  // ffli.setFineFocusGranularitySteps(fineFocusGranularitySteps);
+	  // ffli.setFineSearchRangeSteps(fineSearchRangeSteps);
+	  // ffli.setVCurveFitEpsAbs(vcurveFitEpsAbs);
+	  // ffli.setVCurveFitEpsRel(vcurveFitEpsRel);
 	
-	  // Find focus - TODO: Catch anything here?!
-	  ffli.findFocus();
+	  // // Find focus - TODO: Catch anything here?!
+	  // ffli.findFocus();
 	
-	  ffli.unregisterFocusFinderUpdateListener(focusFinderUpdateHandle);
+	  // ffli.unregisterFocusFinderUpdateListener(focusFinderUpdateHandle);
 	}
       } else {
 	stringstream ss;

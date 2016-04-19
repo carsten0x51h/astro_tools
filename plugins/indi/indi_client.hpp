@@ -43,7 +43,7 @@
 #include "baseclient.h"
 #include "basedevice.h"
 
-#include "indi_listener.hpp"
+#include "at_listener.hpp"
 #include "at_exception.hpp"
 #include "io_util.hpp"
 #include "at_logging.hpp"
@@ -68,6 +68,15 @@ class IndiDeviceT;
 class IndiCameraT;
 class IndiFilterWheelT;
 class IndiFocuserT;
+
+
+#define DEFINE_INDI_SLOT(__methodname__, __name__, __type__)		\
+  protected:								\
+  virtual void __methodname__(__type__ p) {				\
+   if (p) {								\
+     m##__name__##Listeners(p);						\
+   }									\
+ }									\
 
 
 // TODO: Move DeviceTypeT def. elsewhere? Or leave here?

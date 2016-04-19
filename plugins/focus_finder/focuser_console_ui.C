@@ -23,63 +23,30 @@
 #include <boost/thread.hpp>
 
 #include "focuser_console_ui.hpp"
-#include "star_frame_selector.hpp"
-#include "focus_finder_parabel_fit_impl.hpp"
 #include "centroid.hpp"
 #include "fwhm.hpp"
 #include "hfd.hpp"
 #include "at_console_display.hpp"
 #include "at_console_menu.hpp"
+#include "util.hpp"
+#include "focus_finder_common.hpp"
+#include "focus_finder_impl.hpp"
 
 using namespace std;
 using namespace boost;
 
 namespace AT {
 
-  static const int cSelectionFrameSize = 31; // TODO: Make configure by using the windowSize parameter (which already exist...)...
-  static const int cImageFrameSize = 3 * cSelectionFrameSize;
-
-  static FrameT<float> getSelectionFrame(PointT<float> inCenterPosFF) {
-    return centerPosToFrame(inCenterPosFF, cSelectionFrameSize, cSelectionFrameSize);
-  }
-  static FrameT<float> getImageFrame(PointT<float> inCenterPosFF) {
-    return centerPosToFrame(inCenterPosFF, cImageFrameSize, cImageFrameSize);
-  }
-
-  
-  struct TaskStateT {
-    enum TypeE {
-      READY,
-      RUNNING,
-      ABORTED,
-      FINISHED,
-      _Count
-    };
-
-    static const char * asStr(const TypeE & inType) {
-      switch (inType) {
-      case READY: return "READY";
-      case RUNNING: return "RUNNING";
-      case ABORTED: return "ABORTED";
-      case FINISHED: return "FINISHED";
-      default: return "<?>";
-      }
-    }
-    MAC_AS_TYPE(Type, E, _Count);
-  };
-
 
   void
   genSelectionView(const CImg<float> & inCurrSubImg, int dx, int dy,
-		   CImg<unsigned char> * outRgbImg, size_t inBitsPerPixel = 16, float inScaleFactor = 3.0) {
+		   CImg<unsigned char> * outRgbImg, float inScaleFactor = 3.0) {
     const unsigned char red[3] = { 255, 0, 0 }, green[3] = { 0, 255, 0 }, blue[3] = { 0, 0, 255 };
     const size_t cCrossSize = 3;
 
-    // Finally, generate the image for the user...
-    float maxPossiblePixelValue = pow(2.0, inBitsPerPixel);
-					     
-    CImg<unsigned char> normalizedImage(normalize(inCurrSubImg, maxPossiblePixelValue, 5.0 /*TODO: HACK FIXME! Should not be hardcoded*/));
-
+    CImg<unsigned char> normalizedImage(inCurrSubImg);
+    normalizedImage.normalize(0, 255);
+    
     // NOTE: RGB because we may add additional things in color to indicate for example the centroid / frame...
     CImg<unsigned char> & rgbImgRef = *outRgbImg;
     rgbImgRef.resize(normalizedImage.width(), normalizedImage.height(), 1 /*size_z*/, 3 /*3 channels - RGB*/, 1 /*interpolation_type*/);
@@ -199,7 +166,7 @@ namespace AT {
   
     inCameraDevice->startExposure(cntl.exposureTime); // Non-blocking call
     // NOTE: All up to here could be done before statrting the thread!
-
+    
   
     while (inCameraDevice->isExposureInProgress()) {
       // Update status...
@@ -231,457 +198,51 @@ namespace AT {
   }
 
 
-  // TODO... return resulting values (HFD, FWHM, ...) ..
+  // Windows - TODO: Not always available? - TODO: Make as class members later..?!
+  static CImgDisplay currImageDisp, currentHfdDisp, currFocusCurveDisp;
+
+  
+  // TODO: For some reason atomic<> does nto work here...Use a mutex instead...
+  static mutex sFocusFinderMtx; // TODO: As class member...
+  static FocusFindStatusDataT sFocusFindStatus; // TODO: This might be a class member, later... no longer static...
+
+  // TODO: We may write this as a lambda function...
   void
-  calcStarValues(CImg<float> & inFrameImage, int * outDx = 0, int * outDy = 0, HfdT * outHfd = 0, FwhmT * outFwhmHorz = 0, FwhmT * outFwhmVert = 0) {
-    // Post process image... we assume that the star did not move too far from the image center
-    // NOTE: Boundaries of currSubImage are based on currImageFrameFF.
-    PointT<float> assumedCenter((float) inFrameImage.width() / 2.0, (float) inFrameImage.height() / 2.0);
-    FrameT<unsigned int> newSelectionFrameIF;
-    bool insideBounds = StarFrameSelectorT::calc(inFrameImage, 0 /*bitPix - TODO / HACK: not needed */,
-						 assumedCenter, & newSelectionFrameIF,
-						 StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY,
-						 CentroidT::CentroidTypeT::IWC, cSelectionFrameSize /*frameSize*/);
-	  
-    AT_ASSERT(StarFrameSelector, insideBounds, "Expected frame to be inside bounds.");	  
-
-    PointT<float> newCenterPosIF = frameToCenterPos(newSelectionFrameIF);
+  focusFinderStatusUpdHandler(const FocusFindStatusDataT * inFocusFindStatus) {
+    lock_guard<mutex> guard(sFocusFinderMtx);
+    sFocusFindStatus = *inFocusFindStatus; // Make a copy
     
-    if (outDx) {
-      *outDx = newCenterPosIF.get<0>() - assumedCenter.get<0>();
-    }
-    if (outDy) {
-      *outDy = newCenterPosIF.get<1>() - assumedCenter.get<1>();
-    }
-    
-    // Calculate star data
-    // ------------------------------------------------------------------------------------------------------------ //
-    CImg<float> subImg = inFrameImage.get_crop(newSelectionFrameIF.get<0>() /*x0*/,
-					       newSelectionFrameIF.get<1>() /*y0*/,
-					       newSelectionFrameIF.get<0>() + newSelectionFrameIF.get<2>() - 1/*x1=x0+w-1*/,
-					       newSelectionFrameIF.get<1>() + newSelectionFrameIF.get<3>() - 1/*y1=y0+h-1*/);
-    if (outHfd) {
-      try {
-	// TODO: HFD value INCREASES if coming to focus using the simulator... !!! Maybe a simulator problem?! --> need real test!!!
-	outHfd->set(subImg); // NOTE: HfdT takes image center as centroid, it does not matter if image is bigger
-      } catch(std::exception & exc) {
-	LOG(warning) << "HFD calculation failed!"  << endl;
-      }
-    }
-    
-    // Subtract median image
-    double med = subImg.median();
-    CImg<float> imageSubMed(subImg.width(), subImg.height());
-    cimg_forXY(subImg, x, y) {
-      imageSubMed(x, y) = (subImg(x, y) > med ? subImg(x, y) - med : 0);
-    }
+    // Update UI
+    if (inFocusFindStatus->hfd.valid()) {
 
-    if (outFwhmHorz) {
-      try {
-	outFwhmHorz->set(extractLine<DirectionT::HORZ>(imageSubMed));
-      } catch(std::exception & exc) {
-	LOG(warning) << "FWHM(horz) calculation failed!"  << endl;
-      }
-    }
+      // TODO: Put in different handler...?
+      // ALMOST ALL BELOW IS DISPLAY STUFF... will be moved out...
+      ///////////////////////////////////////////////////////////////////////
+      // DRAW START
+      // DRAW - just TMP - will be moved out of algorithm and handled by/in update handler which will be called from here...
+      //genCurve(*outFocusFinderSequence, & hfdCurveRgbImg, 0, 0, green, cCrossSize);
+      //currHfdCurveDisp.display(hfdCurveRgbImg);
+      // DRAW END
+      ////////////////////////////////////////////////////////////////////////
 
-    if (outFwhmVert) {
-      try {
-	outFwhmVert->set(extractLine<DirectionT::VERT>(imageSubMed));
-      } catch(std::exception & exc) {
-	LOG(warning) << "FWHM(horz) calculation failed!"  << endl;
-      }
-    }
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-
-  /******************************************************************************
-   * FIND FOCUS TASK
-   ******************************************************************************/
-  // Aproximate parabel
-  typedef CurveFitTmplT<ParabelFitTraitsT> ParabelMatcherT;
-
-  struct FocusFindCntlDataT {
-    float exposureTime;
-    PointT<float> centerPosFF;
-    BinningT binning;
-    FocusFindCntlDataT() : exposureTime(0), binning(BinningT(1,1)), centerPosFF(PointT<float>(0,0)) {}
-  };
-
-  struct FocusFindStatusDataT {
-    bool isRunning;
-    int currAbsFocusPos;
-    PointT<float> currCenterPosFF;
-    int progress;
-    float fwhmHorz;
-    float fwhmVert;
-    float hfd;
-    FocusFindStatusDataT() : isRunning(false), currAbsFocusPos(0), progress(0), fwhmHorz(0), fwhmVert(0), hfd(0) {}
-  };
-
-
-  struct FocusFinderDataSetT {
-    HfdT mHfd;
-    FwhmT mFwhmHorz;
-    FwhmT mFwhmVert;
-    FocusFinderDataSetT() {};
-    FocusFinderDataSetT(const HfdT & inHfd, const FwhmT & inFwhmHorz, const FwhmT & inFwhmVert) : mHfd(inHfd), mFwhmHorz(inFwhmHorz), mFwhmVert(inFwhmVert) {}
-  };
-  
-  
-  // TODO: Too many parameters... NEED NEW DESIGN...   maybe class / part of class with props as members...?!
-  static PointT<float> mapToImgCoords(const PointT<float> & inCurveCoords, float inWidth, float inHeight, float inMinX, float inMaxX, float inMinY, float inMaxY) {
-    const float facX = (inMaxX == inMinX ? 1.0f : inWidth / (inMaxX - inMinX)); 
-    const float facY = (inMaxY == inMinY ? 1.0f : inHeight / (inMaxY - inMinY)); 
-    
-    float xMap = (inMaxX == inMinX ? 0.5f * inWidth : facX * (inCurveCoords.get<0>() - inMinX) );
-    float yMap = (inMaxY == inMinY ? 0.5f * inHeight : inHeight - (facY * (inCurveCoords.get<1>() - inMinY)));
-
-    return PointT<float>(xMap, yMap);
-  }
-  
-  static void
-  genCurve(const PointLstT<float> & inPoints, CImg<unsigned char> * outRgbImg, const LineT<float> * inLineL, const LineT<float> * inLineR,
-	   const ParabelMatcherT::CurveParamsT::TypeT * inParabelParms, const unsigned char * inColor, size_t inCrossSize = 3) {
-
-    // TODO: ASSERT outRgbImg...
-    // Map position
-    size_t width = outRgbImg->width();
-    size_t height = outRgbImg->height();
-
-    outRgbImg->fill(0);
-    
-    // TODO: Maybe put this code to a generic helper function...
-    float minX = std::numeric_limits<float>::max();
-    float maxX = std::numeric_limits<float>::min();
-    float minY = std::numeric_limits<float>::max();
-    float maxY = std::numeric_limits<float>::min();
-
-    for (PointLstT<float>::const_iterator it = inPoints.begin(); it != inPoints.end(); ++it) {
-      if (it->get<0>() < minX) { minX = it->get<0>(); }
-      if (it->get<0>() > maxX) { maxX = it->get<0>(); }
-      if (it->get<1>() < minY) { minY = it->get<1>(); }
-      if (it->get<1>() > maxY) { maxY = it->get<1>(); }
-    }
-
-    // Draw points
-    for (PointLstT<float>::const_iterator it = inPoints.begin(); it != inPoints.end(); ++it) {
-      drawCross(outRgbImg, mapToImgCoords(*it, width, height, minX, maxX, minY, maxY), inColor, inCrossSize, 1.0);
-    }
-
-    // Draw lines
-    if (inLineL) {
-      for (int i = minX; i < maxX; ++i) {
-	PointT<float> mapPoint = mapToImgCoords(PointT<float>(i, inLineL->f(i)), width, height, minX, maxX, minY, maxY);
-	outRgbImg->draw_point(mapPoint.get<0>(), mapPoint.get<1>(), inColor, 1 /*opacity*/);
-      }
-    }
-
-    if (inLineR) {
-      for (int i = minX; i < maxX; ++i) {
-	PointT<float> mapPoint = mapToImgCoords(PointT<float>(i, inLineR->f(i)), width, height, minX, maxX, minY, maxY);
-	outRgbImg->draw_point(mapPoint.get<0>(), mapPoint.get<1>(), inColor, 1 /*opacity*/);
-      }
-    }
-
-    if (inParabelParms) {
-      for (int i = minX; i < maxX; ++i) {
-	PointT<float> mapPoint = mapToImgCoords(PointT<float>(i, ParabelFitTraitsT::fx(i, *inParabelParms)), width, height, minX, maxX, minY, maxY);
-	outRgbImg->draw_point(mapPoint.get<0>(), mapPoint.get<1>(), inColor, 1 /*opacity*/);
-      }
-    }
-
-  }
-
-  template<typename T>
-  class PointLstAccessorT {
-  public:
-    typedef PointLstT<T> TypeT;
-    static DataPointT getDataPoint(size_t inIdx, typename TypeT::const_iterator inIt) {
-      DataPointT dp(inIt->get<0>(), inIt->get<1>());
-      return dp;
-    }
-  };
-
-  
-  // IDEA: My focuser is quite fine grained! Hence the step-size is much bigger than the values in the paper! The "critical area" where I was trying to find the focus and where I was tring to record the V-Curve is just the very small "red" area in the graph. Hence, I need to choose the step-size much bigger than I thought or at least I need to move in a region I did not expect. Still, this requires to determine the initial slope / direction and this requires to determine the initial step-size (if it is not specified by the user).
-  //
-  // TODO:
-  //
-  // NP = new absolute position
-  // OP = old absolute position
-  // newHfd = desired new HFD (not measured?! - probably theoretical value - TODO: What is the theoretical best HFD?)
-  // oldHfd is = measured HFD at old position
-  // Slope = VCurve slope on the side we are operating (dy / dx = dHFD / dPos)
-  //
-  // NP = OP + (newHFD - oldHFD) / Slope
-  // <=> NP - OP = (newHFD - oldHFD) / Slope
-  // <=> Slope * (NP - OP) = newHFD - oldHFD
-  // <=> Slope = (newHFD - oldHFD) / (NP - OP)   (= dy / dx = dHFD / dPos)
-  //
-  //
-  // Given: OP, oldHFD (measure), Slope (from previous values -> VCurve -> Calc slope), newHFD is the HFD I want to achieve by moving to NP.
-  // Needed: NP
-  //
-  // Question: Where do I get newHFD from???????????? -> Maybe specify desired number of steps?!
-  //
-  //
-  // NOTE: Algorithm assumes that star is roughly in focus!!! (-> getAbsPos() is used as base)
-  void focusFindTask(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, atomic<FocusFindCntlDataT> * cntl, atomic<FocusFindStatusDataT> * status) {
-    map<int /*absPos*/, FocusFinderDataSetT> recordedStarData;
-    
-    FocusFindStatusDataT statusData;
-    statusData.isRunning = true;
-    status->store(statusData);  // updates the variable safely
-
-    FocusFindCntlDataT cntlData = cntl->load();
-    
-    // 1. DETERMINE BOUNDARIES
-    const size_t numSteps = 10;
-    int focusStartPos = inFocuserDevice->getAbsPos();
-    int deltaL = fabs(inFocuserDevice->getMinPos() - focusStartPos);
-    int deltaR = fabs(inFocuserDevice->getMaxPos() - focusStartPos);
-    int stepSize = std::min(deltaL, deltaR) / numSteps;
-
-    cerr << "focusStartPos: " << focusStartPos << endl;
-    cerr << "MaxFocusPos: " << inFocuserDevice->getMaxPos() << endl;
-    cerr << "MinFocusPos: " << inFocuserDevice->getMinPos() << endl;
-    cerr << "deltaL: " << deltaL << ", deltaR: " << deltaR << endl;
-    cerr << "stepSize: " << stepSize << endl;
-
-    PointT<float> currCenterPosFF = cntlData.centerPosFF;
-
-    // Take a picture and determine current HFD and FWHM...
-    CImg<float> currSubImage;
-    inCameraDevice->takePicture(& currSubImage, cntlData.exposureTime, getImageFrame(currCenterPosFF),
-				FrameTypeT::LIGHT, cntlData.binning, false /*compressed*/);
-    
-    HfdT hfd;
-    FwhmT fwhmHorz, fwhmVert;
-    int dx = 0, dy = 0;
-    calcStarValues(currSubImage, & dx, & dy, & hfd, & fwhmHorz, & fwhmVert);
-
-    if (true /*TODO: wantRecenter*/) {
-      currCenterPosFF.get<0>() += dx;
-      currCenterPosFF.get<1>() += dy;
-    }
-
-    // TODO: Save image data - status......
-    // Update status...
-    statusData.currAbsFocusPos = inFocuserDevice->getAbsPos();
-    statusData.currCenterPosFF = currCenterPosFF;
-    statusData.progress = 0;
-    statusData.fwhmHorz = fwhmHorz.getValue();
-    statusData.fwhmVert = fwhmVert.getValue();
-    statusData.hfd = hfd.getValue();
-    
-    status->store(statusData);  // updates the variable safely
-
-    // TODO: We may move StarDataT into the statusData directly...
-    recordedStarData[inFocuserDevice->getAbsPos()] = FocusFinderDataSetT(hfd, fwhmHorz, fwhmVert);
       
-    // NOTE: DISPLAY STIFF WILL BE MOVED OUT OF HERE
-    CImgDisplay currImageDisp;// TODO: Should probably not be here...
-    CImgDisplay currHfdCurveDisp, currFwhmHorzCurveDisp, currFwhmVertCurveDisp;// TODO: Should probably not be here...
-
-    const size_t _width = 600, _height = 500;
-    const unsigned char green[3] = { 0, 255, 0 }, red[3] = { 255, 0, 0 }, blue[3] = { 0, 0, 255 };
-    const size_t cCrossSize = 5;
-    CImg<unsigned char> hfdCurveRgbImg(_width, _height, 1 /*size_z*/, 3 /*3 channels - RGB*/, 1 /*interpolation_type*/);
-    CImg<unsigned char> fwhmHorzCurveRgbImg(_width, _height, 1 /*size_z*/, 3 /*3 channels - RGB*/, 1 /*interpolation_type*/);
-    CImg<unsigned char> fwhmVertCurveRgbImg(_width, _height, 1 /*size_z*/, 3 /*3 channels - RGB*/, 1 /*interpolation_type*/);
-    
-
-    
-    // Do "numSteps" steps in both directions
-    int currAbsFocusDestPos = focusStartPos;
-    int sign[2] = { -1, 1 };
-    PointLstT<float> hfdPoints[2];
-    PointLstT<float> allHfdPoints, allFwhmHorzPoints, allFwhmVertPoints;
-
-    for (size_t i = 0; i < 2; ++i) {
-      for (size_t step = 0; step < numSteps; ++step) {
-	// Move focus
-	currAbsFocusDestPos += sign[i] * stepSize;
-	cerr << "currAbsFocusDestPos: " << currAbsFocusDestPos << endl;
-	inFocuserDevice->setAbsPos(currAbsFocusDestPos); // Wait for focus to be move - TODO!! Check if the function blocks by default!!!
-
-	// TODO: CHECK if setAbsPos is BLOCKING!! Does not seem to be the case!!!!! -> WAIT in setAbsPos is commented out...
-				 
-	// Take picture etc.
-	inCameraDevice->takePicture(& currSubImage, cntlData.exposureTime, getImageFrame(currCenterPosFF),
-				    FrameTypeT::LIGHT, cntlData.binning, false /*compressed*/);
-	calcStarValues(currSubImage, & dx, & dy, & hfd, & fwhmHorz, & fwhmVert);
-
-	if (true /*TODO: wantRecenter*/) {
-	  currCenterPosFF.get<0>() += dx;
-	  currCenterPosFF.get<1>() += dy;
-	}
-	
-	// Save data for further calculation (TODO: Code below might be simplified / removed...)
-	// TODO: Add same for fwhms?
-	PointT<float> currHfdPosition(inFocuserDevice->getAbsPos(), hfd.getValue());
-	hfdPoints[i].push_back(currHfdPosition);
-	allHfdPoints.push_back(currHfdPosition); // TODO: Required? Better solution?
-	LOG(error) << "hfdPoints[" << i << "] = (" << inFocuserDevice->getAbsPos() << ", " << hfd.getValue() << ")" << endl;
-
-	PointT<float> currFwhmHorzPosition(inFocuserDevice->getAbsPos(), fwhmHorz.getValue());
-	allFwhmHorzPoints.push_back(currFwhmHorzPosition); // TODO: Required? Better solution?
-	LOG(error) << "fwhmHorzPoints[" << i << "] = (" << inFocuserDevice->getAbsPos() << ", " << fwhmHorz.getValue() << ")" << endl;
-
-	PointT<float> currFwhmVertPosition(inFocuserDevice->getAbsPos(), fwhmVert.getValue());
-	allFwhmVertPoints.push_back(currFwhmVertPosition); // TODO: Required? Better solution?
-	LOG(error) << "fwhmVertPoints[" << i << "] = (" << inFocuserDevice->getAbsPos() << ", " << fwhmVert.getValue() << ")" << endl;
-
-	
-	///////////////////////////////////////////////////////////////////////
-	// DRAW START
-	// DRAW - just TMP - will be moved out of algorithm and handled by/in update handler which will be called from here...
-	genCurve(allHfdPoints, & hfdCurveRgbImg, 0, 0, 0, green, cCrossSize);
-	currHfdCurveDisp.display(hfdCurveRgbImg);
-
-	genCurve(allFwhmHorzPoints, & fwhmHorzCurveRgbImg, 0, 0, 0, red, cCrossSize);
-	currFwhmHorzCurveDisp.display(fwhmHorzCurveRgbImg);
-
-	genCurve(allFwhmVertPoints, & fwhmVertCurveRgbImg, 0, 0, 0, blue, cCrossSize);
-	currFwhmVertCurveDisp.display(fwhmVertCurveRgbImg);
-	// DRAW END
-	////////////////////////////////////////////////////////////////////////
-	
-	
-	// Update status...
-	statusData.currAbsFocusPos = inFocuserDevice->getAbsPos();
-	statusData.currCenterPosFF = currCenterPosFF;
-	statusData.progress = 100.0 * ((float) step / (numSteps - 1)); // TODO: Need total progress as well...
-	statusData.fwhmHorz = fwhmHorz.getValue();
-	statusData.fwhmVert = fwhmVert.getValue();
-	statusData.hfd = hfd.getValue();
-    
-	status->store(statusData);  // updates the variable safely
-
-	recordedStarData[inFocuserDevice->getAbsPos()] = FocusFinderDataSetT(hfd, fwhmHorz, fwhmVert);
-
-	
-	// Display img... - TODO: Should probably not be here...
-	CImg<unsigned char> rgbImg;
-	genSelectionView(currSubImage, dx, dy, & rgbImg, inCameraDevice->getBitsPerPixel() /*BPP for normalization*/, 3.0 /*zoom*/);
-	currImageDisp.display(rgbImg); // TODO - disable if no Wnds...
-	
-	try {
-	  boost::this_thread::interruption_point();
-	} catch(boost::thread_interrupted const& ) {
-	  statusData.isRunning = false;
-	  status->store(statusData);  // updates the variable safely
-	  return;
-	}
-      }
+      CImg<unsigned char> rgbImg;
+      genSelectionView(sFocusFindStatus.currImage, sFocusFindStatus.dx, sFocusFindStatus.dy, & rgbImg, 3.0);
+      currImageDisp.display(rgbImg); // TODO - disable if no Wnds...
       
-      // Back to start pos...
-      currAbsFocusDestPos = focusStartPos;
-      inFocuserDevice->setAbsPos(focusStartPos);
+      currentHfdDisp.display(sFocusFindStatus.hfd.genView());
     }
-
-    // Finally go back to startPos ... TODO: Instead, calc optimal position... and then go there...
-    inFocuserDevice->setAbsPos(focusStartPos);
-
-    // DEBUG START - print values..
-    for (map<int /*absPos*/, FocusFinderDataSetT>::const_iterator it = recordedStarData.begin(); it != recordedStarData.end(); it++) {
-      int pos = it->first;
-      const FocusFinderDataSetT & focusFinder = it->second;
-
-      LOG(warning) << "pos: " << pos << ", hfd: " << focusFinder.mHfd.getValue()
-		   << ", fwhmHorz: " << focusFinder.mFwhmHorz.getValue()
-		   << ", fwhmVert: " << focusFinder.mFwhmVert.getValue() << endl;
-    }
-    // DEBUG END
-
-    LineT<float> bestFitLineL(hfdPoints[0]);
-    LineT<float> bestFitLineR(hfdPoints[1]);
-
-    float corrL = correlation<float>(hfdPoints[0]);
-    float corrR = correlation<float>(hfdPoints[1]);
-    
-    // DEBUG START
-    // TODO: LOG does not convert ostream correctly... compile error...
-    LOG(error) << " > bestFitLineL: " << endl;
-    cerr << bestFitLineL << endl;
-    LOG(error) << "CorrelationL: " << corrL << endl;
-    
-    LOG(error) << " > bestFitLineR: " << endl;
-    // TODO: LOG does not convert ostream correctly... compile error...
-    //LOG(error) << bestFitLineR << endl;
-    cerr << bestFitLineR << endl;
-    LOG(error) << "CorrelationR: " << corrR << endl;
-    // DEBUG END
-
+  }
   
-    // Do the LM fit, throws CurveFitExceptionT if error boundaries are specified and NOT satisfied
-    ParabelMatcherT::CurveParamsT::TypeT parabelParms;
-    ParabelMatcherT::fitGslLevenbergMarquart<PointLstAccessorT<float> >(allHfdPoints, & parabelParms, 1 /*TODO max abs err*/, 1 /* TODO max rel err*/, false /* no ex */);
-
-    float a = parabelParms[ParabelMatcherT::CurveParamsT::A_IDX];
-    float b = parabelParms[ParabelMatcherT::CurveParamsT::B_IDX];
-    float c = parabelParms[ParabelMatcherT::CurveParamsT::C_IDX];
-      
-    LOG(error) << "Calculated parabel parms - a: " << a << ", b: " << b << ", c: " << c << endl;
-    
-    // Calculate xmin, ymin
-    float xMin = - b / (2.0f * a);
-    float yMin = - 0.25f * (b * b) / a + c;
-
-    LOG(error) << "xMin: " << xMin << ", yMin: " << yMin << endl;
-    
-    // TODO: Draw parabel ...
-    // Draw data points with lines
-    genCurve(allHfdPoints, & hfdCurveRgbImg, & bestFitLineL, & bestFitLineR, & parabelParms, green, cCrossSize);
-    currHfdCurveDisp.display(hfdCurveRgbImg);
-
-    
-
-    
-    
-    // Calculate intersection point
-    try {
-      PointT<float> sp = LineT<float>::calcIntersectionPoint(bestFitLineL, bestFitLineR);
-      cerr << "SP: " << sp << endl;
-      LOG(error) << "SP: " << sp << endl;
-    } catch(LineIntersectionExceptionT & exc) {
-      // TODO: Handle...
-      LOG(error) << "Something went wrong... determined lines are parallel..." << endl;
-      LOG(error) << " > bestFitLineL: " << endl;
-      bestFitLineL.print(cerr);
-
-      LOG(error) << " > bestFitLineR: " << endl;
-      bestFitLineR.print(cerr);
-    }
-
-    
-    // TODO - TMP - wait
-    while (! currHfdCurveDisp.is_closed()) {
-      currHfdCurveDisp.wait();
-    }
-
-    
-    statusData.isRunning = false;
-    status->store(statusData);  // updates the variable safely
-
-    return;
+  void focusFinderNewSampleHandler(const FocusCurveT * inCurrFocusCurve) {
+    currFocusCurveDisp.display(inCurrFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
+  }
+  
+  void focusFinderFocusDeterminedHandler(const FocusCurveT * inFocusCurve, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2) {
+    currFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, true, inLine1, inLine2));
   }
 
-
+  
   void
   manualConsoleFocusCntl(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, const FrameT<unsigned int> & inSelectionFrameFF, float inExposureTimeSec, BinningT inBinning, bool inFollowStar)  {
 
@@ -690,7 +251,6 @@ namespace AT {
     static ConsoleMenuT consoleMenu(& consoleDisplay, menuEntries);
     static MenuSeparatorT sep;
 
-
     // "Tasks"
     thread exposureThread;
     atomic<ExposureStatusDataT> exposureStatus;
@@ -698,12 +258,12 @@ namespace AT {
     CImg<float> currSubImage;
     
     thread focusFindThread;
-    atomic<FocusFindStatusDataT> focusFindStatus;
-    atomic<FocusFindCntlDataT> focusFindCntl;
-      
-    // Windows - TODO: Not always available?
-    CImgDisplay currImageDisp, currentHfdDisp, currentFwhmHorzDisp, currentFwhmVertDisp;
+    FocusFinderImplT focusFinderImpl(inCameraDevice, inFocuserDevice, inFilterWheelDevice);
+    focusFinderImpl.registerStatusUpdListener(focusFinderStatusUpdHandler);
+    focusFinderImpl.registerNewSampleListener(focusFinderNewSampleHandler);
+    focusFinderImpl.registerFocusDeterminedListener(focusFinderFocusDeterminedHandler);
 
+    // TODO: unregister......
     
     // Set the initial image frame
     // NOTE:
@@ -855,23 +415,37 @@ namespace AT {
 
     menuEntries.push_back(& sep);
 
+    
     StartAbortT::TypeE focusFindStartAbort = StartAbortT::START;
     MenuSelectT<StartAbortT> focusFindStartAbortMenuSelect(& focusFindStartAbort, "Focus find: ",
 							   [](StartAbortT::TypeE * inValPtr) { return StartAbortT::asStr(*inValPtr); },
 							   [&](StartAbortT::TypeE * inValPtr) {
-							     bool running = focusFindStatus.load().isRunning;
+							     //bool running = sFocusFindStatus.load().isRunning;
+							     lock_guard<mutex> guard(sFocusFinderMtx);
+							     bool running = sFocusFindStatus.isRunning;
 							   
 							     if (*inValPtr == StartAbortT::ABORT) {
 							       // Start thread if not yet active.
 							       if (! running) {
+								 // TODO: Pass those to the class before starting.... constructor / set?
 								 FocusFindCntlDataT focusFindCntlData;
 								 focusFindCntlData.binning = BinningT(binValXY, binValXY);
 								 focusFindCntlData.exposureTime = expTimeVal;
 								 focusFindCntlData.centerPosFF = currCenterPosFF;
-								 focusFindCntl.store(focusFindCntlData);
-								 
-								 focusFindThread = thread(focusFindTask, inCameraDevice, inFocuserDevice, & focusFindCntl, & focusFindStatus);
+								 focusFindCntlData.wantRecenter = true; // TODO: Configure...
+
+								 focusFinderImpl.setCntlData(focusFindCntlData);
+
+								 // TODO: Still required? & focusFindCntl, & focusFindStatus...??
+								 focusFindThread = thread(boost::bind(& FocusFinderImplT::run, boost::ref(focusFinderImpl)));
+								 // Just make sure that status is updated asap...
+								 // might not be required later when we have a class...
+								 // FocusFindStatusDataT focusFindStatus;
+								 // focusFindStatus.isRunning = true;
+								 // sFocusFindStatus.store(focusFindStatus);
+								 sFocusFindStatus.isRunning = true;
 							       }
+							       
 							     } else {
 							       // Abort - only interrupt if still running
 							       if (running) {
@@ -881,15 +455,15 @@ namespace AT {
 							   },
 							   [&]() {
 							     /*ABORT handler*/
-							     bool running = focusFindStatus.load().isRunning;
-							     if (running) {
+							     //if (sFocusFindStatus.load().isRunning) {
+							     lock_guard<mutex> guard(sFocusFinderMtx);
+							     if (sFocusFindStatus.isRunning) {
 							       focusFindThread.interrupt();
 							     }
 							   });
     menuEntries.push_back(& focusFindStartAbortMenuSelect);
-  
 
-
+    
 
     while (! consoleMenu.wantExit()) {
 
@@ -977,25 +551,25 @@ namespace AT {
 	  HfdT hfd;
 	  FwhmT fwhmHorz, fwhmVert;
 	  calcStarValues(currSubImage, & dx, & dy, & hfd, & fwhmHorz, & fwhmVert);
-	  
-	  // Finally, generate and display the image
-	  CImg<unsigned char> rgbImg;
-	  genSelectionView(currSubImage, dx, dy, & rgbImg, inCameraDevice->getBitsPerPixel() /*BPP for normalization*/, 3.0 /*zoom*/);
-	  currImageDisp.display(rgbImg); // TODO - disable if no Wnds...
 
-	  consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 19, "HFD: %f\n", hfd.getValue());
-	  currentHfdDisp.display(hfd.genView());
-	  	  
-	  consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 20, "FWHM(horz): %f\n", fwhmHorz.getValue());
-	  currentFwhmHorzDisp.display(fwhmHorz.genView());
-      	 
-	  consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 21, "FWHM(vert): %f\n", fwhmVert.getValue());
-	  currentFwhmVertDisp.display(fwhmVert.genView());
-	  
 	  if (true /* TODO: wantRecenter */) {
 	    currCenterPosFF.get<0>() += dx;
 	    currCenterPosFF.get<1>() += dy;
 	  }
+	  
+	  // Finally, generate and display the image
+	  CImg<unsigned char> rgbImg;
+	  genSelectionView(currSubImage, dx, dy, & rgbImg, 3.0 /*zoom*/);
+	  currImageDisp.display(rgbImg);
+
+	  consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 19, "HFD: %f\n", hfd.getValue());
+	  currentHfdDisp.display(hfd.genView());
+	  	  
+	  // consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 20, "FWHM(horz): %f\n", fwhmHorz.getValue());
+	  // currentFwhmHorzDisp.display(fwhmHorz.genView());
+      	 
+	  // consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 21, "FWHM(vert): %f\n", fwhmVert.getValue());
+	  // currentFwhmVertDisp.display(fwhmVert.genView());	  
 	}
 
 	if (expMode == ExposureModeT::SINGLE) {
@@ -1012,11 +586,14 @@ namespace AT {
       ////////////////////////////
       // Handle focus finder    //
       ////////////////////////////
-      FocusFindStatusDataT focusFindStatusData = focusFindStatus.load();	
-      if (focusFindStatusData.isRunning) {
-	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress: %d, hfd: %f\n", focusFindStatusData.progress, focusFindStatusData.hfd);
+      // PROBLEM: Making a copy here leads to double free!!!
+      //FocusFindStatusDataT focusFindStatus = sFocusFindStatus.load();
+      
+      if (sFocusFindStatus.isRunning) {
+      	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress: %d, hfd: %f\n",
+      			     sFocusFindStatus.progress, sFocusFindStatus.hfd.getValue());
       } else {
-	focusFindStartAbort = StartAbortT::START;
+      	focusFindStartAbort = StartAbortT::START;
       }
 
       

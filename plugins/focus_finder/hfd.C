@@ -23,7 +23,7 @@
 #include "hfd.hpp"
 
 namespace AT {
-  const float HfdT::defaultScaleFactor = 4.0;
+  const float HfdT::defaultScaleFactor = 10.0;
 
   float
   HfdT::calc(const CImg<float> & inImage, const PointT<float> & inCenter, unsigned int inOuterDiameter,
@@ -120,7 +120,7 @@ namespace AT {
     const unsigned char red[3] = { 255, 0, 0 }, white[3] = { 255, 255, 255 }, black[3] = { 0, 0, 0 }, yellow[3] = { 255, 255, 0 };
     const size_t cCrossSize = 3;
     PointT<float> center((float) inImage.width() / 2.0, (float)inImage.height() / 2.0);
-    drawCross(& rgbImg, floor(inScaleFactor * center.get<0>() + 0.5), floor(inScaleFactor * center.get<1>() + 0.5), cCrossSize, red, 1 /*opacity*/);
+    drawCross(& rgbImg, floor(inScaleFactor * center.get<0>() + 0.5), floor(inScaleFactor * center.get<1>() + 0.5), red, cCrossSize, 1.0 /*scale factor*/, 1 /*opacity*/);
 
     
     // Draw HFD
