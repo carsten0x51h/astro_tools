@@ -41,8 +41,11 @@ using namespace std;
 
 DEF_Exception(FileNotFound);
 
+// TODO: The functions should be renamed to something more clear... something with FITS...
 // CCfits helper function
 // See http://heasarc.gsfc.nasa.gov/fitsio/ccfits/html/cookbook.html
 bool readFile(CImg<float> & cimg, const string & inFilename, long * outBitPix = 0, bool inVerboseMode = false);
+void writeFile(const CImg<float> & inImg, const string & inFilename);
+
 
 #endif // _IO_UTIL_HPP_

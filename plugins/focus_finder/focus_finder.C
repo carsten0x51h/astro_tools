@@ -100,7 +100,13 @@ namespace AT {
     } else if (! strcmp(starSelectMethod.c_str(), "display")) {
       // Normalize image
       // TODO / FIXME: 5%???
-      CImg<unsigned char> normalizedImage(normalize(inImg, pow(2.0, bitPix), 10.0 /*5%*/));
+      // TODO: Rename own normalize (used here) to non-linear normalize since it is not provided by CImg. Otherwise use CImg normalize.
+      // TODO: own non-linear normalize should be improved (see wikipedia - non-linear image normalization)...
+      CImg<unsigned char> normalizedImage(normalize(inImg, pow(2.0, bitPix), 10 /*5%*/));
+
+      // FIXME / normalize results in star images is bad!!!
+      //CImg<unsigned char> normalizedImage(inImg);
+      //normalizedImage.normalize(0, 255);
 
       // NOTE: See http://cimg.eu/reference/structcimg__library_1_1CImgDisplay.html
       // TODO: We will use our own graphical star-selector later - with zoom, value preview etc.

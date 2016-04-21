@@ -263,6 +263,8 @@ namespace AT {
     focusFinderImpl.registerNewSampleListener(focusFinderNewSampleHandler);
     focusFinderImpl.registerFocusDeterminedListener(focusFinderFocusDeterminedHandler);
 
+    focusFinderImpl.setRecordBaseDir("/home/devnull/workspace/astro_tools/plugins/focus_finder/records"); // HACK / TODO: This should be configurable!!!
+    
     // TODO: unregister......
     
     // Set the initial image frame
@@ -550,26 +552,33 @@ namespace AT {
 	  int dx = 0, dy = 0;
 	  HfdT hfd;
 	  FwhmT fwhmHorz, fwhmVert;
-	  calcStarValues(currSubImage, & dx, & dy, & hfd, & fwhmHorz, & fwhmVert);
+	  
+	  try {
+	    calcStarValues(currSubImage, & dx, & dy, & hfd, & fwhmHorz, & fwhmVert);
 
-	  if (true /* TODO: wantRecenter */) {
-	    currCenterPosFF.get<0>() += dx;
-	    currCenterPosFF.get<1>() += dy;
+	    if (true /* TODO: wantRecenter */) {
+	      currCenterPosFF.get<0>() += dx;
+	      currCenterPosFF.get<1>() += dy;
+	    }
+	    
+	    consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 19, "HFD: %f\n", hfd.getValue());
+	    currentHfdDisp.display(hfd.genView());
+
+	    // consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 20, "FWHM(horz): %f\n", fwhmHorz.getValue());
+	    // currentFwhmHorzDisp.display(fwhmHorz.genView());
+	    
+	    // consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 21, "FWHM(vert): %f\n", fwhmVert.getValue());
+	    // currentFwhmVertDisp.display(fwhmVert.genView());
+	    
+	  } catch(CentroidExceptionT & exc) {
+	    // Unable to calculate star values - probably no star...
+	    LOG(info) << "Unable to calculate star data... probably no valid star selected" << endl; 
 	  }
 	  
 	  // Finally, generate and display the image
 	  CImg<unsigned char> rgbImg;
 	  genSelectionView(currSubImage, dx, dy, & rgbImg, 3.0 /*zoom*/);
 	  currImageDisp.display(rgbImg);
-
-	  consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 19, "HFD: %f\n", hfd.getValue());
-	  currentHfdDisp.display(hfd.genView());
-	  	  
-	  // consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 20, "FWHM(horz): %f\n", fwhmHorz.getValue());
-	  // currentFwhmHorzDisp.display(fwhmHorz.genView());
-      	 
-	  // consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 21, "FWHM(vert): %f\n", fwhmVert.getValue());
-	  // currentFwhmVertDisp.display(fwhmVert.genView());	  
 	}
 
 	if (expMode == ExposureModeT::SINGLE) {

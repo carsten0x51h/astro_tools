@@ -24,7 +24,9 @@
 
 // TODO: namespace AT
 
-bool readFile(CImg<float> & cimg, const string & inFilename, long * outBitPix, bool inVerboseMode) {
+// TODO: As template...
+bool
+readFile(CImg<float> & cimg, const string & inFilename, long * outBitPix, bool inVerboseMode) {
   FITS::setVerboseMode(inVerboseMode);
   
   try {
@@ -55,7 +57,28 @@ bool readFile(CImg<float> & cimg, const string & inFilename, long * outBitPix, b
     cimg_forXY(cimg, x, y) { cimg(x, y) = imgData[cimg.offset(x, y)]; }
 
   } catch (FitsException&) {
+    // TODO: Imporve error handling...
     // will catch all exceptions thrown by CCfits, including errors found by cfitsio (status != 0)
     return false;
   }
-};
+}
+
+// TODO: As template...
+// TODO: more generic..?
+// TODO: error handling?
+void
+writeFile(const CImg<float> & inImg, const string & inFilename) {
+  long naxis = 2;
+  long naxes[2] = { inImg.width(), inImg.height() };
+  std::auto_ptr<FITS> pFits(0);
+  pFits.reset(new FITS(string("!") + inFilename , USHORT_IMG , naxis , naxes) );
+  
+  // NOTE: At this point we assume that there is only 1 layer.
+  long nelements = std::accumulate(& naxes[0], & naxes[naxis], 1, std::multiplies<long>());
+  std::valarray<int> array(nelements);
+  cimg_forXY(inImg, x, y) { array[inImg.offset(x, y)] = inImg(x, inImg.height() - y -1); }
+  
+  long fpixel(1);
+  pFits->pHDU().write(fpixel, nelements, array);
+}
+

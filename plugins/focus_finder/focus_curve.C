@@ -95,24 +95,78 @@ namespace AT {
   PointT<float>
   FocusCurveT::calcOptFocusPos(LineFitTypeT::TypeE inLineFitType, LineT<float> * outLine1 = 0, LineT<float> * outLine2 = 0) const {
 
-    // Convert inFocusCurve to PointLst<float> and create lines...
-    // TODO: Converter might be moved to FocusCurveT...
+    // HACK! Put all points together and to a MEDIAN... otherwise lines are weighted wrong because start position is never exactly in the center!!!
+    // TODO -> Maybe we can apply this to the overall data structure - segment is then no longer required... -> also good for parabel!
+
+    FocusCurveT::SegmentT bothCurves;
+
+    for (size_t i = 0; i < 2; ++i) {
+      const FocusCurveT::SegmentT & currSeg = mSegments[i];
+      for (typename FocusCurveT::SegmentT::const_iterator it = currSeg.begin(); it != currSeg.end(); ++it) {
+	bothCurves[it->first] = it->second;
+	LOG(debug) << "HACK - BOTH_CURVES - (x, y) = (" << it->first << ", " << it->second << ")" << endl;
+      }
+    }
+    LOG(info) << "bothCurves size: " << bothCurves.size() << endl;
+
+    
     PointLstT<float> hfdPoints[2];
     LineT<float> bestFitLines[2];
     
-    for (size_t i = 0; i < 2; ++i) {
-      const FocusCurveT::SegmentT & currSeg = mSegments[i];
+    if (bothCurves.size() % 2 == 0 /*even*/) {
+      LOG(info) << "EVEN..." << endl;
+      int numPerLine = bothCurves.size() / 2;
+      int counter = 0;
+      for (typename FocusCurveT::SegmentT::const_iterator it = bothCurves.begin(); it != bothCurves.end(); ++it,++counter) {
+	if (counter < numPerLine) {
+	  hfdPoints[0].push_back(PointT<float>(it->first, it->second));
+	} else {
+	  hfdPoints[1].push_back(PointT<float>(it->first, it->second));
+	}
+      }      
+    } else {
+      // Share the center point...
+      LOG(info) << "ODD..." << endl;
+      int numPerLine = floor(bothCurves.size() / 2);
 
-      LOG(info) << "calcOptFocusPos - mSegments[" << i << "].size(): " << currSeg.size() << endl;
-
-      for (typename FocusCurveT::SegmentT::const_iterator it = currSeg.begin(); it != currSeg.end(); ++it) {
-  	hfdPoints[i].push_back(PointT<float>(it->first, it->second));
-	LOG(debug) << "(x, y) = (" << it->first << ", " << it->second << ")" << endl;
-      }
-      bestFitLines[i].set(hfdPoints[i], inLineFitType);
-
-      LOG(info) << "Line " << i << " - A1: " << bestFitLines[i].getA1() << ", A0: " << bestFitLines[i].getA0() << endl;
+      int counter = 0;
+      for (typename FocusCurveT::SegmentT::const_iterator it = bothCurves.begin(); it != bothCurves.end(); ++it,++counter) {
+	if (counter < numPerLine) {
+	  hfdPoints[0].push_back(PointT<float>(it->first, it->second));
+	} else if (counter == numPerLine) {
+	  // Share the point...
+	  hfdPoints[0].push_back(PointT<float>(it->first, it->second));
+	  hfdPoints[1].push_back(PointT<float>(it->first, it->second));	  
+	} else {
+	  hfdPoints[1].push_back(PointT<float>(it->first, it->second));
+	}
+      }      
     }
+    bestFitLines[0].set(hfdPoints[0], inLineFitType);
+    bestFitLines[1].set(hfdPoints[1], inLineFitType);
+    
+
+    
+    // Convert inFocusCurve to PointLst<float> and create lines...
+    // TODO: Converter might be moved to FocusCurveT...
+
+
+    // PointLstT<float> hfdPoints[2];
+    // LineT<float> bestFitLines[2];
+    
+    // for (size_t i = 0; i < 2; ++i) {
+    //   const FocusCurveT::SegmentT & currSeg = mSegments[i];
+
+    //   LOG(info) << "calcOptFocusPos - mSegments[" << i << "].size(): " << currSeg.size() << endl;
+
+    //   for (typename FocusCurveT::SegmentT::const_iterator it = currSeg.begin(); it != currSeg.end(); ++it) {
+    // 	hfdPoints[i].push_back(PointT<float>(it->first, it->second));
+    // 	LOG(debug) << "(x, y) = (" << it->first << ", " << it->second << ")" << endl;
+    //   }
+    //   bestFitLines[i].set(hfdPoints[i], inLineFitType);
+
+    //   LOG(info) << "Line " << i << " - A1: " << bestFitLines[i].getA1() << ", A0: " << bestFitLines[i].getA0() << endl;
+    // }
 
     // Optionally, return a copy of the lines
     if (outLine1) { *outLine1 = bestFitLines[0]; }

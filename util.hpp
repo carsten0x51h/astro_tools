@@ -27,6 +27,7 @@
 #include <limits> // To get epsilon - see: http://stackoverflow.com/questions/17333/most-effective-way-for-float-and-double-comparison
 
 #include <ctime>
+#include <time.h>
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -110,7 +111,22 @@ DEF_Exception(Timeout);
     return Count;					\
   }
 
+
+
+// Get current date/time, format is YYYY-MM-DD.HH:mm:ss
+static std::string currDateTimeStr() {
+  time_t     now = time(0);
+  struct tm  tstruct;
+  char       buf[80];
+  tstruct = *localtime(&now);
+  // Visit http://en.cppreference.com/w/cpp/chrono/c/strftime
+  // for more information about date/time format
+  strftime(buf, sizeof(buf), "%Y-%m-%d.%X", & tstruct);
   
+  return buf;
+}
+
+
 /**
  * Floating point comparison function.
  */

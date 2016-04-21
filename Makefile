@@ -8,7 +8,7 @@ INCPATH_COMMON = -I/usr/include/libindi -I/usr/include/python2.7
 INCPATH_GUI = -I/usr/share/qt4/mkspecs/linux-g++ -I. -I/usr/include/qt4 -I/usr/include/qt4/Qt -I/usr/include/qt4/QtCore -I/usr/include/qt4/QtGui -Iui -Iui/gen -I/usr/include/qwt-qt4
 INCPATH_ALL = $(INCPATH_COMMON) $(INCPATH_GUI)
 
-LFLAGS_COMMON  = -lgsl -lgslcblas -lm -lpthread -lCCfits -lX11 -L/usr/lib/i386-linux-gnu -lpython2.7 -rdynamic
+LFLAGS_COMMON  = -lCCfits -lcfitsio -lgsl -lgslcblas -lm -lpthread -lX11 -L/usr/lib/i386-linux-gnu -lpython2.7 -rdynamic
 LFLAGS_CONSOLE = $(LFLAGS_COMMON)
 LFLAGS_GUI = $(LFLAGS_COMMON) -lqwt-qt4 -lQtGui -lQtCore
 
@@ -119,7 +119,9 @@ sim_find_focus:
 #776,558
 
 atik_find_focus:
-	./build/astro_tools focus_find --camera_device="Atik 383L+ CCD" --filter_device="ATIK Wheel" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --star_select=264,574
+	gdb --args ./build/astro_tools focus_find --camera_device="Atik 383L+ CCD" --filter_device="ATIK Wheel" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --focus_mode=manual --star_select=display
+
+
 #	./build/astro_tools focus_find -v --camera_device="ATIK CCD Atik 383L+" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --star_select=2390,1267 --num_steps_to_determine_direction=300 --steps_to_reach_focus=300 --extrema_fitness_boundary=16 --rough_focus_granularity_steps=50 --fine_focus_granularity_steps=10 --fine_search_range_steps=150 --outer_hfd_radius_px=15 --fine_focus_record_num_curves=1
 
 atik_take_picture:

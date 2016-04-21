@@ -74,13 +74,16 @@ namespace AT {
 
     FocusFindCntlDataT mCntlData;
 
+    string mRecordBaseDir;
+    
     const size_t mNumStepsRough = 10;    // TODO: Not const, set function? Is this a good value?
     const size_t mNumStepsFine = 15;     // TODO: Not const, set function? Is this a good value?
     const size_t mNumCurvesToRecord = 3; // TODO: Not const, set function? Is this a good value?
-    const float mHfdLimitFactor = 1.5;   // 150% - We may formulate this as a percent value... - TODO: Configurable?! Is this a generic approach?
+    const float mHfdLimitFactor = 1.8;   // 180% - We may formulate this as a percent value... - TODO: Configurable?! Is this a generic approach?
 
-    void recordSequence(FocusCurveT * outFocusCurve, int stepSize, float hfdLimit = 0);
-
+    void recordSequence(FocusCurveT * outFocusCurve, int stepSize, int inNumSteps, float hfdLimit = 0);
+    void recordSequence(FocusCurveT * outHfdFocusCurve, const vector<int> & inStepSizes, float hfdLimit = 0);
+    string prepareRecordDir();
     
   public:
     // Events / Handlers
@@ -103,13 +106,22 @@ namespace AT {
     FocusFinderImplT(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice) :
       mCameraDevice(inCameraDevice),
       mFocuserDevice(inFocuserDevice),
-      mFilterWheelDevice(inFilterWheelDevice) {
+      mFilterWheelDevice(inFilterWheelDevice),
+      mRecordBaseDir("") {
     }
 
     inline const FocusFindCntlDataT & getCntlData(const FocusFindCntlDataT & inCntlData) const { return mCntlData; }
     inline void setCntlData(const FocusFindCntlDataT & inCntlData) { mCntlData = inCntlData; }
-    
+
+    const char * getRecordBaseDir() const { return mRecordBaseDir.c_str(); }
+    void setRecordBaseDir(const char * inRecordBaseDir) {
+      // TODO: Check if directory exists... if not, throw... maybe pass an additional bool which forces creation of the dir...
+      mRecordBaseDir = inRecordBaseDir;
+    }
     void run();
+    
+    static void
+    writeRecordFile(const string & inCurrRecordDir, const CImg<float> & inImg, int inSegmentNo, int inStepNo, int inFocusPos);
     
     static PointT<float>
     calcOptFocusPos(const FocusCurveT & inFocusCurve, LineFitTypeT::TypeE inLineFitType, LineT<float> * outLine1, LineT<float> * outLine2);

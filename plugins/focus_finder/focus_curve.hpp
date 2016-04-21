@@ -59,9 +59,59 @@ namespace AT {
       return mSegments[inSegNo];
     }
 
+    // TODO: Replace LineFitTypeT::TypeE by "methods" - e.g. also ABS_MIN
     PointT<float>
     calcOptFocusPos(LineFitTypeT::TypeE inLineFitType, LineT<float> * outLine1, LineT<float> * outLine2) const;
 
+    // TODO: Should be replaced by calcOptFocusPos(ABS_MIN)...??
+    // TODO: Improve code below... more generic...
+    PointT<float>
+    getAbsMinVal() const {
+      float minVal = numeric_limits<float>::max();
+      int pos;
+      
+      for (size_t i = 0; i < 2; ++i) {
+	for(SegmentT::const_iterator it = mSegments[i].begin(); it != mSegments[i].end(); ++it) {
+	  if (minVal > it->second) {
+	    minVal = it->second;
+	    pos = it->first; // Corresponding position
+	  }
+	}
+      }
+      return PointT<float>(pos, minVal);
+    }
+
+    // TODO... improve... more generic...
+    int
+    getMinPos() const {
+      int minPos = numeric_limits<int>::max();
+      
+      for (size_t i = 0; i < 2; ++i) {
+	for(SegmentT::const_iterator it = mSegments[i].begin(); it != mSegments[i].end(); ++it) {
+	  if (minPos > it->first) {
+	    minPos = it->first;
+	  }
+	}
+      }
+      return minPos;
+    }
+
+    int
+    getMaxPos() const {
+      int maxPos = numeric_limits<int>::min();
+      
+      for (size_t i = 0; i < 2; ++i) {
+	for(SegmentT::const_iterator it = mSegments[i].begin(); it != mSegments[i].end(); ++it) {
+	  if (maxPos < it->first) {
+	    maxPos = it->first;
+	  }
+	}
+      }
+      return maxPos;
+    }
+
+    
+    
     static PointT<float>
     mapToImgCoords(const PointT<float> & inCurveCoords, float inWidth, float inHeight, float inMinX, float inMaxX, float inMinY, float inMaxY);
 
