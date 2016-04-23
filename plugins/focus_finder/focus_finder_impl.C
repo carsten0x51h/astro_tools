@@ -26,11 +26,7 @@
 #include "focus_finder_impl.hpp"
 #include "io_util.hpp"
 
-// TODO: REMOVE
-#include <iostream>
-// TODO: REMOVE
 using namespace std;
-
 using namespace boost;
 
 
@@ -159,10 +155,8 @@ namespace AT {
 
 	LOG(info) << "recordSequence - Setting new dest position: " << currAbsFocusDestPos << endl;
 	
-	mFocuserDevice->setAbsPos(currAbsFocusDestPos); // Wait for focus to be moved - TODO!! Check if the function blocks by default!!!
+	mFocuserDevice->setAbsPos(currAbsFocusDestPos);
 	
-  	// TODO: CHECK if setAbsPos is BLOCKING!! Does not seem to be the case!!!!! -> WAIT in setAbsPos is commented out...
-				 
   	// Take picture etc.
   	mCameraDevice->takePicture(& currSubImage, mCntlData.exposureTime, getImageFrame(currCenterPosFF),
   				    FrameTypeT::LIGHT, mCntlData.binning, false /*compressed*/);
@@ -175,7 +169,6 @@ namespace AT {
 	  break;
 	}
 
-      TODO: Problem - if HFD limit is too high (not reached), then focus is again and again moved... need another stop-criteria!!! --> SNR? Maybe top limit for HFD (24 e.g. is maybe much too high... )
   	if (mCntlData.wantRecenter) {
   	  currCenterPosFF.get<0>() += dx;
   	  currCenterPosFF.get<1>() += dy;
@@ -206,7 +199,7 @@ namespace AT {
 	boost::this_thread::interruption_point();
 
   	// Break move if HFD limit is reached (only if HFD limit is defined)
-  	if (inHfdLimit && hfd.getValue() >= inHfdLimit) {
+  	if (inHfdLimit && hfd.getValue() > inHfdLimit) {
   	  LOG(info) << "HFD limit ("<< inHfdLimit << ") reached (" << dir[i] << "): " << hfd.getValue() << ". Stop." << endl;
   	  break;
   	}	
@@ -250,12 +243,27 @@ namespace AT {
       int dx = 0, dy = 0;
       calcStarValues(currSubImage, & dx, & dy, & hfd);
       
-      // Determine HFD limit = N * initial HFD (~in focus) 
+      // Determine HFD limit = N * initial HFD (star is roughly in focus). The value is limited by 80% of the max HFD value. 
+      // The limitation is important because otherwise - if star is not in focus the base HFD will be higher - this base HFD
+      // times the factor can lead to a huge HFD which can never be reached. Then the focus stop condition will never be
+      // fulfilled.
       float hfdLimit = mHfdLimitFactor * hfd.getValue();
-      LOG(info) << "HFD limit = " << mHfdLimitFactor << " * " << hfd.getValue() << " = " << hfdLimit << endl;
+      float maxHfdLimit = hfd.getMaxHfdLimit();
       
+      if (hfdLimit > maxHfdLimit) {
+	hfdLimit = maxHfdLimit;
+      }
 
-
+      const float minHfdDistFactor = 0.8; /*80% - TODO: Improve name? Improve value? */
+      
+      if (hfd.getValue() > minHfdDistFactor * maxHfdLimit) {
+	// Star too weak? Bad seeing? Bad initial focus?
+	LOG(error) << "Initial HFD " << hfd.getValue() << " too close to max HFD " << maxHfdLimit << ". (limit is 50% of max HFD)." << endl;
+	throw FocusFinderExceptionT("Initial HFD too close to max HFD.");
+      }
+      
+      LOG(info) << "HFD limit = " << mHfdLimitFactor << " * " << hfd.getValue() << ", limited by max. HFD: " << maxHfdLimit << " --> " << hfdLimit << endl;
+      
       
       // 1. If no stepSize is configured, determine it
       // NOTE / TODO: This step is also REQUIRED to roughly center the focus pos!
@@ -272,14 +280,13 @@ namespace AT {
 	int minLR = std::min(deltaL, deltaR);
 
 	int absLimitL = focusStartPos - minLR;
-	int absLimitR = focusStartPos + minLR;
 	
 	int maxStepSize = 0.05 * minLR; // 1/50 of minLR is maxStepSize
 	
     	LOG(debug) << "focusStartPos: " << focusStartPos << endl;
     	LOG(debug) << "MaxFocusPos: " << mFocuserDevice->getMaxPos() << endl;
     	LOG(debug) << "MinFocusPos: " << mFocuserDevice->getMinPos() << endl;
-    	LOG(debug) << "absLimitL: " << absLimitL << ", absLimitR: " << absLimitR << endl;
+    	LOG(debug) << "absLimitL: " << absLimitL << endl;
 
 	// Calculate non-linear step-sizes
 	// NOTE: We also may have chosen right... - symmetry...
@@ -292,6 +299,7 @@ namespace AT {
 	
 	LOG(info) << "Calculating non-linear step sizes..." << endl;
 
+	// NOTE: This is only require for one direction - the step-size list is symmetric...
 	while(currAbsPosLeft > absLimitL) {
 	  currAbsPosLeft -= currStepSizeLeft;
 
@@ -310,28 +318,28 @@ namespace AT {
     	FocusCurveT recordedFocusCurve;
     	//LineT<float> line1, line2;
     	recordSequence(& recordedFocusCurve, stepSizesLeft, hfdLimit);
-	
+
     	//PointT<float> sp = recordedFocusCurve.calcOptFocusPos(LineFitTypeT::OLS /*LineFitTypeT::BISQUARE - sometimes does not converge!?*/, & line1, & line2);
 	// HACK!
     	// TODO: ODER BESSER?? Einfach die Position mit dem kleinsten Messewert nehmen?? ->Besser als interpolation bzw. Schnittpunkt???
 	// TODO TODO TODO!!!!!!
-	// IDEE IDEE IDEE!!
 	// Idee: Geraden müssen durch HFD_min punkt gehen! Rest wird approximiert .. d.h. SP ist HFD_min...
-	PointT<float> sp = recordedFocusCurve.getAbsMinVal(); // Minimum found during scan is a good start position
-    	LOG(info) << "Start position for rough curve recording: " << sp << endl;
-
+	PointT<float> sp = recordedFocusCurve.getMinValPoint(); // Minimum found during scan is a good start position
+    	LOG(info) << "Start position for curve recording: " << sp << endl;
 
 	//callFocusDeterminedListener(& recordedFocusCurve, & sp, & line1, & line2);
 	
 	// Notify listeners of status update (TODO: Required here?)
 	mFocusFindStatusData.progress = 100; // TODO: CALC!! Update further values?
 	callStatusUpdListener(& mFocusFindStatusData);
+
+	PointT<float> min, max;
+	recordedFocusCurve.getBounds(& min, & max);
+	float meanLength = fabs(max.get<0>() - min.get<0>()) / 2;
 	
-	float meanLength = fabs(recordedFocusCurve.getMaxPos() - recordedFocusCurve.getMinPos()) / 2;
-	
-    	stepSize = meanLength / mNumStepsRough;
+    	stepSize = meanLength / mNumStepsFine;
       
-    	LOG(info) << "STEP1 FINISHED: DETERMINED STEP SIZE FOR ROUGH CURVE RECORDING: " << stepSize << " (" << mNumStepsRough << " steps per direction)." << endl;
+    	LOG(info) << "STEP1 FINISHED: DETERMINED STEP SIZE FOR CURVE RECORDING: " << stepSize << " (" << mNumStepsFine << " steps per direction)." << endl;
 
     	// Move focus to roughly determine start position
     	mFocuserDevice->setAbsPos(sp.get<0>());
@@ -340,46 +348,7 @@ namespace AT {
 
 
       
-      // 2. Record one curve (linear) using the previously determined stepSize AND with hfdLimit enabled to
-      //    get better result for the outer boundaries (boundaries from non-linear curve above can be too bad...).
-      // if (leftLimitPos < 0 || rightLimitPos < 0) {
-      // 	int focusStartPos = mFocuserDevice->getAbsPos();
-      // 	FocusCurveT recordedFocusCurve;
-      // 	LineT<float> line1, line2;
-      // 	recordSequence(& recordedFocusCurve, stepSize, 0 /*mNumStepsRough*/, hfdLimit);
-      // 	PointT<float> sp = recordedFocusCurve.calcOptFocusPos(LineFitTypeT::OLS /*LineFitTypeT::BISQUARE - sometimes does not converge!?*/, & line1, & line2);
-      // 	LOG(info) << "Start position for fine curve recording: " << sp << endl;
-
-      // 	callFocusDeterminedListener(& recordedFocusCurve, & sp, & line1, & line2);
-
-      // 	// Notify listeners of status update (TODO: Required here?)
-      // 	mFocusFindStatusData.progress = 100; // TODO: CALC!! Update further values?
-      // 	callStatusUpdListener(& mFocusFindStatusData);
-	
-      // 	// Now calculate the (new) step-size - we again want 10 steps in each direction.
-      // 	// -> 1. Calculate, L and R  -> interpolate using determined slope
-      // 	leftLimitPos = line1.f_inv(hfdLimit);
-      // 	rightLimitPos = line2.f_inv(hfdLimit);
-
-      // 	LOG(debug) << "STEP2 FINISHED: leftLimitPos: " << leftLimitPos << ", rightLimitPos: " << rightLimitPos << ", SPx: " << sp.get<0>() << endl;
-      // 	mFocuserDevice->setAbsPos(sp.get<0>());
-      // 	LOG(info) << "INITIAL FOCUS POS FOR STEP 3: " << sp.get<0>() << endl;	
-      // }
-      
-
-
-      
       // 3. Now, record M "fine" curves...
-      int focusStartPos = mFocuserDevice->getAbsPos();
-      // float leftLength = fabs(leftLimitPos - focusStartPos);
-      // float rightLength = fabs(rightLimitPos - focusStartPos);
-      // float meanLength = (leftLength + rightLength) / 2.0;
-      // LOG(debug) << "-> leftLength: " << leftLength << ", rightLength: " << rightLength << " ---> meanLength: " << meanLength << endl;	
-	
-      //stepSize = meanLength / mNumStepsFine;
-
-      stepSize /= 2; // Double precision!
-      
       LOG(info) << "Now, recording " << mNumCurvesToRecord << " curves. stepSize = " << stepSize << " (" << mNumStepsFine << " steps per direction)." << endl;
       FocusCurveT recordedFocusCurves[mNumCurvesToRecord];
       PointT<float> sps[mNumCurvesToRecord];
@@ -390,7 +359,7 @@ namespace AT {
       	LineT<float> line1, line2;
       	recordSequence(& recordedFocusCurves[m], stepSize, 0 /* INFINITE - mNumStepsFine - maybe just pass absolute limits...or directly put check into recordSequence asking max boundaries -10% or something...... */, hfdLimit);
 	
-      	sps[m] = recordedFocusCurves[m].calcOptFocusPos(LineFitTypeT::OLS /*LineFitTypeT::BISQUARE - sometimes does not converge!?*/, & line1, & line2);
+      	sps[m] = recordedFocusCurves[m].calcOptFocusPos(/*LineFitTypeT::OLS*/ LineFitTypeT::BISQUARE/* - sometimes does not converge!?*/, & line1, & line2);
       	LOG(info) << "SP of fine curve " << (m+1) << ": " << sps[m] << endl;
 
       	callFocusDeterminedListener(& recordedFocusCurves[m], & sps[m], & line1, & line2);
@@ -436,8 +405,6 @@ namespace AT {
       callStatusUpdListener(& mFocusFindStatusData);
       
 
-
-
 	
       // TODO: Call finish handler...
       
@@ -445,6 +412,9 @@ namespace AT {
       // Interrupted
       // NOTE: Eventually some cleanup is necessary - e.g. reset focus pos...
       LOG(info) << "Focus finder was interrupted!" << endl;
+    } catch(FocusFinderExceptionT & exc) {
+      LOG(error) << "Initial HFD too close to max HFD. Star too weak? Bad seeing? Try to increase exposure time. Or improve initial focus position." << endl;
+      // TODO: Communicate this problem to the UI somehow.. maybe not catch here? Or via status update -> errorCode/text field?
     }
 
     mFocusFindStatusData.isRunning = false;

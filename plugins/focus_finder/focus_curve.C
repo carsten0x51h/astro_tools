@@ -26,28 +26,23 @@ namespace AT {
 
   // TODO: Too many parameters... NEED NEW DESIGN...   maybe class / part of class with props as members...?!
   PointT<float>
-  FocusCurveT::mapToImgCoords(const PointT<float> & inCurveCoords, float inWidth, float inHeight,
-			      float inMinX, float inMaxX, float inMinY, float inMaxY) {
-    
-    const float facX = (inMaxX == inMinX ? 1.0f : inWidth / (inMaxX - inMinX)); 
-    const float facY = (inMaxY == inMinY ? 1.0f : inHeight / (inMaxY - inMinY)); 
-    
-    float xMap = (inMaxX == inMinX ? 0.5f * inWidth : facX * (inCurveCoords.get<0>() - inMinX) );
-    float yMap = (inMaxY == inMinY ? 0.5f * inHeight : inHeight - (facY * (inCurveCoords.get<1>() - inMinY)));
+  FocusCurveT::mapToImgCoords(const PointT<float> & inCurveCoords, float inWidth /*image width*/, float inHeight /*image height*/,
+			      const PointT<float> & inMinXY, const PointT<float> & inMaxXY, size_t inBorderPx) {
 
-    return PointT<float>(xMap, yMap);
+    float width = inWidth - 2 * inBorderPx;
+    float height = inHeight - 2 * inBorderPx; 
+    
+    const float facX = (inMaxXY.get<0>() == inMinXY.get<0>() ? 1.0f : width / (inMaxXY.get<0>() - inMinXY.get<0>())); 
+    const float facY = (inMaxXY.get<1>() == inMinXY.get<1>() ? 1.0f : height / (inMaxXY.get<1>() - inMinXY.get<1>())); 
+    
+    float xMap = (inMaxXY.get<0>() == inMinXY.get<0>() ? 0.5f * width : facX * (inCurveCoords.get<0>() - inMinXY.get<0>()) );
+    float yMap = (inMaxXY.get<1>() == inMinXY.get<1>() ? 0.5f * height : inHeight - (facY * (inCurveCoords.get<1>() - inMinXY.get<1>())));
+
+    return PointT<float>(xMap + inBorderPx, yMap - inBorderPx);
   }
 
-  // TODO: We may pass in img as pointer...
-  CImg<unsigned char>
-  FocusCurveT::genView(const FocusCurveT & inFocusCurve, size_t inWidth, size_t inHeight, bool inDrawBestFit,
-		       const LineT<float> * inLineL, const LineT<float> * inLineR) {
-    CImg<unsigned char> img(inWidth, inHeight, 1 /*size_z*/, 3 /*3 channels - RGB*/);
-    const unsigned char red[3] = { 255, 0, 0 }, blue[3] = { 0, 0, 255 };
-
-    img.fill(0);
-    
-    // TODO: Maybe put this code to a generic helper function...
+  void
+  FocusCurveT::getBounds(const FocusCurveT & inFocusCurve, PointT<float> * outMin, PointT<float> * outMax) {
     float minX = std::numeric_limits<float>::max();
     float maxX = std::numeric_limits<float>::min();
     float minY = std::numeric_limits<float>::max();
@@ -66,29 +61,74 @@ namespace AT {
       }
     }
 
+    if (outMin) {
+      outMin->get<0>() = minX;
+      outMin->get<1>() = minY;
+    }
+    if (outMax) {
+      outMax->get<0>() = maxX;
+      outMax->get<1>() = maxY;
+    }
+  }
+  
+  // TODO: We may pass in img as pointer...
+  CImg<unsigned char>
+  FocusCurveT::genView(const FocusCurveT & inFocusCurve, size_t inWidth, size_t inHeight, bool inDrawBestFit,
+		       const LineT<float> * inLineL, const LineT<float> * inLineR, const PointT<float> * inSp) {
+    const size_t borderPx = 40;
+    const size_t fontHeight = 25;
+    CImg<unsigned char> img(inWidth, inHeight, 1 /*size_z*/, 3 /*3 channels - RGB*/);
+    const unsigned char red[3] = { 255, 0, 0 }, green[3] = { 0, 255, 0 }, blue[3] = { 0, 0, 255 }, black[3] = { 0, 0, 0 }, yellow[3] = { 255, 255, 0 };
+
+    img.fill(0);
+
+    PointT<float> minXY, maxXY;
+    getBounds(inFocusCurve, & minXY, & maxXY);    
+
+    if (inSp && minXY.get<1>() > inSp->get<1>()) {
+      minXY.get<1>() = inSp->get<1>();
+    }
+    
     // Draw points
     for (size_t i = 0; i < 2; ++i) {
       const SegmentT & recordedStarData = inFocusCurve.getSegment(i);
       for (SegmentT::const_iterator it = recordedStarData.begin(); it != recordedStarData.end(); ++it) {
-  	PointT<float> dp(it->first, it->second);
-  	drawCross(& img, FocusCurveT::mapToImgCoords(dp, inWidth, inHeight, minX, maxX, minY, maxY), red, 3.0 /*cross size*/, 1.0);
+
+	PointT<float> mapPt = FocusCurveT::mapToImgCoords(PointT<float>(it->first, it->second), inWidth, inHeight, minXY, maxXY, borderPx);
+	drawCross(& img, mapPt, green, 5.0 /*cross size*/, 1.0);
       }
     }
 
     // Draw lines
     if (inLineR) {
-      for (int i = minX; i < maxX; ++i) {
-  	PointT<float> mapPoint = FocusCurveT::mapToImgCoords(PointT<float>(i, inLineR->f(i)), inWidth, inHeight, minX, maxX, minY, maxY);
+      for (int i = minXY.get<0>(); i < maxXY.get<0>(); ++i) {
+  	PointT<float> mapPoint = FocusCurveT::mapToImgCoords(PointT<float>(i, inLineR->f(i)), inWidth, inHeight, minXY, maxXY, borderPx);
   	img.draw_point(mapPoint.get<0>(), mapPoint.get<1>(), red, 1 /*opacity*/);
       }
     }
 
     if (inLineL) {
-      for (int i = minX; i < maxX; ++i) {
-  	PointT<float> mapPoint = FocusCurveT::mapToImgCoords(PointT<float>(i, inLineL->f(i)), inWidth, inHeight, minX, maxX, minY, maxY);
+      for (int i = minXY.get<0>(); i < maxXY.get<0>(); ++i) {
+  	PointT<float> mapPoint = FocusCurveT::mapToImgCoords(PointT<float>(i, inLineL->f(i)), inWidth, inHeight, minXY, maxXY, borderPx);
   	img.draw_point(mapPoint.get<0>(), mapPoint.get<1>(), red, 1 /*opacity*/);
       }
     }
+
+    // Draw focus line
+    if (inSp) {
+      stringstream ss;
+      PointT<float> mapPoint = FocusCurveT::mapToImgCoords(*inSp, inWidth, inHeight, minXY, maxXY, borderPx);
+      ss << inSp->get<0>() << " HFD=" << inSp->get<1>();
+      img.draw_line(mapPoint.get<0>(), 0, mapPoint.get<0>(), inHeight, yellow, 1 /*opacity*/);
+      img.draw_text(mapPoint.get<0>(), borderPx, ss.str().c_str(), yellow, black, 1 /*opacity*/, fontHeight); 
+    }
+    
+    // Draw 3 focus positions at the bottom (interpolated)
+    const size_t focusPosTextHeight = inHeight -fontHeight;
+    img.draw_text(borderPx /* left */, focusPosTextHeight, std::to_string((int)minXY.get<0>()).c_str(), blue, black, 1 /*opacity*/, fontHeight); 
+    img.draw_text(inWidth / 2 /* center */, focusPosTextHeight, std::to_string((int) ((maxXY.get<0>() + minXY.get<0>()) / 2)).c_str(), blue, black, 1 /*opacity*/, fontHeight); 
+    img.draw_text(inWidth - 2*borderPx /* right */, focusPosTextHeight, std::to_string((int)maxXY.get<0>()).c_str(), blue, black, 1 /*opacity*/, fontHeight); 
+
     return img;
   }
 

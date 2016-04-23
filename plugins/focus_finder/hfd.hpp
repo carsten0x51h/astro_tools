@@ -56,7 +56,11 @@ namespace AT {
     float mScaleFactor;
   
   public:
-    static const unsigned int outerHfdDiameter = 21; // TODO: Calc?! - depends on pixel size and focal length (and seeing...)
+    // NOTE: There is a bug in centerPosToFrame() which does not calculate the frame correct! Putting a 31 here hence leads to an exception...
+    //       Fixing this bug leads to another problem where the center of the star does not seem to be calculated correctly any longer - the
+    //       cross is shifted to the top-left in most of the cases.
+    // NOTE: 27 gives better results with simulator! - Anyhow, 21 could be much better with real telescope.... TEST... 
+    static const unsigned int outerHfdDiameter = 27; // TODO: Calc?! - depends on pixel size and focal length (and seeing...) WAS 21!!!
     static const float defaultScaleFactor;
   
     HfdT() : mHfdValue(0), mOuterDiameter(outerHfdDiameter), mScaleFactor(defaultScaleFactor)  {}
@@ -107,6 +111,9 @@ namespace AT {
     inline float getOuterDiameter() const { return mOuterDiameter; }
     CImg<unsigned char> genView() const { return HfdT::genView(mImg, mHfdValue, mOuterDiameter, mScaleFactor); }
 
+    // mOuterDiameter / (2.0 * sqrt(2))
+    inline float getMaxHfdLimit() const { return 0.353553390593 * mOuterDiameter; }
+    
     // TODO: Required??? inline void getCentroid(float * xcom, float * ycom) const { *xcom = mXCom; *ycom = mYCom; }
   };
 

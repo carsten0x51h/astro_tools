@@ -63,73 +63,52 @@ namespace AT {
     PointT<float>
     calcOptFocusPos(LineFitTypeT::TypeE inLineFitType, LineT<float> * outLine1, LineT<float> * outLine2) const;
 
+    static PointT<float>
+    mapToImgCoords(const PointT<float> & inCurveCoords, float inWidth /*image width*/, float inHeight /*image height*/,
+		   const PointT<float> & inMinXY, const PointT<float> & inMaxXY, size_t inBorderPx);
+
+    static void
+    getBounds(const FocusCurveT & inFocusCurve, PointT<float> * outMin, PointT<float> * outMax);
+
+    inline void
+    getBounds(PointT<float> * outMin, PointT<float> * outMax) const { getBounds(*this, outMin, outMax); }
+
+
     // TODO: Should be replaced by calcOptFocusPos(ABS_MIN)...??
     // TODO: Improve code below... more generic...
     PointT<float>
-    getAbsMinVal() const {
+    getMinValPoint() const {
       float minVal = numeric_limits<float>::max();
       int pos;
       
       for (size_t i = 0; i < 2; ++i) {
-	for(SegmentT::const_iterator it = mSegments[i].begin(); it != mSegments[i].end(); ++it) {
-	  if (minVal > it->second) {
-	    minVal = it->second;
-	    pos = it->first; // Corresponding position
-	  }
-	}
+    	for(SegmentT::const_iterator it = mSegments[i].begin(); it != mSegments[i].end(); ++it) {
+    	  if (minVal > it->second) {
+    	    minVal = it->second;
+    	    pos = it->first; // Corresponding position
+    	  }
+    	}
       }
       return PointT<float>(pos, minVal);
     }
 
-    // TODO... improve... more generic...
-    int
-    getMinPos() const {
-      int minPos = numeric_limits<int>::max();
-      
-      for (size_t i = 0; i < 2; ++i) {
-	for(SegmentT::const_iterator it = mSegments[i].begin(); it != mSegments[i].end(); ++it) {
-	  if (minPos > it->first) {
-	    minPos = it->first;
-	  }
-	}
-      }
-      return minPos;
-    }
-
-    int
-    getMaxPos() const {
-      int maxPos = numeric_limits<int>::min();
-      
-      for (size_t i = 0; i < 2; ++i) {
-	for(SegmentT::const_iterator it = mSegments[i].begin(); it != mSegments[i].end(); ++it) {
-	  if (maxPos < it->first) {
-	    maxPos = it->first;
-	  }
-	}
-      }
-      return maxPos;
-    }
-
     
     
-    static PointT<float>
-    mapToImgCoords(const PointT<float> & inCurveCoords, float inWidth, float inHeight, float inMinX, float inMaxX, float inMinY, float inMaxY);
-
     static CImg<unsigned char>
-    genView(const FocusCurveT & inFocusCurve, size_t inWidth, size_t inHeight, bool inDrawBestFit, const LineT<float> * inLineL, const LineT<float> * inLineR);
+    genView(const FocusCurveT & inFocusCurve, size_t inWidth, size_t inHeight, bool inDrawBestFit, const LineT<float> * inLineL, const LineT<float> * inLineR, const PointT<float> * inSp);
     
     CImg<unsigned char>
-    genView(size_t inWidth, size_t inHeight, bool inDrawBestFit, const LineT<float> * inLineL = 0, const LineT<float> * inLineR = 0) const {
+    genView(size_t inWidth, size_t inHeight, bool inDrawBestFit, const LineT<float> * inLineL = 0, const LineT<float> * inLineR = 0, const PointT<float> * inSp = 0) const {
       // TODO: inLineL and inLineR could be class members...? 
       LineT<float> line1, line2;
       PointT<float> sp;
       
       if (inDrawBestFit) {
 	sp = calcOptFocusPos(LineFitTypeT::OLS /*TODO: Should this be a member of the FocusCurveT??*/, & line1, & line2);
-	return FocusCurveT::genView(*this, inWidth, inHeight, inDrawBestFit, & line1, & line2);
+	return FocusCurveT::genView(*this, inWidth, inHeight, inDrawBestFit, & line1, & line2, & sp);
       }
       
-      return FocusCurveT::genView(*this, inWidth, inHeight, inDrawBestFit, 0, 0);
+      return FocusCurveT::genView(*this, inWidth, inHeight, inDrawBestFit, 0, 0, 0);
     }
   };
 };

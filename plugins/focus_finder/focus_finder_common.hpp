@@ -102,7 +102,7 @@ namespace AT {
 	// TODO: HFD value INCREASES if coming to focus using the simulator... !!! Maybe a simulator problem?! --> need real test!!!
 	outHfd->set(subImg); // NOTE: HfdT takes image center as centroid, it does not matter if image is bigger
       } catch(std::exception & exc) {
-	LOG(warning) << "HFD calculation failed!"  << endl;
+	LOG(warning) << "HFD calculation failed! Details: " << exc.what() << endl;
       }
     }
     

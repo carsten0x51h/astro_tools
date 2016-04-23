@@ -199,7 +199,7 @@ namespace AT {
 
 
   // Windows - TODO: Not always available? - TODO: Make as class members later..?!
-  static CImgDisplay currImageDisp, currentHfdDisp, currFocusCurveDisp;
+  static CImgDisplay currImageDisp, currentHfdDisp, currFocusCurveDisp, currentFwhmHorzDisp, currentFwhmVertDisp;
 
   
   // TODO: For some reason atomic<> does nto work here...Use a mutex instead...
@@ -230,7 +230,15 @@ namespace AT {
       genSelectionView(sFocusFindStatus.currImage, sFocusFindStatus.dx, sFocusFindStatus.dy, & rgbImg, 3.0);
       currImageDisp.display(rgbImg); // TODO - disable if no Wnds...
       
-      currentHfdDisp.display(sFocusFindStatus.hfd.genView());
+      currentHfdDisp.display(sFocusFindStatus.hfd.genView());      
+    }
+
+
+    if (inFocusFindStatus->fwhmHorz.valid()) {
+      currentFwhmHorzDisp.display(sFocusFindStatus.fwhmHorz.genView());
+    }
+    if (inFocusFindStatus->fwhmVert.valid()) {
+      currentFwhmVertDisp.display(sFocusFindStatus.fwhmVert.genView());
     }
   }
   
@@ -273,14 +281,13 @@ namespace AT {
     //   IF = Image Frame coordinates
     PointT<float> currCenterPosFF = frameToCenterPos(inSelectionFrameFF);
 
-    
     // Build the menu
-    int expTimeVal = inExposureTimeSec;
-    MenuFieldT<int> expTimeMenuField(& expTimeVal, "Exposure time: ", 1 /* steps */, StepModeT::LINEAR,
+    float expTimeVal = inExposureTimeSec;
+    MenuFieldT<float> expTimeMenuField(& expTimeVal, "Exposure time: ", 1 /* steps */, StepModeT::LINEAR,
 				     inCameraDevice->getMinExposureTime() /* min */, inCameraDevice->getMaxExposureTime() /*max*/,
-				     [](int * inValPtr) {
+				     [](float * inValPtr) {
 				       // Seconds to minutes and seconds
-				       int sec = (*inValPtr) % 60;
+					 int sec = ((int)(*inValPtr)) % 60;
 				       int min = (int) ((float) (*inValPtr) / 60.0);
 				       stringstream ss;
 				       ss << *inValPtr << "s = (" << setfill('0') << setw(2) << min << "m" << setfill('0') << setw(2) << sec << "s)";

@@ -35,6 +35,7 @@
 #ifndef _FOCUS_FINDER_IMPL_HPP_
 #define _FOCUS_FINDER_IMPL_HPP_ _FOCUS_FINDER_IMPL_HPP_
 
+DEF_Exception(FocusFinder);
 
 namespace AT {
 
@@ -76,7 +77,6 @@ namespace AT {
 
     string mRecordBaseDir;
     
-    const size_t mNumStepsRough = 10;    // TODO: Not const, set function? Is this a good value?
     const size_t mNumStepsFine = 15;     // TODO: Not const, set function? Is this a good value?
     const size_t mNumCurvesToRecord = 3; // TODO: Not const, set function? Is this a good value?
     const float mHfdLimitFactor = 1.8;   // 180% - We may formulate this as a percent value... - TODO: Configurable?! Is this a generic approach?
