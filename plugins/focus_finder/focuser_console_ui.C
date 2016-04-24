@@ -202,10 +202,10 @@ namespace AT {
   static CImgDisplay currImageDisp, currentHfdDisp, currFocusCurveDisp, currentFwhmHorzDisp, currentFwhmVertDisp;
 
   
-  // TODO: For some reason atomic<> does nto work here...Use a mutex instead...
   static mutex sFocusFinderMtx; // TODO: As class member...
   static FocusFindStatusDataT sFocusFindStatus; // TODO: This might be a class member, later... no longer static...
-
+  static string sLastErrorStr;
+  
   // TODO: We may write this as a lambda function...
   void
   focusFinderStatusUpdHandler(const FocusFindStatusDataT * inFocusFindStatus) {
@@ -242,14 +242,26 @@ namespace AT {
     }
   }
   
-  void focusFinderNewSampleHandler(const FocusCurveT * inCurrFocusCurve) {
+  void
+  focusFinderNewSampleHandler(const FocusCurveT * inCurrFocusCurve) {
+    lock_guard<mutex> guard(sFocusFinderMtx);
     currFocusCurveDisp.display(inCurrFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
   }
-  
-  void focusFinderFocusDeterminedHandler(const FocusCurveT * inFocusCurve, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2) {
+
+  void
+  focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2) {
+    lock_guard<mutex> guard(sFocusFinderMtx);
     currFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, true, inLine1, inLine2));
   }
-
+  
+  void
+  focusFinderAbortHandler(bool inManualAbort, string inCause) {
+    if (! inManualAbort) {
+      // Print error msg.
+      lock_guard<mutex> guard(sFocusFinderMtx);
+      sLastErrorStr = inCause;
+    }
+  }
   
   void
   manualConsoleFocusCntl(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, const FrameT<unsigned int> & inSelectionFrameFF, float inExposureTimeSec, BinningT inBinning, bool inFollowStar)  {
@@ -267,13 +279,15 @@ namespace AT {
     
     thread focusFindThread;
     FocusFinderImplT focusFinderImpl(inCameraDevice, inFocuserDevice, inFilterWheelDevice);
-    focusFinderImpl.registerStatusUpdListener(focusFinderStatusUpdHandler);
-    focusFinderImpl.registerNewSampleListener(focusFinderNewSampleHandler);
-    focusFinderImpl.registerFocusDeterminedListener(focusFinderFocusDeterminedHandler);
+    signals2::connection focusFinderStatusUpdHandlerConn = focusFinderImpl.registerStatusUpdListener(focusFinderStatusUpdHandler);
+    signals2::connection focusFinderNewSampleHandlerConn = focusFinderImpl.registerNewSampleListener(focusFinderNewSampleHandler);
+    signals2::connection focusFinderNewFocusCurveHandlerConn = focusFinderImpl.registerNewFocusCurveListener(focusFinderNewFocusCurveHandler);
+    signals2::connection focusFinderAbortHandlerConn = focusFinderImpl.registerFocusFinderAbortListener(focusFinderAbortHandler);
 
-    focusFinderImpl.setRecordBaseDir("/home/devnull/workspace/astro_tools/plugins/focus_finder/records"); // HACK / TODO: This should be configurable!!!
-    
-    // TODO: unregister......
+    string seqRecordDir = inCmdLineMap["seq_record_dir"].as<string>();
+    focusFinderImpl.setRecordBaseDir(seqRecordDir.c_str());
+
+    bool imgFrameRecenter = inCmdLineMap["img_frame_recenter"].as<bool>();
     
     // Set the initial image frame
     // NOTE:
@@ -441,7 +455,7 @@ namespace AT {
 								 focusFindCntlData.binning = BinningT(binValXY, binValXY);
 								 focusFindCntlData.exposureTime = expTimeVal;
 								 focusFindCntlData.centerPosFF = currCenterPosFF;
-								 focusFindCntlData.wantRecenter = true; // TODO: Configure...
+								 focusFindCntlData.imgFrameRecenter = imgFrameRecenter;
 
 								 focusFinderImpl.setCntlData(focusFindCntlData);
 
@@ -449,9 +463,6 @@ namespace AT {
 								 focusFindThread = thread(boost::bind(& FocusFinderImplT::run, boost::ref(focusFinderImpl)));
 								 // Just make sure that status is updated asap...
 								 // might not be required later when we have a class...
-								 // FocusFindStatusDataT focusFindStatus;
-								 // focusFindStatus.isRunning = true;
-								 // sFocusFindStatus.store(focusFindStatus);
 								 sFocusFindStatus.isRunning = true;
 							       }
 							       
@@ -559,11 +570,12 @@ namespace AT {
 	  int dx = 0, dy = 0;
 	  HfdT hfd;
 	  FwhmT fwhmHorz, fwhmVert;
+	  int maxPixValue = 0;
 	  
 	  try {
-	    calcStarValues(currSubImage, & dx, & dy, & hfd, & fwhmHorz, & fwhmVert);
+	    calcStarValues(currSubImage, & dx, & dy, & hfd, & fwhmHorz, & fwhmVert, & maxPixValue);
 
-	    if (true /* TODO: wantRecenter */) {
+	    if (imgFrameRecenter) {
 	      currCenterPosFF.get<0>() += dx;
 	      currCenterPosFF.get<1>() += dy;
 	    }
@@ -571,11 +583,15 @@ namespace AT {
 	    consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 19, "HFD: %f\n", hfd.getValue());
 	    currentHfdDisp.display(hfd.genView());
 
-	    // consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 20, "FWHM(horz): %f\n", fwhmHorz.getValue());
-	    // currentFwhmHorzDisp.display(fwhmHorz.genView());
+	    consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 20, "FWHM(horz): %f\n", fwhmHorz.getValue());
+	    currentFwhmHorzDisp.display(fwhmHorz.genView());
 	    
-	    // consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 21, "FWHM(vert): %f\n", fwhmVert.getValue());
-	    // currentFwhmVertDisp.display(fwhmVert.genView());
+	    consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 21, "FWHM(vert): %f\n", fwhmVert.getValue());
+	    currentFwhmVertDisp.display(fwhmVert.genView());
+
+	    // TODO: Also calc saturation?
+	    consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 22, "Max pix val: %d\n", maxPixValue);
+
 	    
 	  } catch(CentroidExceptionT & exc) {
 	    // Unable to calculate star values - probably no star...
@@ -602,8 +618,6 @@ namespace AT {
       ////////////////////////////
       // Handle focus finder    //
       ////////////////////////////
-      // PROBLEM: Making a copy here leads to double free!!!
-      //FocusFindStatusDataT focusFindStatus = sFocusFindStatus.load();
       
       if (sFocusFindStatus.isRunning) {
       	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress: %d, hfd: %f\n",
@@ -612,14 +626,30 @@ namespace AT {
       	focusFindStartAbort = StartAbortT::START;
       }
 
-      
+      // Print error in focus finder, if any
+      {
+	lock_guard<mutex> guard(sFocusFinderMtx);
+	if (! sLastErrorStr.empty()) {
+	  consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 23, "Last error: %s", sLastErrorStr.c_str());
+	}
+      }
+
       
       // Wait a moment to keep processor down...
       chrono::milliseconds dura(10);
       this_thread::sleep_for(dura); // Sleeps for a bit
     } // end loop
+
+    // Unregistering console UI listeners
+    {
+      LOG(debug) << "Unregistering focus finder handler..." << endl;
+      lock_guard<mutex> guard(sFocusFinderMtx);
+      focusFinderImpl.unregisterStatusUpdListener(focusFinderStatusUpdHandlerConn);
+      focusFinderImpl.unregisterNewSampleListener(focusFinderNewSampleHandlerConn);
+      focusFinderImpl.unregisterNewFocusCurveListener(focusFinderNewFocusCurveHandlerConn);
+      focusFinderImpl.unregisterFocusFinderAbortListener(focusFinderAbortHandlerConn);
+    }
   }
-  
 
 
 

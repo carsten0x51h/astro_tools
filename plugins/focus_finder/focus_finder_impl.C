@@ -83,7 +83,9 @@ namespace AT {
 
     const int dir_err = mkdir(ssNewRecordDir.str().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     if (-1 == dir_err) {
-      throw FocusFinderImplRecordingExceptionT("Error creating directory!");
+      stringstream ss;
+      ss << "Error creating directory '" << ssNewRecordDir.str() << "'!" << endl;
+      throw FocusFinderImplRecordingExceptionT(ss.str());
     }
     return ssNewRecordDir.str();
   }
@@ -135,7 +137,7 @@ namespace AT {
     int dx = 0, dy = 0;
     calcStarValues(currSubImage, & dx, & dy, & hfd);
 
-    if (mCntlData.wantRecenter) {
+    if (mCntlData.imgFrameRecenter) {
       currCenterPosFF.get<0>() += dx;
       currCenterPosFF.get<1>() += dy;
     }
@@ -169,7 +171,7 @@ namespace AT {
 	  break;
 	}
 
-  	if (mCntlData.wantRecenter) {
+  	if (mCntlData.imgFrameRecenter) {
   	  currCenterPosFF.get<0>() += dx;
   	  currCenterPosFF.get<1>() += dy;
   	}
@@ -216,13 +218,13 @@ namespace AT {
   void
   FocusFinderImplT::run() {
     AT_ASSERT(FocusFinderImpl, mCntlData.valid(), "No valid cntl data!");
-    
+
     // Set running...
     mFocusFindStatusData.isRunning = true;
     callStatusUpdListener(& mFocusFindStatusData);
 
-    // TODO: Call start handler... (eactly here or before status update?)
-
+    // Call start handler...
+    callFocusFinderStartListener(& mCntlData);
     
     try {
       PointT<float> currCenterPosFF = mCntlData.centerPosFF;
@@ -326,8 +328,6 @@ namespace AT {
 	// Idee: Geraden müssen durch HFD_min punkt gehen! Rest wird approximiert .. d.h. SP ist HFD_min...
 	PointT<float> sp = recordedFocusCurve.getMinValPoint(); // Minimum found during scan is a good start position
     	LOG(info) << "Start position for curve recording: " << sp << endl;
-
-	//callFocusDeterminedListener(& recordedFocusCurve, & sp, & line1, & line2);
 	
 	// Notify listeners of status update (TODO: Required here?)
 	mFocusFindStatusData.progress = 100; // TODO: CALC!! Update further values?
@@ -362,8 +362,10 @@ namespace AT {
       	sps[m] = recordedFocusCurves[m].calcOptFocusPos(/*LineFitTypeT::OLS*/ LineFitTypeT::BISQUARE/* - sometimes does not converge!?*/, & line1, & line2);
       	LOG(info) << "SP of fine curve " << (m+1) << ": " << sps[m] << endl;
 
-      	callFocusDeterminedListener(& recordedFocusCurves[m], & sps[m], & line1, & line2);
+	// Tell clients that there is a new focus curve available
+	callNewFocusCurveListener(& recordedFocusCurves[m], & sps[m], & line1, & line2);
 
+	
       	//TODO: Send a status update (call handlers) - new sequence (with line...)  -> different / additional handler/listener?
       	mFocusFindStatusData.progress = 100.0 * ((float) m / 10.0);
       	callStatusUpdListener(& mFocusFindStatusData);
@@ -380,19 +382,21 @@ namespace AT {
       // TODO: Finally, move focus to this position! (or should we return to start-pos?? and just return optimal pos? -
       //       so user can decide if he wants to go there...?) At least in GUI we can ask if user wants to go there..
       mFocuserDevice->setAbsPos(meanOptFocusPos);
-
       
       // Finally take another picture with "opt" focus
       // TODO: Probably it makes senste to move code below (incl. status update) into a private member function
       //CImg<float> currSubImage;
       mCameraDevice->takePicture(& currSubImage, mCntlData.exposureTime, getImageFrame(currCenterPosFF),
       				    FrameTypeT::LIGHT, mCntlData.binning, false /*compressed*/);
-      //HfdT hfd;
       dx = 0;
       dy = 0;
       calcStarValues(currSubImage, & dx, & dy, & hfd);
 
       LOG(info) << "FINALLY - MEAN OPT FOCUS POS REACHED: " << meanOptFocusPos << ", hfd: " << hfd.getValue() << endl;
+
+      // Tell clients that opt focus has been determined
+      callFocusDeterminedListener(meanOptFocusPos, & hfd /*TODO: FWHMs...*/);
+
       
       // Update status... - TODO: We may put lines below into a function or a macro...
       mFocusFindStatusData.currAbsFocusPos = mFocuserDevice->getAbsPos();
@@ -403,18 +407,32 @@ namespace AT {
       mFocusFindStatusData.progress = 100.0;
       mFocusFindStatusData.hfd = hfd;
       callStatusUpdListener(& mFocusFindStatusData);
-      
 
-	
-      // TODO: Call finish handler...
+      
+      // Tell clients that focus was found...
+      callFocusFinderFinishedListener(meanOptFocusPos);
       
     } catch(boost::thread_interrupted const&) {
       // Interrupted
       // NOTE: Eventually some cleanup is necessary - e.g. reset focus pos...
       LOG(info) << "Focus finder was interrupted!" << endl;
-    } catch(FocusFinderExceptionT & exc) {
-      LOG(error) << "Initial HFD too close to max HFD. Star too weak? Bad seeing? Try to increase exposure time. Or improve initial focus position." << endl;
-      // TODO: Communicate this problem to the UI somehow.. maybe not catch here? Or via status update -> errorCode/text field?
+      callFocusFinderAbortListener(true /*manual abort*/, "Manually aborted.");
+    } catch(const FocusFinderExceptionT & exc) {
+      stringstream ss;
+      ss << "Initial HFD too close to max HFD. Star too weak? Bad seeing? Try to increase "
+	 << "exposure time. Or improve initial focus position. Details: "
+	 << exc.what() << endl;
+      LOG(error) << ss.str() << endl;
+      callFocusFinderAbortListener(false /*no manual abort*/, ss.str());
+    } catch(const FocusFinderImplRecordingExceptionT & exc) {
+      stringstream ss;
+      ss << "Problem recording focus finder sequence. Details: " << exc.what() << endl;
+      LOG(error) << ss.str() << endl;
+      callFocusFinderAbortListener(false /*no manual abort*/, ss.str());
+    } catch(const std::exception & exc) {
+      stringstream ss;
+      ss << "Unknown problem occured while executing focus finder. Details: " << exc.what() << endl;
+      callFocusFinderAbortListener(false /*no manual abort*/, ss.str());
     }
 
     mFocusFindStatusData.isRunning = false;

@@ -70,7 +70,7 @@ namespace AT {
   
   // TODO: Question: Should this static function be part of the FocusFinderImpl? Actually it is more generic...
   static void
-  calcStarValues(CImg<float> & inFrameImage, int * outDx = 0, int * outDy = 0, HfdT * outHfd = 0, FwhmT * outFwhmHorz = 0, FwhmT * outFwhmVert = 0) {
+  calcStarValues(CImg<float> & inFrameImage, int * outDx = 0, int * outDy = 0, HfdT * outHfd = 0, FwhmT * outFwhmHorz = 0, FwhmT * outFwhmVert = 0, int * outMaxPixValue = 0) {
     // Post process image... we assume that the star did not move too far from the image center
     // NOTE: Boundaries of currSubImage are based on currImageFrameFF.
     PointT<float> assumedCenter((float) inFrameImage.width() / 2.0, (float) inFrameImage.height() / 2.0);
@@ -127,6 +127,10 @@ namespace AT {
       } catch(std::exception & exc) {
 	LOG(warning) << "FWHM(horz) calculation failed!"  << endl;
       }
+    }
+
+    if (outMaxPixValue) {
+      *outMaxPixValue = (int)inFrameImage.max();
     }
   }
 

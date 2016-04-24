@@ -58,9 +58,9 @@ namespace AT {
     float exposureTime;
     PointT<float> centerPosFF;
     BinningT binning;
-    bool wantRecenter;
+    bool imgFrameRecenter;
     int stepSize;
-    FocusFindCntlDataT() : exposureTime(0), binning(BinningT(1,1)), centerPosFF(PointT<float>(0,0)), wantRecenter(true), stepSize(0) {}
+    FocusFindCntlDataT() : exposureTime(0), binning(BinningT(1,1)), centerPosFF(PointT<float>(0,0)), imgFrameRecenter(true), stepSize(0) {}
     bool valid() const { return (exposureTime > 0); }
   };
 
@@ -87,18 +87,17 @@ namespace AT {
     
   public:
     // Events / Handlers
-    // -started - called when focuser was started (i.e. if isRunning = true)
-    // -newImage/newData/newShot/newSample - called whenever a new image was recorded (and probably processed - centroid, hfd, fwhm, ...)
-    // -oneCurveComplete - called when a complete curve was recorded (e.g. 2 lines, or 1 parabel (optional))  - passes calculated SP, curve (e.g. 2 lines, parabel), recorded points, ...)
-    // -focusDetermined - called when the focus finder sucessfully determined the final focus (passes: final focus (SP), ...)
-    // -aborted - called when the focuser was aborted (either by failure or by user) - passes reason
-    // -finished - called whenever run is left (either by abort or because focus was detrmined correctly)
-    DEFINE_PROP_LISTENER(NewSample, const FocusCurveT *);
-    DEFINE_PROP_LISTENER(FocusDetermined, const FocusCurveT *, const PointT<float> *, const LineT<float> *, const LineT<float> *);
-    
+    DEFINE_PROP_LISTENER(FocusFinderStart, const FocusFindCntlDataT *);
+    DEFINE_PROP_LISTENER(NewSample, const FocusCurveT * /*TODO: HFD?*/);
+    DEFINE_PROP_LISTENER(NewFocusCurve, const FocusCurveT *, const PointT<float> *, const LineT<float> *, const LineT<float> *);
+    DEFINE_PROP_LISTENER(FocusDetermined, float /*focus*/, const HfdT *);
+    DEFINE_PROP_LISTENER(FocusFinderAbort, bool /*manual abort?*/, string /*reason*/);
+    DEFINE_PROP_LISTENER(FocusFinderFinished, float);
+
     // TODO: Too generic...More specific?
     // -> progressUpdate - called when the progress has changed (passes overall progress, phase progress, current phase)
     DEFINE_PROP_LISTENER(StatusUpd, const FocusFindStatusDataT *);
+
     // NOTE: Macros ends with private section...
 
     
@@ -114,8 +113,21 @@ namespace AT {
     inline void setCntlData(const FocusFindCntlDataT & inCntlData) { mCntlData = inCntlData; }
 
     const char * getRecordBaseDir() const { return mRecordBaseDir.c_str(); }
-    void setRecordBaseDir(const char * inRecordBaseDir) {
-      // TODO: Check if directory exists... if not, throw... maybe pass an additional bool which forces creation of the dir...
+    void setRecordBaseDir(const char * inRecordBaseDir, bool inCreateIfNotExists = true) {
+      // If directory does not exist but inCreateIfNotExists is true, create it.
+      // Othwerwise throw. If creating directory fails, throw.
+      if (inCreateIfNotExists) {
+	const int dir_err = mkdir(inRecordBaseDir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	if (-1 == dir_err) {
+	  stringstream ss;
+	  ss << "Error creating record base directory '" << inRecordBaseDir << "'!" << endl;
+	  throw FocusFinderImplRecordingExceptionT(ss.str());
+	}
+      } else {
+	// Check if directory exists...
+	// TODO - FIXME
+      }
+
       mRecordBaseDir = inRecordBaseDir;
     }
     void run();

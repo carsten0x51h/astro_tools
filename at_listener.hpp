@@ -65,6 +65,25 @@ private:								\
  __name__##ListenersT m##__name__##Listeners;				\
 
 
+
+#define DEFINE_PROP_LISTENER3(__name__,__type1__,__type2__)		\
+  public:								\
+  typedef signals2::signal<void (__type1__,__type2__)> __name__##ListenersT; \
+protected:								\
+ void call##__name__##Listener(__type1__ inData1,__type2__ inData2) { m##__name__##Listeners(inData1,inData2); } \
+public:								        \
+ signals2::connection register##__name__##Listener(const __name__##ListenersT::slot_type & inCallBack) { \
+   return m##__name__##Listeners.connect(inCallBack);			\
+ }									\
+ template <class T>							\
+ void unregister##__name__##Listener(const T & inCallBack) {		\
+   inCallBack.disconnect();						\
+ }									\
+private:								\
+ __name__##ListenersT m##__name__##Listeners;				\
+ 
+
+
 #define DEFINE_PROP_LISTENER2(__name__,__type__)			\
 public:								        \
   typedef signals2::signal<void (__type__)> __name__##ListenersT;	\
@@ -82,8 +101,10 @@ private:								\
  __name__##ListenersT m##__name__##Listeners;				\
 
 
+ 
+// TODO: Need a DEFINE_PROP_LISTENER wuth only a name -no param!!!
 // See http://stackoverflow.com/questions/11761703/overloading-macro-on-number-of-arguments
 #define GET_MACRO(_1,_2,_3,_4,_5,NAME,...) NAME
-#define DEFINE_PROP_LISTENER(...) GET_MACRO(__VA_ARGS__,DEFINE_PROP_LISTENER5,DEFINE_PROP_LISTENER4,DEFINE_PROP_LISTENER3, DEFINE_PROP_LISTENER2)(__VA_ARGS__)
+#define DEFINE_PROP_LISTENER(...) GET_MACRO(__VA_ARGS__,DEFINE_PROP_LISTENER5,DEFINE_PROP_LISTENER4,DEFINE_PROP_LISTENER3,DEFINE_PROP_LISTENER2)(__VA_ARGS__)
 
 #endif /* _AT_LISTENER_H_ */

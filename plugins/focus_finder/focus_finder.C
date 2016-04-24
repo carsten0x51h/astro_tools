@@ -567,6 +567,9 @@ namespace AT {
     DEFINE_OPTION(optFilter, "filter", po::value<string>(), "Filter to be selected for focusing (position number or name).");
 
     // Focus finder
+    DEFINE_OPTION(optImgFrameRecenter, "img_frame_recenter", po::value<bool>()->default_value(true), "Enable/disable image frame recentering for each frame.");
+    DEFINE_OPTION(optSeqRecordDir, "seq_record_dir", po::value<string>()->default_value(""), "Set target directory to enable sequence recording.");
+    
     DEFINE_OPTION(optWindowSize, "window_size", po::value<unsigned int>()->default_value(31), "Star evaluation window size in px.");
     DEFINE_OPTION(optNumStepsToDetermineDirection, "num_steps_to_determine_direction", po::value<unsigned int>()->default_value(3000), "Star evaluation window size in px.");
     DEFINE_OPTION(optStepsToReachFocus, "steps_to_reach_focus", po::value<unsigned int>()->default_value(3000), "Steps to reach focus.");
@@ -609,6 +612,8 @@ namespace AT {
     focusFindDescr.add(optPixelSize);
 
     // Additional focus finder parameter
+    focusFindDescr.add(optImgFrameRecenter);
+    focusFindDescr.add(optSeqRecordDir);
     focusFindDescr.add(optWindowSize);
     focusFindDescr.add(optNumStepsToDetermineDirection);
     focusFindDescr.add(optStepsToReachFocus);
