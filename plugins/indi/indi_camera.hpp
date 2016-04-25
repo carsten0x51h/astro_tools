@@ -379,6 +379,8 @@ public:
 
   inline void setBinnedFrame(const FrameT<int> & inUnbinnedFrame, const BinningT & inBinning, int inTimeout = sDefaultTimeoutMs) {
     // TODO: Is this ok?!?!
+    // NOTE: This could be different from driver to driver... in simulator the way it is implemented does not work... here the problem is that binning=2 is multiplied with a quite big y value (e.g. 527) -> 2*527 = 1054 - this is out of bounds (which hs 1023). ...
+    // --> TEST with real camera!
     DimensionT<unsigned int> maxRes = this->getMaxResolution();
     FrameT<int> binnedFrame;
     binnedFrame.get<0>() = inBinning.get<0>() /*bin_x*/ * inUnbinnedFrame.get<0>();

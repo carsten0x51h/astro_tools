@@ -44,9 +44,6 @@ namespace AT {
   // };
 
   
-  DEF_Exception(FocusFinderImpl);
-  DEF_Exception(FocusFinderImplRecording);
-
   void
   FocusFinderImplT::writeRecordFile(const string & inCurrRecordDir, const CImg<float> & inImg, int inSegmentNo, int inStepNo, int inFocusPos) {
     // TODO: Better way to handle directories / filenames? Boost?
@@ -261,7 +258,7 @@ namespace AT {
       if (hfd.getValue() > minHfdDistFactor * maxHfdLimit) {
 	// Star too weak? Bad seeing? Bad initial focus?
 	LOG(error) << "Initial HFD " << hfd.getValue() << " too close to max HFD " << maxHfdLimit << ". (limit is 50% of max HFD)." << endl;
-	throw FocusFinderExceptionT("Initial HFD too close to max HFD.");
+	throw FocusFinderImplExceptionT("Initial HFD too close to max HFD.");
       }
       
       LOG(info) << "HFD limit = " << mHfdLimitFactor << " * " << hfd.getValue() << ", limited by max. HFD: " << maxHfdLimit << " --> " << hfdLimit << endl;
@@ -417,7 +414,7 @@ namespace AT {
       // NOTE: Eventually some cleanup is necessary - e.g. reset focus pos...
       LOG(info) << "Focus finder was interrupted!" << endl;
       callFocusFinderAbortListener(true /*manual abort*/, "Manually aborted.");
-    } catch(const FocusFinderExceptionT & exc) {
+    } catch(const FocusFinderImplExceptionT & exc) {
       stringstream ss;
       ss << "Initial HFD too close to max HFD. Star too weak? Bad seeing? Try to increase "
 	 << "exposure time. Or improve initial focus position. Details: "

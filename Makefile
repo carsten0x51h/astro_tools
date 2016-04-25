@@ -113,8 +113,8 @@ full_indiserver:
 	indiserver -m 500 -v /usr/bin/indi_moonlite_focus  /usr/bin/indi_eqmod_telescope /usr/bin/indi_joystick /usr/bin/indi_atik_ccd /usr/bin/indi_atik_wheel
 
 sim_find_focus:
-	gdb --args ./build/astro_tools focus_find -vv --filter_device="Filter Simulator" --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=264,574 --focus_mode=manual --seq_record_dir=~/workspace/astro_tools/plugins/focus_finder/records/
-
+	gdb --args ./build/astro_tools focus_find -vv --filter_device="Filter Simulator" --camera_device="CCD Simulator" --exposure_time=1 --focuser_device="Focuser Simulator" --star_select=264,574 --focus_mode=manual --pixel_size=5.4x5.4 --focal_distance=1000
+# --seq_record_dir=/home/devnull/workspace/astro_tools/plugins/focus_finder/records2
 
 atik_find_focus:
 	gdb --args ./build/astro_tools focus_find --camera_device="Atik 383L+ CCD" --filter_device="ATIK Wheel" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --focus_mode=manual --star_select=display

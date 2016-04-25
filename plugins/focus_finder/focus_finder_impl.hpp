@@ -35,7 +35,9 @@
 #ifndef _FOCUS_FINDER_IMPL_HPP_
 #define _FOCUS_FINDER_IMPL_HPP_ _FOCUS_FINDER_IMPL_HPP_
 
-DEF_Exception(FocusFinder);
+DEF_Exception(FocusFinderImpl);
+DEF_Exception(FocusFinderImplRecording);
+
 
 namespace AT {
 
@@ -113,21 +115,25 @@ namespace AT {
     inline void setCntlData(const FocusFindCntlDataT & inCntlData) { mCntlData = inCntlData; }
 
     const char * getRecordBaseDir() const { return mRecordBaseDir.c_str(); }
-    void setRecordBaseDir(const char * inRecordBaseDir, bool inCreateIfNotExists = true) {
-      // If directory does not exist but inCreateIfNotExists is true, create it.
-      // Othwerwise throw. If creating directory fails, throw.
-      if (inCreateIfNotExists) {
-	const int dir_err = mkdir(inRecordBaseDir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-	if (-1 == dir_err) {
-	  stringstream ss;
-	  ss << "Error creating record base directory '" << inRecordBaseDir << "'!" << endl;
-	  throw FocusFinderImplRecordingExceptionT(ss.str());
-	}
-      } else {
-	// Check if directory exists...
-	// TODO - FIXME
-      }
+    void setRecordBaseDir(const string & inRecordBaseDir, bool inCreateIfNotExists = true) {
+      if (! inRecordBaseDir.empty()) {
+	// If directory does not exist but inCreateIfNotExists is true, create it.
+	// Othwerwise throw. If creating directory fails, throw.
 
+	// TODO!! Fails if directory already exists!!
+	if (inCreateIfNotExists) {
+	  const int dir_err = mkdir(inRecordBaseDir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	  if (-1 == dir_err) {
+	    stringstream ss;
+	    ss << "Error creating record base directory '" << inRecordBaseDir << "'!" << endl;
+	    throw FocusFinderImplRecordingExceptionT(ss.str());
+	  }
+	} else {
+	  // Check if directory exists...
+	  // TODO - FIXME
+	}
+      }
+      
       mRecordBaseDir = inRecordBaseDir;
     }
     void run();

@@ -20,14 +20,10 @@
  *
  ****************************************************************************/
 
-#include <boost/thread.hpp>
-
 #include "focuser_console_ui.hpp"
 #include "centroid.hpp"
 #include "fwhm.hpp"
 #include "hfd.hpp"
-#include "at_console_display.hpp"
-#include "at_console_menu.hpp"
 #include "util.hpp"
 #include "focus_finder_common.hpp"
 #include "focus_finder_impl.hpp"
@@ -71,75 +67,6 @@ namespace AT {
   }
 
 
-  
-  struct StartAbortT {
-    enum TypeE {
-      START,
-      ABORT,
-      _Count
-    };
-
-    static const char * asStr(const TypeE & inType) {
-      switch (inType) {
-      case START: return "START";
-      case ABORT: return "ABORT";
-      default: return "<?>";
-      }
-    }
-    MAC_AS_TYPE(Type, E, _Count);
-  };
-
-
-  struct CoolerStateT {
-    enum TypeE {
-      DISABLED,
-      ENABLED,
-      _Count
-    };
-
-    static const char * asStr(const TypeE & inType) {
-      switch (inType) {
-      case DISABLED: return "DISABLED";
-      case ENABLED: return "ENABLED";
-      default: return "<?>";
-      }
-    }
-    MAC_AS_TYPE(Type, E, _Count);
-  };
-  
-  struct ExposureModeT {
-    enum TypeE {
-      SINGLE,
-      LOOP,
-      _Count
-    };
-
-    static const char * asStr(const TypeE & inType) {
-      switch (inType) {
-      case SINGLE: return "SINGLE";
-      case LOOP: return "LOOP";
-      default: return "<?>";
-      }
-    }
-    MAC_AS_TYPE(Type, E, _Count);
-  };
-
-
-  /******************************************************************************
-   * EXPOSURE TASK
-   ******************************************************************************/
-  struct ExposureCntlDataT {
-    float exposureTime;
-    PointT<float> centerPosFF;
-    BinningT binning;
-  };
-
-  struct ExposureStatusDataT {
-    TaskStateT::TypeE taskState;
-    int progress;
-    int secondsLeft;
-    ExposureStatusDataT() : taskState(TaskStateT::READY), progress(0), secondsLeft(0) {}
-  };
 
 
   // NOTE: We may move this to a class if states are required 
@@ -198,19 +125,22 @@ namespace AT {
   }
 
 
-  // Windows - TODO: Not always available? - TODO: Make as class members later..?!
-  static CImgDisplay currImageDisp, currentHfdDisp, currFocusCurveDisp, currentFwhmHorzDisp, currentFwhmVertDisp;
-
-  
-  static mutex sFocusFinderMtx; // TODO: As class member...
-  static FocusFindStatusDataT sFocusFindStatus; // TODO: This might be a class member, later... no longer static...
-  static string sLastErrorStr;
-  
-  // TODO: We may write this as a lambda function...
+  //TODO: Move static variables if possible into class - same for FocusFinder event handlers!  
+  // TODO: We may write this as a lambda function...  
   void
-  focusFinderStatusUpdHandler(const FocusFindStatusDataT * inFocusFindStatus) {
-    lock_guard<mutex> guard(sFocusFinderMtx);
-    sFocusFindStatus = *inFocusFindStatus; // Make a copy
+  FocusFinderConsoleCntlT::focusFinderAbortHandler(bool inManualAbort, string inCause) {
+    if (! inManualAbort) {
+      // Print error msg.
+      lock_guard<mutex> guard(mFocusFinderMtx);
+      mLastErrorStr = inCause;
+    }
+  }
+
+
+  void
+  FocusFinderConsoleCntlT::focusFinderStatusUpdHandler(const FocusFindStatusDataT * inFocusFindStatus) {
+    lock_guard<mutex> guard(mFocusFinderMtx);
+    mFocusFindStatus = *inFocusFindStatus; // Make a copy
     
     // Update UI
     if (inFocusFindStatus->hfd.valid()) {
@@ -227,142 +157,129 @@ namespace AT {
 
       
       CImg<unsigned char> rgbImg;
-      genSelectionView(sFocusFindStatus.currImage, sFocusFindStatus.dx, sFocusFindStatus.dy, & rgbImg, 3.0);
+      genSelectionView(mFocusFindStatus.currImage, mFocusFindStatus.dx, mFocusFindStatus.dy, & rgbImg, 3.0);
       currImageDisp.display(rgbImg); // TODO - disable if no Wnds...
       
-      currentHfdDisp.display(sFocusFindStatus.hfd.genView());      
+      currentHfdDisp.display(mFocusFindStatus.hfd.genView());      
     }
 
 
     if (inFocusFindStatus->fwhmHorz.valid()) {
-      currentFwhmHorzDisp.display(sFocusFindStatus.fwhmHorz.genView());
+      currentFwhmHorzDisp.display(mFocusFindStatus.fwhmHorz.genView());
     }
     if (inFocusFindStatus->fwhmVert.valid()) {
-      currentFwhmVertDisp.display(sFocusFindStatus.fwhmVert.genView());
+      currentFwhmVertDisp.display(mFocusFindStatus.fwhmVert.genView());
     }
   }
-  
+
+
   void
-  focusFinderNewSampleHandler(const FocusCurveT * inCurrFocusCurve) {
-    lock_guard<mutex> guard(sFocusFinderMtx);
+  FocusFinderConsoleCntlT::focusFinderNewSampleHandler(const FocusCurveT * inCurrFocusCurve) {
+    lock_guard<mutex> guard(mFocusFinderMtx);
     currFocusCurveDisp.display(inCurrFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
   }
 
   void
-  focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2) {
-    lock_guard<mutex> guard(sFocusFinderMtx);
+  FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2) {
+    lock_guard<mutex> guard(mFocusFinderMtx);
     currFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, true, inLine1, inLine2));
   }
+
   
-  void
-  focusFinderAbortHandler(bool inManualAbort, string inCause) {
-    if (! inManualAbort) {
-      // Print error msg.
-      lock_guard<mutex> guard(sFocusFinderMtx);
-      sLastErrorStr = inCause;
-    }
-  }
-  
-  void
-  manualConsoleFocusCntl(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, const FrameT<unsigned int> & inSelectionFrameFF, float inExposureTimeSec, BinningT inBinning, bool inFollowStar)  {
+  FocusFinderConsoleCntlT::FocusFinderConsoleCntlT(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, const FrameT<unsigned int>  & inSelectionFrameFF /*TODO: Will probably be removed...*/) : mCmdLineMap(inCmdLineMap), mCameraDevice(inCameraDevice), mFocuserDevice(inFocuserDevice), mFilterWheelDevice(inFilterWheelDevice), mFocusFinderImpl(mCameraDevice, inFocuserDevice, inFilterWheelDevice), mFocalDistance(0), mPixelSizeUm(DimensionT<float>(0,0)) {
 
-    static ConsoleDisplayT consoleDisplay;
-    static std::vector<MenuEntryT *> menuEntries;
-    static ConsoleMenuT consoleMenu(& consoleDisplay, menuEntries);
-    static MenuSeparatorT sep;
+    // Register focus finder listeners
+    mFocusFinderStatusUpdHandlerConn = mFocusFinderImpl.registerStatusUpdListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderStatusUpdHandler, this, _1));
+    mFocusFinderNewSampleHandlerConn = mFocusFinderImpl.registerNewSampleListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewSampleHandler, this, _1));
+    mFocusFinderNewFocusCurveHandlerConn = mFocusFinderImpl.registerNewFocusCurveListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler, this, _1,_2,_3,_4));
+    mFocusFinderAbortHandlerConn = mFocusFinderImpl.registerFocusFinderAbortListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderAbortHandler, this, _1,_2));
 
-    // "Tasks"
-    thread exposureThread;
-    atomic<ExposureStatusDataT> exposureStatus;
-    atomic<ExposureCntlDataT> exposureCntlData;
-    CImg<float> currSubImage;
-    
-    thread focusFindThread;
-    FocusFinderImplT focusFinderImpl(inCameraDevice, inFocuserDevice, inFilterWheelDevice);
-    signals2::connection focusFinderStatusUpdHandlerConn = focusFinderImpl.registerStatusUpdListener(focusFinderStatusUpdHandler);
-    signals2::connection focusFinderNewSampleHandlerConn = focusFinderImpl.registerNewSampleListener(focusFinderNewSampleHandler);
-    signals2::connection focusFinderNewFocusCurveHandlerConn = focusFinderImpl.registerNewFocusCurveListener(focusFinderNewFocusCurveHandler);
-    signals2::connection focusFinderAbortHandlerConn = focusFinderImpl.registerFocusFinderAbortListener(focusFinderAbortHandler);
-
-    string seqRecordDir = inCmdLineMap["seq_record_dir"].as<string>();
-    focusFinderImpl.setRecordBaseDir(seqRecordDir.c_str());
+    mFocusFinderImpl.setRecordBaseDir(inCmdLineMap["seq_record_dir"].as<string>());
+    mFocalDistance = (inCmdLineMap.count("focal_distance") ? inCmdLineMap["focal_distance"].as<unsigned int>() : 0);
+    mPixelSizeUm = (inCmdLineMap.count("pixel_size") ? inCmdLineMap["pixel_size"].as<DimensionT<float> >() : 0);
 
     bool imgFrameRecenter = inCmdLineMap["img_frame_recenter"].as<bool>();
-    
+
     // Set the initial image frame
     // NOTE:
     //   FF = Full Frame coordinates
     //   IF = Image Frame coordinates
-    PointT<float> currCenterPosFF = frameToCenterPos(inSelectionFrameFF);
+    mCurrCenterPosFF = frameToCenterPos(inSelectionFrameFF);
 
+    
     // Build the menu
-    float expTimeVal = inExposureTimeSec;
-    MenuFieldT<float> expTimeMenuField(& expTimeVal, "Exposure time: ", 1 /* steps */, StepModeT::LINEAR,
-				     inCameraDevice->getMinExposureTime() /* min */, inCameraDevice->getMaxExposureTime() /*max*/,
-				     [](float * inValPtr) {
-				       // Seconds to minutes and seconds
-					 int sec = ((int)(*inValPtr)) % 60;
-				       int min = (int) ((float) (*inValPtr) / 60.0);
-				       stringstream ss;
-				       ss << *inValPtr << "s = (" << setfill('0') << setw(2) << min << "m" << setfill('0') << setw(2) << sec << "s)";
-				       return ss.str();
-				     });
-    menuEntries.push_back(& expTimeMenuField);
+    mExpTimeVal = mCmdLineMap["exposure_time"].as<float>();
+    mMenuEntries.push_back(new MenuFieldT<float>(& mExpTimeVal, "Exposure time: ", 1 /* steps */, StepModeT::LINEAR,
+						 mCameraDevice->getMinExposureTime() /* min */, mCameraDevice->getMaxExposureTime() /*max*/,
+						 [](float * inValPtr) {
+						   // Seconds to minutes and seconds
+						   int sec = ((int)(*inValPtr)) % 60;
+						   int min = (int) ((float) (*inValPtr) / 60.0);
+						   stringstream ss;
+						   ss << *inValPtr << "s = (" << setfill('0') << setw(2) << min << "m"
+						      << setfill('0') << setw(2) << sec << "s)";
+						   return ss.str();
+						 })
+			   );
 
 
-    BinningT maxBinning = inCameraDevice->getMaxBinning();
-    BinningT minBinning = inCameraDevice->getMinBinning();
-    int binValXY = inBinning.get<0>(); // NOTE: Assume x=y
-    MenuFieldT<int> binningMenuField(& binValXY, "Binning: ", 1 /* steps */, StepModeT::LINEAR,
-				     minBinning.get<0>() /* min - NOTE: assuming that x=y */, maxBinning.get<0>() /*max - NOTE: assuming that x=y*/,
-				     [](int * inValPtr) { return std::to_string(*inValPtr) +  "x" + std::to_string(*inValPtr); });
-    menuEntries.push_back(& binningMenuField);
+    BinningT maxBinning = mCameraDevice->getMaxBinning();
+    BinningT minBinning = mCameraDevice->getMinBinning();
 
+    BinningT curBinning = inCmdLineMap["binning"].as<BinningT>();
+    mBinValXY = curBinning.get<0>(); // NOTE: Assume x=y
+    mMenuEntries.push_back(new MenuFieldT<int>(& mBinValXY, "Binning: ", 1 /* steps */, StepModeT::LINEAR,
+					       minBinning.get<0>() /* min - NOTE: assuming that x=y */, maxBinning.get<0>() /*NOTE: assuming that x=y*/,
+					       [](int * inValPtr) { return std::to_string(*inValPtr) +  "x" + std::to_string(*inValPtr); })
+			   );
 
-    int filterSelect = inFilterWheelDevice->getPos();
-    MenuFieldT<int> filterSelectMenuField(& filterSelect, "Filter: ", 1 /* steps */, StepModeT::LINEAR,
-					  inFilterWheelDevice->getMinPos() /* min */, inFilterWheelDevice->getMaxPos() /*max*/,
-					  [](int * inValPtr) { return std::to_string(*inValPtr) +  " (TODO - query...)"; },
-					  [&](int * inValPtr) {
-					    inFilterWheelDevice->setPos(*inValPtr, 0 /* do not block */);
-					  },
-					  [&]() {
-					    /*ABORT handler*/
-					    // No abort supported by INDI Atik Wheel driver.
-					  });
 
     // Check if there is actually a filter ...
-    if (inFilterWheelDevice) {
-      menuEntries.push_back(& filterSelectMenuField);
+    if (mFilterWheelDevice) {
+    mFilterSelect = mFilterWheelDevice->getPos();
+    mMenuEntries.push_back(new MenuFieldT<int>(& mFilterSelect, "Filter: ", 1 /* steps */, StepModeT::LINEAR,
+					       mFilterWheelDevice->getMinPos() /* min */, mFilterWheelDevice->getMaxPos() /*max*/,
+					       [](int * inValPtr) { return std::to_string(*inValPtr) +  " (TODO - query...)"; },
+					       [&](int * inValPtr) {
+						 mFilterWheelDevice->setPos(*inValPtr, 0 /* do not block */);
+					       },
+					       [&]() {
+						 /*ABORT handler*/
+						 // No abort supported by INDI Atik Wheel driver.
+					       })
+			   );
     } else {
-      menuEntries.push_back(& sep);
+      mMenuEntries.push_back(new MenuSeparatorT());
     }
 
 
     // Camera cooler
-    CoolerStateT::TypeE cameraCoolerState = (inCameraDevice->hasCooler() && inCameraDevice->isCoolerEnabled() ? CoolerStateT::ENABLED : CoolerStateT::DISABLED);
-    int temperature = (inCameraDevice->hasCooler() ? inCameraDevice->getTemperature() : 0);
+    mCameraCoolerState = (mCameraDevice->hasCooler() && mCameraDevice->isCoolerEnabled() ? CoolerStateT::ENABLED : CoolerStateT::DISABLED);
+    mCameraTemperature = (mCameraDevice->hasCooler() ? mCameraDevice->getTemperature() : 0);
+
     
-    MenuSelectT<CoolerStateT> coolerStateMenuSelect(& cameraCoolerState, "Cooler state: ",
-						    [](CoolerStateT::TypeE * inValPtr) { return CoolerStateT::asStr(*inValPtr); },
-						    [&](CoolerStateT::TypeE * inValPtr) {
-						      if (*inValPtr == CoolerStateT::ENABLED) {
-							// Enable / disable cooler - TODO: Handle busy state?
-							// NOTE: setTemperature directly enables the cooler
-							inCameraDevice->setTemperature(temperature, 0); // 0 = do not block
-							inCameraDevice->setCoolerEnabled(true);
-						      } else {
-							inCameraDevice->setCoolerEnabled(false);
-						      }
-						    },
-						    [&]() {
-						      /*ABORT handler*/
-						      inCameraDevice->setCoolerEnabled(false);
-						    });
-
-
-    MenuFieldT<int> coolerTemperatureMenuField(& temperature, "Temperature: ", 1 /* steps */, StepModeT::LINEAR,
-					       inCameraDevice->getMinTemperature() /* min */, inCameraDevice->getMaxTemperature() /*max*/,
+    if (mCameraDevice->hasCooler()) {
+      mMenuEntries.push_back(new MenuSelectT<CoolerStateT>(& mCameraCoolerState, "Cooler state: ",
+							   [](CoolerStateT::TypeE * inValPtr) { return CoolerStateT::asStr(*inValPtr); },
+							   [&](CoolerStateT::TypeE * inValPtr) {
+							     if (*inValPtr == CoolerStateT::ENABLED) {
+							       // Enable / disable cooler - TODO: Handle busy state?
+							       // NOTE: setTemperature directly enables the cooler
+							       mCameraDevice->setTemperature(mCameraTemperature, 0); // 0 = do not block
+							       mCameraDevice->setCoolerEnabled(true);
+							     } else {
+							       mCameraDevice->setCoolerEnabled(false);
+							     }
+							   },
+							   [&]() {
+							     /*ABORT handler*/
+							     mCameraDevice->setCoolerEnabled(false);
+							   })
+			     );
+			     
+    
+    mMenuEntries.push_back(new MenuFieldT<int>(& mCameraTemperature, "Temperature: ", 1 /* steps */, StepModeT::LINEAR,
+					       mCameraDevice->getMinTemperature() /* min */, mCameraDevice->getMaxTemperature() /*max*/,
 					       [](int * inValPtr) {
 						 stringstream ssTemp;
 						 ssTemp << *inValPtr << " degree celsius";
@@ -370,196 +287,213 @@ namespace AT {
 					       },
 					       [&](int * inValPtr) {
 						 // UPDATE handler
-						 if (cameraCoolerState == CoolerStateT::ENABLED) {
-						   inCameraDevice->setTemperature(temperature, 0); // 0 = do not block
+						 if (mCameraCoolerState == CoolerStateT::ENABLED) {
+						   mCameraDevice->setTemperature(mCameraTemperature, 0); // 0 = do not block
 						 }
 					       },
 					       [&]() {
 						 // ABORT handler - ESC
 						 // ...
-					       });
-
-    if (inCameraDevice->hasCooler()) {
-      menuEntries.push_back(& coolerTemperatureMenuField);
-      menuEntries.push_back(& coolerStateMenuSelect);
+					       })
+			   );
     }
 
   
-    ExposureModeT::TypeE expMode = ExposureModeT::SINGLE;
-    MenuSelectT<ExposureModeT> expModeMenuSelect(& expMode, "Exposure mode: ",
-						 [](ExposureModeT::TypeE * inValPtr) { return ExposureModeT::asStr(*inValPtr); });
-    menuEntries.push_back(& expModeMenuSelect);
+    mExpMode = ExposureModeT::SINGLE;
+    mMenuEntries.push_back(new MenuSelectT<ExposureModeT>(& mExpMode, "Exposure mode: ",
+							  [](ExposureModeT::TypeE * inValPtr) {
+							    return ExposureModeT::asStr(*inValPtr);
+							  })
+			   );
+
+    mExpStartAbort = StartAbortT::START;
+    mMenuEntries.push_back(new MenuSelectT<StartAbortT>(& mExpStartAbort, "Exposure: ",
+							[](StartAbortT::TypeE * inValPtr) { return StartAbortT::asStr(*inValPtr); },
+							[&](StartAbortT::TypeE * inValPtr) {
+							  // XXX
+							},
+							[&]() {
+							  /*ABORT handler*/
+							  TaskStateT::TypeE taskState = mExposureStatus.load().taskState;
+							  if (taskState == TaskStateT::RUNNING) {
+							    mExposureThread.interrupt();
+							    // TODO: Set
+							    // filterSelect = INDI current value...
+							  }
+							})
+			   );
+
+    mMenuEntries.push_back(new MenuSeparatorT());
 
 
-    StartAbortT::TypeE expStartAbort = StartAbortT::START;
-    MenuSelectT<StartAbortT> expStartAbortMenuSelect(& expStartAbort, "Exposure: ",
-						     [](StartAbortT::TypeE * inValPtr) { return StartAbortT::asStr(*inValPtr); },
-						     [&](StartAbortT::TypeE * inValPtr) {
-						       // XXX
-						     },
-						     [&exposureThread, &exposureStatus]() {
-						       /*ABORT handler*/
-						       TaskStateT::TypeE taskState = exposureStatus.load().taskState;
-						       if (taskState == TaskStateT::RUNNING) {
-							 exposureThread.interrupt();
-							 // TODO: Set
-							 // filterSelect = INDI current value...
-						       }
-						     });
-    menuEntries.push_back(& expStartAbortMenuSelect);
+    mFocusStepSize = 100;
+    mAbsFocusPosDest = mFocuserDevice->getAbsPos();
+    mFocusDelta = 0;
+    
+    mAbsFocusPosDestMenuField =
+      new MenuFieldT<int>(& mAbsFocusPosDest, "Abs focus pos: ", mFocusStepSize /* steps */, StepModeT::LINEAR,
+			  mFocuserDevice->getMinPos() /* min */, mFocuserDevice->getMaxPos() /*max*/,
+			  [](int * inValPtr) { return std::to_string(*inValPtr) + " steps"; },
+			  [&](int * inValPtr) {
+			    mFocusDelta = fabs(mFocuserDevice->getAbsPos() - *inValPtr);
+			    mFocuserDevice->setAbsPos(*inValPtr, 0); // 0 = do not block
+			  },
+			  [&]() {
+			    /*ABORT handler*/
+			    mFocuserDevice->abortMotion();
+			  });
+    
+    mMenuEntries.push_back(new MenuFieldT<int>(& mFocusStepSize, "Focus step size: ", 10 /* steps */, StepModeT::FACTOR,
+					       mFocuserDevice->getMinPos() /* min */, mFocuserDevice->getMaxPos() / 10 /* max/10 */,
+					       [](int * inValPtr) { return std::to_string(*inValPtr) + " steps"; },
+					       [&](int * inValPtr) {
+						 // CHANGE HANDLER
+						 mAbsFocusPosDestMenuField->setSteps(mFocusStepSize);
+					       })
+			   );
+    
+    mMenuEntries.push_back(mAbsFocusPosDestMenuField);
 
-    menuEntries.push_back(& sep);
-
-
-    int focusStepSize = 100;
-    int absFocusPosDest = inFocuserDevice->getAbsPos();
-    int focusDelta = 0;
-    MenuFieldT<int> absFocusPosDestMenuField(& absFocusPosDest, "Abs focus pos: ", focusStepSize /* steps */, StepModeT::LINEAR,
-					     inFocuserDevice->getMinPos() /* min */, inFocuserDevice->getMaxPos() /*max*/,
-					     [](int * inValPtr) { return std::to_string(*inValPtr) + " steps"; },
-					     [&](int * inValPtr) {
-					       focusDelta = fabs(inFocuserDevice->getAbsPos() - *inValPtr);
-					       inFocuserDevice->setAbsPos(*inValPtr, 0); // 0 = do not block
-					     },
-					     [&]() {
-					       /*ABORT handler*/
-					       inFocuserDevice->abortMotion();
-					     });
-
-    MenuFieldT<int> focusStepSizeMenuField(& focusStepSize, "Focus step size: ", 10 /* steps */, StepModeT::FACTOR,
-					   inFocuserDevice->getMinPos() /* min */, inFocuserDevice->getMaxPos() / 10 /* max/10 */,
-					   [](int * inValPtr) { return std::to_string(*inValPtr) + " steps"; },
-					   [&absFocusPosDestMenuField, &focusStepSize](int * inValPtr) {
-					     // CHANGE HANDLER
-					     absFocusPosDestMenuField.setSteps(focusStepSize);
-					   });
-    menuEntries.push_back(& focusStepSizeMenuField);
-    menuEntries.push_back(& absFocusPosDestMenuField);
-
-    menuEntries.push_back(& sep);
+    mMenuEntries.push_back(new MenuSeparatorT());
 
     
-    StartAbortT::TypeE focusFindStartAbort = StartAbortT::START;
-    MenuSelectT<StartAbortT> focusFindStartAbortMenuSelect(& focusFindStartAbort, "Focus find: ",
-							   [](StartAbortT::TypeE * inValPtr) { return StartAbortT::asStr(*inValPtr); },
-							   [&](StartAbortT::TypeE * inValPtr) {
-							     //bool running = sFocusFindStatus.load().isRunning;
-							     lock_guard<mutex> guard(sFocusFinderMtx);
-							     bool running = sFocusFindStatus.isRunning;
-							   
-							     if (*inValPtr == StartAbortT::ABORT) {
-							       // Start thread if not yet active.
-							       if (! running) {
-								 // TODO: Pass those to the class before starting.... constructor / set?
-								 FocusFindCntlDataT focusFindCntlData;
-								 focusFindCntlData.binning = BinningT(binValXY, binValXY);
-								 focusFindCntlData.exposureTime = expTimeVal;
-								 focusFindCntlData.centerPosFF = currCenterPosFF;
-								 focusFindCntlData.imgFrameRecenter = imgFrameRecenter;
-
-								 focusFinderImpl.setCntlData(focusFindCntlData);
-
-								 // TODO: Still required? & focusFindCntl, & focusFindStatus...??
-								 focusFindThread = thread(boost::bind(& FocusFinderImplT::run, boost::ref(focusFinderImpl)));
-								 // Just make sure that status is updated asap...
-								 // might not be required later when we have a class...
-								 sFocusFindStatus.isRunning = true;
-							       }
-							       
-							     } else {
-							       // Abort - only interrupt if still running
-							       if (running) {
-								 focusFindThread.interrupt();
-							       }
-							     }
-							   },
-							   [&]() {
-							     /*ABORT handler*/
-							     //if (sFocusFindStatus.load().isRunning) {
-							     lock_guard<mutex> guard(sFocusFinderMtx);
-							     if (sFocusFindStatus.isRunning) {
-							       focusFindThread.interrupt();
-							     }
-							   });
-    menuEntries.push_back(& focusFindStartAbortMenuSelect);
-
+    mFocusFindStartAbort = StartAbortT::START;
+    mMenuEntries.push_back(new MenuSelectT<StartAbortT>(& mFocusFindStartAbort, "Focus find: ",
+							[](StartAbortT::TypeE * inValPtr) { return StartAbortT::asStr(*inValPtr); },
+							[&](StartAbortT::TypeE * inValPtr) {
+							  //bool running = mFocusFindStatus.load().isRunning;
+							  lock_guard<mutex> guard(mFocusFinderMtx);
+							  bool running = mFocusFindStatus.isRunning;
+							  
+							  if (*inValPtr == StartAbortT::ABORT) {
+							    // Start thread if not yet active.
+							    if (! running) {
+							      // TODO: Pass those to the class before starting.... constructor / set?
+							      FocusFindCntlDataT focusFindCntlData;
+							      focusFindCntlData.binning = BinningT(mBinValXY, mBinValXY);
+							      focusFindCntlData.exposureTime = mExpTimeVal;
+							      focusFindCntlData.centerPosFF = mCurrCenterPosFF;
+							      focusFindCntlData.imgFrameRecenter = imgFrameRecenter;
+							      
+							      mFocusFinderImpl.setCntlData(focusFindCntlData);
+							      
+							      // TODO: Still required? & focusFindCntl, & focusFindStatus...??
+							      mFocusFindThread = thread(boost::bind(& FocusFinderImplT::run, boost::ref(mFocusFinderImpl)));
+							      // Just make sure that status is updated asap...
+							      // might not be required later when we have a class...
+							      mFocusFindStatus.isRunning = true;
+							    }
+							    
+							  } else {
+							    // Abort - only interrupt if still running
+							    if (running) {
+							      mFocusFindThread.interrupt();
+							    }
+							  }
+							},
+							[&]() {
+							  /*ABORT handler*/
+							  lock_guard<mutex> guard(mFocusFinderMtx);
+							  if (mFocusFindStatus.isRunning) {
+							    mFocusFindThread.interrupt();
+							  }
+							})
+			   );
     
+    
+    // Finally, create the menu
+    mConsoleMenu = ConsoleMenuT(& mConsoleDisplay, & mMenuEntries);
+    LOG(info) << "MENU CREATED..." << endl;
+  }
 
-    while (! consoleMenu.wantExit()) {
+  FocusFinderConsoleCntlT::~FocusFinderConsoleCntlT() {
+    // Delete menu entries
+    for (std::vector<MenuEntryT *>::iterator it = mMenuEntries.begin(); it != mMenuEntries.end(); ++it) {
+      delete *it;
+    }
+    
+    // Unregistering console UI listeners
+    LOG(debug) << "Unregistering focus finder handler..." << endl;
+    lock_guard<mutex> guard(mFocusFinderMtx);
+    mFocusFinderImpl.unregisterStatusUpdListener(mFocusFinderStatusUpdHandlerConn);
+    mFocusFinderImpl.unregisterNewSampleListener(mFocusFinderNewSampleHandlerConn);
+    mFocusFinderImpl.unregisterNewFocusCurveListener(mFocusFinderNewFocusCurveHandlerConn);
+    mFocusFinderImpl.unregisterFocusFinderAbortListener(mFocusFinderAbortHandlerConn);
+  }
+
+  
+  void
+  FocusFinderConsoleCntlT::show() {
+
+    while (! mConsoleMenu.wantExit()) {
 
       // Handle menu
-      consoleMenu.update();
+      mConsoleMenu.update();
 
       ////////////////////////////
       // Handle filter selction //
       ////////////////////////////
-      if (inFilterWheelDevice) {
+      if (mFilterWheelDevice) {
 	stringstream ssFilterWheelStatus;
-	if (inFilterWheelDevice->isMovementInProgess()) {
-	  ssFilterWheelStatus << "moving... is: " << inFilterWheelDevice->getPos();
+	if (mFilterWheelDevice->isMovementInProgess()) {
+	  ssFilterWheelStatus << "moving... is: " << mFilterWheelDevice->getPos();
 	} else {
-	  ssFilterWheelStatus << "ready (pos=" << inFilterWheelDevice->getPos() << ").";
+	  ssFilterWheelStatus << "ready (pos=" << mFilterWheelDevice->getPos() << ").";
 	}
-	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 16, "Filter status: %s", ssFilterWheelStatus.str().c_str());
+	mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 17, "Filter status: %s", ssFilterWheelStatus.str().c_str());
       }
 
 
       ////////////////////////////
       // Handle focus           //
       ////////////////////////////
-      if (inFocuserDevice->isMovementInProgess()) {
-	int progress = 100 * (1.0 - ((float)((int) inFocuserDevice->getAbsPos() - (int) absFocusPosDest) / focusDelta));
-	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 15, "Moving focus... pos: %d/%d - progress: %d%\n",
-			     inFocuserDevice->getAbsPos(), absFocusPosDest, progress);
+      if (mFocuserDevice->isMovementInProgess()) {
+	int progress = 100 * (1.0 - ((float)((int) mFocuserDevice->getAbsPos() - (int) mAbsFocusPosDest) / mFocusDelta));
+	mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 15, "Moving focus... pos: %d/%d - progress: %d%\n", mFocuserDevice->getAbsPos(), mAbsFocusPosDest, progress);
       } else {
-	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 15, "Focus ready - pos: %d\n", inFocuserDevice->getAbsPos());
+	mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 15, "Focus ready - pos: %d\n", mFocuserDevice->getAbsPos());
       }
 
+      if (mFocuserDevice->supportsTemperature()) {
+  	mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 16, "Focus temp: %d\0xf8 C", mFocuserDevice->getTemperature());
+      }
       
-      /////////////////////////////////////
-      // Handle focus temperature...     //
-      /////////////////////////////////////
-      // TODO!!!
-      // if (inFocuserDevice->supportsTemperature()) {
-      //     mv_print(infoColumn, focusStepSizePos + 2, "Focus temp: %d\0xf8 C", inFocuserDevice->getTemperature());
-      // }
-
             
       //////////////////////////////////////
       // Handle camera temperature...     //
       //////////////////////////////////////
-      if (inCameraDevice->hasCooler()) {
-	// TODO: (inCameraDevice->isTemperatureReached() ? "yes" : "no") caused segfault?!
-      	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 18, "Camera cooler state: %s - Dest temp: %d C, Is temp: %f C\n",
-      			     CoolerStateT::asStr(cameraCoolerState), temperature, (float) inCameraDevice->getTemperature());
+      if (mCameraDevice->hasCooler()) {
+	// TODO: (mCameraDevice->isTemperatureReached() ? "yes" : "no") caused segfault?!
+      	mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 18, "Camera cooler state: %s - Dest temp: %d C, Is temp: %f C\n",
+			      CoolerStateT::asStr(mCameraCoolerState), mCameraTemperature, (float) mCameraDevice->getTemperature());
       }
       
       
       ////////////////////////////
       // Handle exposure...     //
       ////////////////////////////
-      ExposureStatusDataT exposureStatusData = exposureStatus.load();
+      ExposureStatusDataT exposureStatusData = mExposureStatus.load();
       
       switch(exposureStatusData.taskState) {
       case TaskStateT::READY:
-	if (expStartAbort == StartAbortT::ABORT) {
+	if (mExpStartAbort == StartAbortT::ABORT) {
 	  ExposureCntlDataT cntlData;
-	  cntlData.exposureTime = expTimeVal;
-	  cntlData.centerPosFF = currCenterPosFF;
-	  cntlData.binning = BinningT(binValXY, binValXY);
-	  exposureCntlData.store(cntlData);
+	  cntlData.exposureTime = mExpTimeVal;
+	  cntlData.centerPosFF = mCurrCenterPosFF;
+	  cntlData.binning = BinningT(mBinValXY, mBinValXY);
+	  mExposureCntl.store(cntlData);
 
 	  // Thread ONLY gets image - post processing does not take place in thread!
-      	  exposureThread = thread(exposeTask, inCameraDevice, & exposureCntlData, & exposureStatus, & currSubImage);
+      	  mExposureThread = thread(exposeTask, mCameraDevice, & mExposureCntl, & mExposureStatus, & mCurrSubImage);
 	}
 	break;
       
       case TaskStateT::RUNNING:
 	// Abort - only interrupt if still running
-	if (expStartAbort == StartAbortT::START) {
-	  exposureThread.interrupt();
+	if (mExpStartAbort == StartAbortT::START) {
+	  mExposureThread.interrupt();
 	} else {
-	  consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 13, "Exposure progress: %d%, seconds left: %d\n", exposureStatusData.progress, exposureStatusData.secondsLeft);
+	  mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 13, "Exposure progress: %d%, seconds left: %d\n", exposureStatusData.progress, exposureStatusData.secondsLeft);
 	}
 	break;
 
@@ -573,26 +507,44 @@ namespace AT {
 	  int maxPixValue = 0;
 	  
 	  try {
-	    calcStarValues(currSubImage, & dx, & dy, & hfd, & fwhmHorz, & fwhmVert, & maxPixValue);
+	    calcStarValues(mCurrSubImage, & dx, & dy, & hfd, & fwhmHorz, & fwhmVert, & maxPixValue);
+	    bool imgFrameRecenter = mCmdLineMap["img_frame_recenter"].as<bool>();
 
 	    if (imgFrameRecenter) {
-	      currCenterPosFF.get<0>() += dx;
-	      currCenterPosFF.get<1>() += dy;
+	      mCurrCenterPosFF.get<0>() += dx;
+	      mCurrCenterPosFF.get<1>() += dy;
 	    }
 	    
-	    consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 19, "HFD: %f\n", hfd.getValue());
+	    mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 19, "HFD: %f\n", hfd.getValue());
 	    currentHfdDisp.display(hfd.genView());
 
-	    consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 20, "FWHM(horz): %f\n", fwhmHorz.getValue());
-	    currentFwhmHorzDisp.display(fwhmHorz.genView());
+	    // FWHM horz
+	    if (fwhmHorz.valid()) {
+	      stringstream fwhmHorzArcSecSs;
+	      if (mFocalDistance && mPixelSizeUm != DimensionT<float>(0,0)) {
+		fwhmHorzArcSecSs << " = " << FwhmT::pxToArcsec(fwhmHorz.getValue(), mFocalDistance, mPixelSizeUm, BinningT(mBinValXY, mBinValXY)) << "\"";
+	      }
+	      mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 20, "FWHM(horz): %fpx%s\n", fwhmHorz.getValue(), fwhmHorzArcSecSs.str().c_str());
+	      currentFwhmHorzDisp.display(fwhmHorz.genView());
+	    } else {
+	      mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 20, "FWHM(horz): n.a.");
+	    }
 	    
-	    consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 21, "FWHM(vert): %f\n", fwhmVert.getValue());
-	    currentFwhmVertDisp.display(fwhmVert.genView());
+	    // FWHM vert
+	    if (fwhmVert.valid()) {
+	      stringstream fwhmVertArcSecSs;
+	      if (mFocalDistance && mPixelSizeUm != DimensionT<float>(0,0)) {
+		fwhmVertArcSecSs << " = " << FwhmT::pxToArcsec(fwhmVert.getValue(), mFocalDistance, mPixelSizeUm, BinningT(mBinValXY, mBinValXY)) << "\"";
+	      }
+	      mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 21, "FWHM(vert): %fpx%s\n", fwhmVert.getValue(), fwhmVertArcSecSs.str().c_str());
+	      currentFwhmVertDisp.display(fwhmVert.genView());
+	    } else {
+	      mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 21, "FWHM(vert): n.a.");
+	    }
 
 	    // TODO: Also calc saturation?
-	    consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 22, "Max pix val: %d\n", maxPixValue);
+	    mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 22, "Max pix val: %d\n", maxPixValue);
 
-	    
 	  } catch(CentroidExceptionT & exc) {
 	    // Unable to calculate star values - probably no star...
 	    LOG(info) << "Unable to calculate star data... probably no valid star selected" << endl; 
@@ -600,15 +552,15 @@ namespace AT {
 	  
 	  // Finally, generate and display the image
 	  CImg<unsigned char> rgbImg;
-	  genSelectionView(currSubImage, dx, dy, & rgbImg, 3.0 /*zoom*/);
+	  genSelectionView(mCurrSubImage, dx, dy, & rgbImg, 3.0 /*zoom*/);
 	  currImageDisp.display(rgbImg);
 	}
 
-	if (expMode == ExposureModeT::SINGLE) {
-	  expStartAbort = StartAbortT::START;
+	if (mExpMode == ExposureModeT::SINGLE) {
+	  mExpStartAbort = StartAbortT::START;
 	}
 	exposureStatusData.taskState = TaskStateT::READY;
-	exposureStatus.store(exposureStatusData);
+	mExposureStatus.store(exposureStatusData);
 	break;
 
       default:
@@ -619,448 +571,28 @@ namespace AT {
       // Handle focus finder    //
       ////////////////////////////
       
-      if (sFocusFindStatus.isRunning) {
-      	consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress: %d, hfd: %f\n",
-      			     sFocusFindStatus.progress, sFocusFindStatus.hfd.getValue());
+      if (mFocusFindStatus.isRunning) {
+      	mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress: %d, hfd: %f\n",
+      			     mFocusFindStatus.progress, mFocusFindStatus.hfd.getValue());
       } else {
-      	focusFindStartAbort = StartAbortT::START;
+      	mFocusFindStartAbort = StartAbortT::START;
       }
 
       // Print error in focus finder, if any
       {
-	lock_guard<mutex> guard(sFocusFinderMtx);
-	if (! sLastErrorStr.empty()) {
-	  consoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 23, "Last error: %s", sLastErrorStr.c_str());
+	lock_guard<mutex> guard(mFocusFinderMtx);
+	if (! mLastErrorStr.empty()) {
+	  mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 23, "Last error: %s", mLastErrorStr.c_str());
 	}
       }
 
       
       // Wait a moment to keep processor down...
       chrono::milliseconds dura(10);
-      this_thread::sleep_for(dura); // Sleeps for a bit
+      this_thread::sleep_for(dura);
     } // end loop
 
-    // Unregistering console UI listeners
-    {
-      LOG(debug) << "Unregistering focus finder handler..." << endl;
-      lock_guard<mutex> guard(sFocusFinderMtx);
-      focusFinderImpl.unregisterStatusUpdListener(focusFinderStatusUpdHandlerConn);
-      focusFinderImpl.unregisterNewSampleListener(focusFinderNewSampleHandlerConn);
-      focusFinderImpl.unregisterNewFocusCurveListener(focusFinderNewFocusCurveHandlerConn);
-      focusFinderImpl.unregisterFocusFinderAbortListener(focusFinderAbortHandlerConn);
-    }
   }
-
-
-
-
-  
-
-
-
-
-
-
-
-
-  
-  //void
-  //manualConsoleFocusCntl(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, const FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec, BinningT inBinning, bool inFollowStar) // {
-  //   const unsigned int statusPosX = 5;
-  //   const unsigned int statusPosY = 27;
-  //   const size_t infoColumn = 50;
-
-  //   // TODO FIXME: getSelectionFrame() needs to take care of border!! Use borderFactor below...
-  //   const float borderFactor = 3.0; // TODO: Pass as argument?!
-  //   PointT<float> centerPos = frameToCenterPos(inSelectionFrame);
-  //   FrameT<float> imageFrame = centerPosToFrame(centerPos, borderFactor * inSelectionFrame.get<2>(), borderFactor * inSelectionFrame.get<3>());
-
-  //   bool haveFocalDistance = (inCmdLineMap.count("focal_distance") > 0);
-  //   bool havePixelSize = (inCmdLineMap.count("pixel_size") > 0);
-  //   unsigned int focalDistance = inCmdLineMap["focal_distance"].as<unsigned int>();
-  //   const DimensionT<float> & pixelSize = inCmdLineMap["pixel_size"].as<DimensionT<float> >();
-    
-  //   LOG(trace) << "Initial selectionFrame(by click): " << inSelectionFrame
-  // 	       << ", centerPos: " << centerPos << ", initial imageFrame: " << imageFrame << endl;
-    
-  //   CImgDisplay currentImageDisp, currentFwhmHorzDisp, currentFwhmVertDisp, currentHfdDisp, hfdHistoryDisp, fwhmHorzHistoryDisp, fwhmVertHistoryDisp;
-  //   CImg<float> image;
-  //   FocusFinderParabelFitImplT findFocusTask(inCameraDevice, inFocuserDevice); // TODO: Use pointer to TaskT<FocusFinderInfoT, MtTaskPolicyT> instead, later... so we can switch strategy at runtime!
-    
-  //   int key;
-
-  //   int focusPos = inFocuserDevice->getAbsPos();
-  //   float hfdValue = -1;
-  //   float fwhmHorzValue = -1;
-  //   float fwhmVertValue = -1;
-  //   float maxPixelValue = -1;
-    
-  //   initscr();
-  //   crmode();
-  //   keypad(stdscr, TRUE);
-  //   noecho();
-  //   clear();
-  //   move(7 /*y*/,5 /*x*/);
-  //   refresh();
-
-  //   timeout(10);
-  //   key = getch();
-
-  //   // Build the menu
-  //   vector<MenuEntryT *> menuActions;
-    
-  //   SetFocusStepSizeT * focusStepSize = new SetFocusStepSizeT();
-  //   ControlExposureT * controlExposure = new ControlExposureT(inCameraDevice, inExposureTimeSec);
-  //   ControlBinningT * controlBinning = new ControlBinningT(inCameraDevice, inBinning);
-  //   AutoFindFocusT * autoFindFocus = new AutoFindFocusT(inCameraDevice, inFocuserDevice, controlExposure, & findFocusTask);
-  //   FilterSelectT * filterSelect = 0;
-  //   ControlCameraTemperatureT * controlCameraTemperature = 0;
-    
-  //   addMenuItem(& menuActions, focusStepSize);
-  //   addMenuItem(& menuActions, new MoveFocusT(inFocuserDevice, focusStepSize));
-  //   addMenuItem(& menuActions, new SeparatorT());
-  //   addMenuItem(& menuActions, new SeparatorT());
-
-  //   addMenuItem(& menuActions, controlExposure);
-  //   addMenuItem(& menuActions, controlBinning);
-
-  //   if (inCameraDevice->hasCooler()) {
-  //     controlCameraTemperature = new ControlCameraTemperatureT(inCameraDevice, inCameraDevice->getTemperature());
-  //     addMenuItem(& menuActions, controlCameraTemperature);
-  //   }
-
-  //   if (inFilterWheelDevice) {
-  //     filterSelect = new FilterSelectT(inFilterWheelDevice, inFilterWheelDevice->getPos());
-  //     addMenuItem(& menuActions, new SeparatorT());
-  //     addMenuItem(& menuActions, new SeparatorT());
-  //     addMenuItem(& menuActions, filterSelect);
-  //   }
-    
-  //   addMenuItem(& menuActions, new SeparatorT());
-  //   addMenuItem(& menuActions, new SeparatorT());
-  //   addMenuItem(& menuActions, autoFindFocus);
-
-    
-  //   int position = 0;
-  //   int numEntries = menuActions.size();
-
-  //   LimitedQueueT<float> limitedQueueHfd(50);
-  //   LimitedQueueT<float> limitedQueueFwhmHorz(50);
-  //   LimitedQueueT<float> limitedQueueFwhmVert(50);
-  
-  //   //bool exposureInProgress = false;
-  //   //bool newImage = false;
-    
-  //   while(key != 'q') {
-
-  //     // if (inCameraDevice->isExposureInProgress()) {
-  //     // 	exposureInProgress = true;
-  //     // 	newImage = false;
-  //     // } else {
-  //     // 	// Get previous image (if any)
-  //     // 	inCameraDevice->getImage(& image);
-
-  //     // 	LOG(debug) << "exposureInProgress: " << exposureInProgress << ", newImage: " << newImage << endl;
-	
-  //     // 	if (exposureInProgress) {
-  //     // 	  exposureInProgress = false;
-  //     // 	  LOG(debug) << "SET newImage to true!" << endl;
-  //     // 	  newImage = true;
-  //     // 	}
-
-  //     // 	LOG(trace) << "Received image [subframe: " << imageFrame << "] from camera - size: " << image.width() << " x " << image.height() << endl;
-  //     // 	LOG(trace) << "image.width(): " << image.width() << ", image.height(): " << image.height() << endl;
-  //     // 	LOG(trace) << "controlBinning->getBinning().get<0>(): " << controlBinning->getBinning().get<0>()
-  //     // 		   << ", controlBinning->getBinning().get<1>(): " << controlBinning->getBinning().get<1>() << endl;
-
-  //     // 	if (image.width() == imageFrame.get<2>() && image.height() == imageFrame.get<3>()) {
-  //     // 	  // Perform re-centroiding i.e. re-set selectionFrame in order to follow the star
-  //     // 	  // ------------------------------------------------------------------------------------------------------------ //
-  //     // 	  FrameT<unsigned int> newFrame;
-
-  //     // 	  // IDEA: Pass current image, re-center using given method
-  //     // 	  PointT<float> assumedCenter((float) image.width() / 2.0, (float) image.height() / 2.0); // We assume that the star did not move too far from the image center
-
-  //     // 	  LOG(trace) << "image.width(): " << image.width() << ", image.height(): " << image.height()
-  //     // 		     << ", --> assumed center: " << assumedCenter << endl;
-
-  //     // 	  // TODO: Do not pass StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY,CentroidT::CentroidTypeT::IWC...
-  //     // 	  //       Instead pass what has been selected by parameters..
-  //     // 	  bool insideBounds = StarFrameSelectorT::calc(image, 0 /*bitPix - TODO / HACK: not needed */,
-  //     // 						       assumedCenter, & newFrame,
-  //     // 						       StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY,
-  //     // 						       CentroidT::CentroidTypeT::IWC, inSelectionFrame.get<2>() /*frameSize*/);
-
-  //     // 	  AT_ASSERT(StarFrameSelector, insideBounds, "Expected frame to be inside bounds.");
- 
-  //     // 	  // Calculate new imageFrame
-  //     // 	  PointT<float> newLocalCenterPos = frameToCenterPos(newFrame); // In "imageFrame" coordinates
-  //     // 	  float deltaX = ((float) imageFrame.get<2>() / 2.0) - newLocalCenterPos.get<0>();
-  //     // 	  float deltaY = ((float) imageFrame.get<3>() / 2.0) - newLocalCenterPos.get<1>();
-  //     // 	  PointT<float> oldCenterPos = frameToCenterPos(imageFrame); // In "full frame" coordinates
-  //     // 	  PointT<float> newCenterPos(oldCenterPos.get<0>() - deltaX, oldCenterPos.get<1>() - deltaY); // In "full frame" coordinates
-  //     // 	  FrameT<unsigned int> newImageFrame = centerPosToFrame(newCenterPos, imageFrame.get<2>(), imageFrame.get<3>());
-
-  //     // 	  LOG(debug) << "Old imageFrame: " << imageFrame << ", oldCenterPos: " << oldCenterPos << endl;
-  //     // 	  LOG(trace) << "frameSize used: " << inSelectionFrame.get<2>() << ", assumedCenter: " << assumedCenter
-  //     // 		     << ", newFrame: " << newFrame << " --> newLocalCenterPos: " << newLocalCenterPos
-  //     // 		     << ", --> deltaX: " << deltaX << ", deltaY: " << deltaY << endl;
-  //     // 	  LOG(debug) << "New imageFrame: " << newImageFrame << ", newCenterPos: " << newCenterPos << endl;
-
-  //     // 	  // TODO / FIXME: Check if it hits boundaries!!??
 	  
-  //     // 	  // Get sub-frame for analysis
-  //     // 	  // ------------------------------------------------------------------------------------------------------------ //
-  //     // 	  // Convert to imageFrame coordinates
-  //     // 	  FrameT<float> selectionFrame(newFrame);
 
-  //     // 	  CImg<float> subImg = image.get_crop(selectionFrame.get<0>() /*x0*/,
-  //     // 	   				      selectionFrame.get<1>() /*y0*/,
-  //     // 	   				      selectionFrame.get<0>() + selectionFrame.get<2>() - 1/*x1=x0+w-1*/,
-  //     // 	   				      selectionFrame.get<1>() + selectionFrame.get<3>() - 1/*y1=y0+h-1*/);
-
-  //     // 	  // Calculate star data
-  //     // 	  // ------------------------------------------------------------------------------------------------------------ //
-  //     // 	  // TODO: try catch?
-  //     // 	  try {
-  //     // 	    // TODO: HFD value INCREASES if coming to focus using the simulator... !!! Maybe a simulator problem?! --> need real test!!!
-  //     // 	    HfdT hfd(subImg); // NOTE: HfdT takes image center as centroid, it does not matter if image is bigger
-  //     // 	    hfdValue = hfd.getValue();
-  //     // 	    currentHfdDisp.display(hfd.genView());
-  //     // 	  } catch(std::exception & exc) {
-  //     // 	    LOG(warning) << "HFD calculation failed!"  << endl;
-  //     // 	  }
-	  
-  //     // 	  // Subtract median image
-  //     // 	  double med = subImg.median();
-  //     // 	  CImg<float> imageSubMed(subImg.width(), subImg.height());
-  //     // 	  cimg_forXY(subImg, x, y) {
-  //     // 	    imageSubMed(x, y) = (subImg(x, y) > med ? subImg(x, y) - med : 0);
-  //     // 	  }
-	  
-  //     // 	  try {
-  //     // 	    FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(imageSubMed));
-  //     // 	    fwhmHorzValue = fwhmHorz.getValue();
-  //     // 	    currentFwhmHorzDisp.display(fwhmHorz.genView());
-  //     // 	  } catch(std::exception & exc) {
-  //     // 	    LOG(warning) << "FWHM(horz) calculation failed!"  << endl;
-  //     // 	  }
-	  
-  //     // 	  try {
-  //     // 	    FwhmT fwhmVert(extractLine<DirectionT::VERT>(imageSubMed));
-  //     // 	    fwhmVertValue = fwhmVert.getValue();
-  //     // 	    currentFwhmVertDisp.display(fwhmVert.genView());
-  //     // 	  } catch(std::exception & exc) {
-  //     // 	    LOG(warning) << "FWHM(horz) calculation failed!"  << endl;
-  //     // 	  }
-	  
-  //     // 	  maxPixelValue = subImg.max();
-
-	  
-  //     // 	  // DEBUG START
-  //     // 	  // CImg<unsigned char> tmpNormalizedImage(normalize(subImg, 65535.0, 5.0));
-  //     // 	  // CImgDisplay thDsp(tmpNormalizedImage, "SUB-IMG...");
-  //     // 	  // while (! thDsp.is_closed()) {
-  //     // 	  //   thDsp.wait();
-  //     // 	  // }
-  //     // 	  // CImg<unsigned char> hfdView = hfd.genView();
-  //     // 	  // CImgDisplay thDsp2(hfdView, "HFD-VIEW...");
-  //     // 	  // while (! thDsp2.is_closed()) {
-  //     // 	  //   thDsp2.wait();
-  //     // 	  // }
-  //     // 	  // DEBUG END
-	  
-	  
-  //     // 	  if (inFollowStar && controlExposure->getExposureMode() != ControlExposureT::ExposureModeT::SINGLE) {
-  //     // 	    // If star following is enabled, the camera sub-frame is re-centered after each image
-  //     // 	    imageFrame = newImageFrame;
-  //     // 	  }
-  //     // 	} else {
-  //     // 	  LOG(debug) << "Received something unexpected! Expected image size: " << imageFrame.get<2>() << " x " << imageFrame.get<3>()
-  //     // 		     << " but received " << image.width() << " x " << image.height() << " -> ignoring." << endl;
-  //     // 	}
-	
-  //     // 	// TODO: Should this be moved to the menu items?!
-  //     // 	LOG(trace) << "setBinning(" << controlBinning->getBinning() << ")..." << endl;
-  //     // 	inCameraDevice->setBinning(controlBinning->getBinning());
-
-  //     // 	//TODO: setBinning after first selection of imageFrame causes CentroidException (Frame hit simage bounds...) -> need to recalc imageFrame(?) - based on old binning and given new binning!
-  //     // 	LOG(trace) << "setBinnedFrame(" << imageFrame << ", " << controlBinning->getBinning() << ")..." << endl;
-  //     // 	inCameraDevice->setBinnedFrame(imageFrame, controlBinning->getBinning());
-	
-  //     // 	LOG(trace) << "setFrameType(" << FrameTypeT::asStr(FrameTypeT::LIGHT) << ")..." << endl;
-  //     // 	inCameraDevice->setFrameType(FrameTypeT::LIGHT);
-  //     // 	LOG(trace) << "setCompressed(false)..." << endl;
-  //     // 	inCameraDevice->setCompressed(false); // No compression when moving image to CImg
-
-  //     // 	// TODO: getExposureDone?? TODO: or restart exposure if auto finder is enabled
-  //     // 	if (! controlExposure->getExposureDone() || controlExposure->getExposureMode() == ControlExposureT::ExposureModeT::LOOP) {
-  //     // 	  LOG(trace) << "startExposure(" << inExposureTimeSec << "s)..." << endl;
-  //     // 	  inCameraDevice->startExposure(controlExposure->getExposureTime()); // Non-blocking call...!!
-  //     // 	  controlExposure->setExposureDone(true);
-  //     // 	}
-  //     // } // end if - ! exposure in progress
-
-      
-  //     // if (newImage) {
-  //     // 	newImage = false;
-	
-  //     // 	if (hfdValue > 0) {
-  //     // 	  stringstream hfdArcSecSs;
-  //     // 	  if (haveFocalDistance && havePixelSize) {
-  //     // 	    hfdArcSecSs << " = " << FwhmT::pxToArcsec(hfdValue, focalDistance, pixelSize, controlBinning->getBinning()) << "\"";
-  //     // 	  }
-  //     // 	  mv_print(infoColumn, 15, "HFD: %fpx%s", hfdValue, hfdArcSecSs.str().c_str());
-	
-  //     // 	  // Add values to queue
-  //     // 	  limitedQueueHfd.push(hfdValue);
-  //     // 	} else {
-  //     // 	  mv_print(infoColumn, 15, "HFD: n.a.");
-  //     // 	}
-  //     // 	hfdHistoryDisp.display(limitedQueueHfd.genView(400, 100));
-	
-  //     // 	if (fwhmHorzValue > 0) {
-  //     // 	  stringstream fwhmHorzArcSecSs;
-
-  //     // 	  if (haveFocalDistance && havePixelSize) {
-  //     // 	    fwhmHorzArcSecSs << " = " << FwhmT::pxToArcsec(fwhmHorzValue, focalDistance, pixelSize, controlBinning->getBinning()) << "\"";
-  //     // 	  }
-  //     // 	  // Add values to queue
-  //     // 	  limitedQueueFwhmHorz.push(fwhmHorzValue);
-
-  //     // 	  mv_print(infoColumn, 16, "FWHM(horz): %fpx%s", fwhmHorzValue, fwhmHorzArcSecSs.str().c_str());
-  //     // 	} else {
-  //     // 	  mv_print(infoColumn, 16, "FWHM(horz): n.a.");
-  //     // 	}
-  //     // 	fwhmHorzHistoryDisp.display(limitedQueueFwhmHorz.genView(400, 100));
-
-	
-  //     // 	if (fwhmVertValue > 0) {
-  //     // 	  stringstream fwhmVertArcSecSs;
-
-  //     // 	  if (haveFocalDistance && havePixelSize) {
-  //     // 	    fwhmVertArcSecSs << " = " << FwhmT::pxToArcsec(fwhmVertValue, focalDistance, pixelSize, controlBinning->getBinning()) << "\"";
-  //     // 	  }
-  //     // 	  // Add values to queue
-  //     // 	  limitedQueueFwhmVert.push(fwhmVertValue);
-
-  //     // 	  mv_print(infoColumn, 17, "FWHM(vert): %fpx%s", fwhmVertValue, fwhmVertArcSecSs.str().c_str());
-  //     // 	} else {
-  //     // 	  mv_print(infoColumn, 17, "FWHM(vert): n.a.");
-  //     // 	}
-  //     // 	fwhmVertHistoryDisp.display(limitedQueueFwhmVert.genView(400, 100));
-
-  //     // 	if (maxPixelValue > 0) {
-  //     // 	  mv_print(infoColumn, 18, "MAX: %f", maxPixelValue);
-  //     // 	} else {
-  //     // 	  mv_print(infoColumn, 18, "MAX: n.a.");
-  //     // 	}
-  //     // } // end if - ! inCameraDevice->isExposureInProgress() && newImage
-
-      
-  //     mv_print(5, 25, "Focus finder. Press 'q' to quit");
-
-  //     switch(key) {
-  //     case KEY_UP:
-  // 	while (position > 0) {
-  // 	  position--;
-  // 	  bool isSeparator =  ! strcmp(menuActions[position]->getName(), "");
-  // 	  if (! isSeparator) { break; }
-  // 	}
-  // 	break;
-	
-  //     case KEY_DOWN:
-  // 	while (position < numEntries - 1) {
-  // 	  position++;
-  // 	  bool isSeparator =  ! strcmp(menuActions[position]->getName(), "");
-  // 	  if (! isSeparator) { break; }
-  // 	}
-  // 	break;
-	
-  //     case 9: /* TAB */
-  // 	bool isSeparator;
-  // 	do {
-  // 	  position++;
-  // 	  position = position % numEntries;
-	  
-  // 	  isSeparator =  ! strcmp(menuActions[position]->getName(), "");
-  // 	} while (isSeparator);
-  // 	break;
-
-  //     default: {
-  // 	mv_print(10, 21, "%s", menuActions[position]->getHelpText());
-  // 	menuActions[position]->execute(key);
-  // 	break;
-  //     }
-  //     } /* switch */
-
-  //     const int cTopMenuBorder = 1;
-  //     const int cLeftMenuBorder = 10;
-  //     const int cLeftMenuWidth = 20;
-
-  //     // Highlight selected menu entry
-  //     for (vector<MenuEntryT *>::iterator it = menuActions.begin(); it != menuActions.end(); ++it) {
-  // 	const MenuEntryT * menuEntry = *it;
-  // 	int pos = (*it)->getMenuPos();
-
-  // 	if (pos == position) { attron(A_STANDOUT); }
-  // 	mv_print(cLeftMenuBorder, cTopMenuBorder + pos, "%s", menuEntry->getName());
-  // 	if (pos == position) { attroff(A_STANDOUT); }
-
-  // 	mv_print(cLeftMenuBorder + cLeftMenuWidth, cTopMenuBorder + pos, "%s", menuEntry->getValueAsStr().c_str());
-  //     }
-
-
-
-  //     // Update focus data
-  //     stringstream ssCameraStatus;
-  //     if (inCameraDevice->isExposureInProgress()) {
-  // 	ssCameraStatus << "exposing..." << inCameraDevice->getExposureTime() << "s";
-  //     } else {
-  // 	ssCameraStatus << "ready";
-  //     }
-
-  //     mv_print(infoColumn, cTopMenuBorder + controlExposure->getMenuPos(), "Camera status: %s", ssCameraStatus.str().c_str());
-
-  //     if (inCameraDevice->hasCooler()) {
-  // 	size_t coolerPos = cTopMenuBorder + controlCameraTemperature->getMenuPos();
-  // 	mv_print(infoColumn, coolerPos, "Cooler status: ");
-  // 	mv_print(infoColumn, coolerPos + 1, "Temperature: ");
-  //     }
-
-  //     if (inFilterWheelDevice) {
-  // 	stringstream ssFilterWheelStatus;
-  // 	if (inFilterWheelDevice->isMovementInProgess()) {
-  // 	  ssFilterWheelStatus << "moving... is: " << inFilterWheelDevice->getPos();
-  // 	} else {
-  // 	  ssFilterWheelStatus << "ready (pos=" << inFilterWheelDevice->getPos() << ").";
-  // 	}
-  // 	mv_print(infoColumn, cTopMenuBorder + filterSelect->getMenuPos(), "Filter status: %s", ssFilterWheelStatus.str().c_str());
-  //     }
-
-  //     string focuserStatus = (inFocuserDevice->isMovementInProgess() ? "busy" : "ready"); 
-  //     size_t focusStepSizePos = cTopMenuBorder + focusStepSize->getMenuPos();
-
-  //     mv_print(infoColumn, focusStepSizePos, "Focus status: %s", focuserStatus.c_str());
-  //     mv_print(infoColumn, focusStepSizePos + 1, "Focus pos (is): %d", inFocuserDevice->getAbsPos());
-  //     if (inFocuserDevice->supportsTemperature()) {
-  // 	mv_print(infoColumn, focusStepSizePos + 2, "Focus temp: %d\0xf8 C", inFocuserDevice->getTemperature());
-  //     }
-
-  //     // Update auto finder status
-  //     size_t autoFindFocusPos = cTopMenuBorder + autoFindFocus->getMenuPos();
-  //     mv_print(infoColumn, autoFindFocusPos, "Status: %s", FocusFinderInfoT::StateT::asStr(findFocusTask.getStatus().mState));
-  //     mv_print(infoColumn, autoFindFocusPos + 1, "Progress: %d", findFocusTask.getStatus().mProgress);
-
-  //     refresh();
-  //     timeout(10);
-  //     key = getch();
-  //   } /* while */
-
-  //   // Cleanup menu
-  //   for (vector<MenuEntryT *>::iterator it = menuActions.begin(); it != menuActions.end(); ++it) {
-  //     delete *it;
-  //   }
-  //   endwin();    
-  // }
 }; // end AT

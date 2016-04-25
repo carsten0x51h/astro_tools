@@ -28,6 +28,7 @@
 #include <vector>
 #include <functional>
 
+#include "at_exception.hpp"
 #include "at_console_display.hpp"
 
 namespace AT {
@@ -230,23 +231,26 @@ namespace AT {
     }
   };
 
+  
 
-
-
+  DEF_Exception(ConsoleMenu);
 
   class ConsoleMenuT {
   private:
     ConsoleDisplayT * mConsoleDisplay;
-    const std::vector<MenuEntryT *> & mMenuEntries;
+    const std::vector<MenuEntryT *> * mMenuEntries;
     int mPosition;
     bool mWantExit;
     
   public:
-    ConsoleMenuT(ConsoleDisplayT * inConsoleDisplay, const std::vector<MenuEntryT *> & inMenuEntries) : mConsoleDisplay(inConsoleDisplay), mMenuEntries(inMenuEntries), mPosition(0), mWantExit(false) {}
+    ConsoleMenuT(ConsoleDisplayT * inConsoleDisplay = 0, const std::vector<MenuEntryT *> * inMenuEntries = 0) : mConsoleDisplay(inConsoleDisplay), mMenuEntries(inMenuEntries), mPosition(0), mWantExit(false) {}
 
     inline bool wantExit() const { return mWantExit; }
     
     void update() {
+      AT_ASSERT(ConsoleMenu, mConsoleDisplay, "mConsoleDisplay is 0!");
+      AT_ASSERT(ConsoleMenu, mMenuEntries, "mMenuEntries is 0!");
+      
       // Menu handling
       int key = getch();
 
@@ -254,15 +258,15 @@ namespace AT {
       case KEY_UP:
 	while (mPosition > 0) {
 	  mPosition--;
-	  bool isSeparator =  ! strcmp(mMenuEntries.at(mPosition)->getTitle(), "");
+	  bool isSeparator =  ! strcmp(mMenuEntries->at(mPosition)->getTitle(), "");
 	  if (! isSeparator) { break; }
 	}
 	break;
       
       case KEY_DOWN:
-	while (mPosition < mMenuEntries.size() - 1) {
+	while (mPosition < mMenuEntries->size() - 1) {
 	  mPosition++;
-	  bool isSeparator =  ! strcmp(mMenuEntries.at(mPosition)->getTitle(), "");
+	  bool isSeparator =  ! strcmp(mMenuEntries->at(mPosition)->getTitle(), "");
 	  if (! isSeparator) { break; }
 	}
 	break;
@@ -271,9 +275,9 @@ namespace AT {
 	bool isSeparator;
 	do {
 	  mPosition++;
-	  mPosition = mPosition % mMenuEntries.size();
+	  mPosition = mPosition % mMenuEntries->size();
 	
-	  isSeparator =  ! strcmp(mMenuEntries.at(mPosition)->getTitle(), "");
+	  isSeparator =  ! strcmp(mMenuEntries->at(mPosition)->getTitle(), "");
 	} while (isSeparator);
 	break;
 
@@ -282,15 +286,15 @@ namespace AT {
 	break;
 	
       default:
-	mMenuEntries.at(mPosition)->update(key);
+	mMenuEntries->at(mPosition)->update(key);
 
 	break;
       } // end switch
 
       // Update menu display, highlight selected menu entry
-      for (std::vector<MenuEntryT *>::const_iterator it = mMenuEntries.begin(); it != mMenuEntries.end(); ++it) {
+      for (std::vector<MenuEntryT *>::const_iterator it = mMenuEntries->begin(); it != mMenuEntries->end(); ++it) {
 	const MenuEntryT * entry = *it;
-	size_t i = std::distance(mMenuEntries.begin(), it);
+	size_t i = std::distance(mMenuEntries->begin(), it);
 	if (i == mPosition) { attron(A_STANDOUT); }
 	mConsoleDisplay->print(cLeftMenuBorder, cTopMenuBorder + i, "%s", entry->getTitle());
 	if (i == mPosition) { attroff(A_STANDOUT); }

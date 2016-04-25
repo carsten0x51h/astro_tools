@@ -367,7 +367,8 @@ namespace AT {
 	LOG(debug) << "Selected frame by click: " << selectedFrame << endl;
 	
 	if (! strcmp(focusMode.c_str(), "manual")) { // Manual focusing
-	  manualConsoleFocusCntl(cmdLineMap, cameraDevice, focuserDevice, filterWheelDevice, selectedFrame, exposureTimeSec, binning, followStar);
+	  FocusFinderConsoleCntlT focusFinderConsoleCntl(cmdLineMap, cameraDevice, focuserDevice, filterWheelDevice, selectedFrame);
+	  focusFinderConsoleCntl.show();
 	} else { // Automatic focusing
 	  cerr << "NOT IMPLEMENTED!" << endl;
 	  exit(1);
