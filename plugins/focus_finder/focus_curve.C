@@ -34,47 +34,29 @@ namespace AT {
   };
   
   FocusCurveT::FocusMeasureFuncT FocusCurveT::sFwhmHorzStrategy = [](const CImg<float> & inImgFrame) {
-    // Subtract median image
-    // TODO: Move into FwhmT ????????
-    double med = inImgFrame.median();
-    CImg<float> imageSubMed(inImgFrame.width(), inImgFrame.height());
-    cimg_forXY(inImgFrame, x, y) {
-      imageSubMed(x, y) = (inImgFrame(x, y) > med ? inImgFrame(x, y) - med : 0);
-    }
-    
     // TODO: Error handling?!
-    return FwhmT(extractLine<DirectionT::HORZ>(imageSubMed)).getValue();
+    return FwhmT(extractLine<DirectionT::HORZ>(subMedianImg<float>(inImgFrame))).getValue();
   };
   
   FocusCurveT::FocusMeasureFuncT FocusCurveT::sFwhmVertStrategy = [](const CImg<float> & inImgFrame) {
-    // Subtract median image
-    // TODO: Move into FwhmT ????????
-    double med = inImgFrame.median();
-    CImg<float> imageSubMed(inImgFrame.width(), inImgFrame.height());
-    cimg_forXY(inImgFrame, x, y) {
-      imageSubMed(x, y) = (inImgFrame(x, y) > med ? inImgFrame(x, y) - med : 0);
-    }
-    
     // TODO: Error handling?!
-    return FwhmT(extractLine<DirectionT::VERT>(imageSubMed)).getValue();
+    return FwhmT(extractLine<DirectionT::VERT>(subMedianImg<float>(inImgFrame))).getValue();
   };
 
   FocusCurveT::FocusMeasureFuncT FocusCurveT::sFwhmMeanStrategy = [](const CImg<float> & inImgFrame) {
-    // Subtract median image
-    // TODO: Move into FwhmT ????????
-    double med = inImgFrame.median();
-    CImg<float> imageSubMed(inImgFrame.width(), inImgFrame.height());
-    cimg_forXY(inImgFrame, x, y) {
-      imageSubMed(x, y) = (inImgFrame(x, y) > med ? inImgFrame(x, y) - med : 0);
-    }
-    
     // TODO: Error handling?!
-    FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(imageSubMed));
-    FwhmT fwhmVert(extractLine<DirectionT::VERT>(imageSubMed));
+    CImg<float> medImg = subMedianImg<float>(inImgFrame);
+    FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(medImg));
+    FwhmT fwhmVert(extractLine<DirectionT::VERT>(medImg));
 
     return (fwhmHorz.getValue() + fwhmVert.getValue()) / 2;
   };
 
+  FocusCurveT::FocusMeasureFuncT FocusCurveT::sMaxPixelStrategy = [](const CImg<float> & inImgFrame) {
+    // Negative because it behaves inverse to "normal" measures (the higher the better)
+    // NOTE: We may also try to return 1/max instead if problems with negative values...
+    return -inImgFrame.max();
+  };
 
   
   

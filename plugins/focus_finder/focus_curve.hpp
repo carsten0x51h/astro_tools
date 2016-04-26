@@ -53,6 +53,7 @@ namespace AT {
     static FocusMeasureFuncT sFwhmHorzStrategy;
     static FocusMeasureFuncT sFwhmVertStrategy;
     static FocusMeasureFuncT sFwhmMeanStrategy;
+    static FocusMeasureFuncT sMaxPixelStrategy;
 
     
     typedef map<int /*absPos*/, float /*e.g. HFD value*/> PosToFocusMeasureT;

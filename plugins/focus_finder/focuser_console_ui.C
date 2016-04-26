@@ -159,19 +159,14 @@ namespace AT {
       currentHfdDisp.display(hfd.genView());      
     }
 
-    // Subtract median image
-    double med = inImgFrame.median();
-    CImg<float> imageSubMed(inImgFrame.width(), inImgFrame.height());
-    cimg_forXY(inImgFrame, x, y) {
-      imageSubMed(x, y) = (inImgFrame(x, y) > med ? inImgFrame(x, y) - med : 0);
-    }
+    CImg<float> subMedImg = subMedianImg<float>(inImgFrame);
     
-    FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(imageSubMed));
+    FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(subMedImg));
     if (fwhmHorz.valid()) {
       currentFwhmHorzDisp.display(fwhmHorz.genView());
     }
 
-    FwhmT fwhmVert(extractLine<DirectionT::VERT>(imageSubMed));
+    FwhmT fwhmVert(extractLine<DirectionT::VERT>(subMedImg));
     if (fwhmVert.valid()) {
       currentFwhmVertDisp.display(fwhmVert.genView());
     }

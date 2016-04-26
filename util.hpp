@@ -282,7 +282,18 @@ rectify(const FrameT<float> & inFrame) {
   return FrameT<float>(inFrame.get<0>() - border, inFrame.get<1>() - border, L + 2.0 * border, L + 2.0 * border);
 }
 
-
+/**
+ * Subtract a median image. Returns a new image instance. Values < 0 will be set to 0.
+ */ 
+template <typename T>
+CImg<T> subMedianImg(const CImg<T> & inImg) {
+  T med = inImg.median();
+  CImg<T> imageSubMed(inImg.width(), inImg.height());
+  cimg_forXY(inImg, x, y) {
+    imageSubMed(x, y) = (inImg(x, y) > med ? inImg(x, y) - med : 0);
+  }
+  return imageSubMed;
+}
 
 /**
  * Helper class - horizontal and vertical.
