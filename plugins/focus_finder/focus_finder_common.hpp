@@ -34,7 +34,13 @@
 
 namespace AT {
 
+  typedef map<float /*pos*/, CImg<float> > PosToImgMapT;
 
+  typedef std::function<float(const CImg<float> &)> FocusMeasureFuncT;
+
+
+  
+  
   static const int cSelectionFrameSize = 31; // TODO: Make configure by using the windowSize parameter (which already exist...)...
   static const int cImageFrameSize = 3 * cSelectionFrameSize;
 

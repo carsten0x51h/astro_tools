@@ -143,58 +143,95 @@ namespace AT {
     mFocusFindStatus = *inFocusFindStatus; // Make a copy
     
     // Update UI
-    if (inFocusFindStatus->hfd.valid()) {
-
-      // TODO: Put in different handler...?
-      // ALMOST ALL BELOW IS DISPLAY STUFF... will be moved out...
-      ///////////////////////////////////////////////////////////////////////
-      // DRAW START
-      // DRAW - just TMP - will be moved out of algorithm and handled by/in update handler which will be called from here...
-      //genCurve(*outFocusFinderSequence, & hfdCurveRgbImg, 0, 0, green, cCrossSize);
-      //currHfdCurveDisp.display(hfdCurveRgbImg);
-      // DRAW END
-      ////////////////////////////////////////////////////////////////////////
-
-      
+    if (! mFocusFindStatus.currImage.is_empty()) {
       CImg<unsigned char> rgbImg;
       genSelectionView(mFocusFindStatus.currImage, mFocusFindStatus.dx, mFocusFindStatus.dy, & rgbImg, 3.0);
       currImageDisp.display(rgbImg); // TODO - disable if no Wnds...
-      
-      currentHfdDisp.display(mFocusFindStatus.hfd.genView());      
-    }
-
-
-    if (inFocusFindStatus->fwhmHorz.valid()) {
-      currentFwhmHorzDisp.display(mFocusFindStatus.fwhmHorz.genView());
-    }
-    if (inFocusFindStatus->fwhmVert.valid()) {
-      currentFwhmVertDisp.display(mFocusFindStatus.fwhmVert.genView());
     }
   }
 
-
   void
-  FocusFinderConsoleCntlT::focusFinderNewSampleHandler(const FocusCurveT * inCurrFocusCurve) {
+  FocusFinderConsoleCntlT::focusFinderNewSampleHandler(const FocusCurveT * inFocusCurve, float inFocusPos, const CImg<float> & inImgFrame) {
     lock_guard<mutex> guard(mFocusFinderMtx);
-    currFocusCurveDisp.display(inCurrFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
+
+    HfdT hfd(inImgFrame);
+    if (hfd.valid()) {
+      currentHfdDisp.display(hfd.genView());      
+    }
+
+    // Subtract median image
+    double med = inImgFrame.median();
+    CImg<float> imageSubMed(inImgFrame.width(), inImgFrame.height());
+    cimg_forXY(inImgFrame, x, y) {
+      imageSubMed(x, y) = (inImgFrame(x, y) > med ? inImgFrame(x, y) - med : 0);
+    }
+    
+    FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(imageSubMed));
+    if (fwhmHorz.valid()) {
+      currentFwhmHorzDisp.display(fwhmHorz.genView());
+    }
+
+    FwhmT fwhmVert(extractLine<DirectionT::VERT>(imageSubMed));
+    if (fwhmVert.valid()) {
+      currentFwhmVertDisp.display(fwhmVert.genView());
+    }
+
+    // Draw current dots (focus curve so far)
+    currFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
   }
 
   void
-  FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2) {
+  FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PosToImgMapT * inPosToImgMap, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2) {
+    // TODO:... lines and point should not be passed sep. here... either part of FocusCurve OR calculated in a sep "Interpolation" class...
     lock_guard<mutex> guard(mFocusFinderMtx);
     currFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, true, inLine1, inLine2));
   }
 
   
-  FocusFinderConsoleCntlT::FocusFinderConsoleCntlT(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, const FrameT<unsigned int>  & inSelectionFrameFF /*TODO: Will probably be removed...*/) : mCmdLineMap(inCmdLineMap), mCameraDevice(inCameraDevice), mFocuserDevice(inFocuserDevice), mFilterWheelDevice(inFilterWheelDevice), mFocusFinderImpl(mCameraDevice, inFocuserDevice, inFilterWheelDevice), mFocalDistance(0), mPixelSizeUm(DimensionT<float>(0,0)) {
+  FocusFinderConsoleCntlT::FocusFinderConsoleCntlT(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, const FrameT<unsigned int>  & inSelectionFrameFF /*TODO: Will probably be removed...*/) : mCmdLineMap(inCmdLineMap), mCameraDevice(inCameraDevice), mFocuserDevice(inFocuserDevice), mFilterWheelDevice(inFilterWheelDevice), mFocalDistance(0), mPixelSizeUm(DimensionT<float>(0,0)) {
 
+    mFocusFinderImpl =
+      new FocusFinderImplT(mCameraDevice, inFocuserDevice, inFilterWheelDevice,
+			   [&](const CImg<float> & inStarImg) {
+			     // TODO: Error handling?!
+			     return HfdT(inStarImg).getValue();
+			   },
+			   [&](float inFocusMeasure, bool * outInitialMeasureAcceptable) {
+			     /**
+			      * Determine HFD limit = N * initial HFD (star is roughly in focus). The value is
+			      * limited by 80% of the max HFD value. The limitation is important because
+			      * otherwise - if star is not in focus the base HFD will be higher - this base HFD
+			      * times the factor can lead to a huge HFD which can never be reached. Then the
+			      * focus stop condition will never be fulfilled.
+			      */
+			     const float hfdLimitFactor = 1.8;   // 180%
+			     
+			     float hfdLimit = hfdLimitFactor * inFocusMeasure;
+			     float maxHfdLimit = HfdT::getMaxHfdLimit(HfdT::outerHfdDiameter);
+			     
+			     if (hfdLimit > maxHfdLimit) {
+			       hfdLimit = maxHfdLimit;
+			     }
+			     
+			     // Star too weak? Bad seeing? Bad initial focus?
+			     if (inFocusMeasure > 0.8 /*80%*/ * maxHfdLimit) {
+			       *outInitialMeasureAcceptable = false;
+			       
+			       LOG(error) << "Initial measure " << inFocusMeasure << " too close to max HFD " << maxHfdLimit
+  			                  << ". (limit is 80% of max HFD)." << endl;
+			     }
+			     return hfdLimit;
+			   });
+    
+
+    
     // Register focus finder listeners
-    mFocusFinderStatusUpdHandlerConn = mFocusFinderImpl.registerStatusUpdListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderStatusUpdHandler, this, _1));
-    mFocusFinderNewSampleHandlerConn = mFocusFinderImpl.registerNewSampleListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewSampleHandler, this, _1));
-    mFocusFinderNewFocusCurveHandlerConn = mFocusFinderImpl.registerNewFocusCurveListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler, this, _1,_2,_3,_4));
-    mFocusFinderAbortHandlerConn = mFocusFinderImpl.registerFocusFinderAbortListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderAbortHandler, this, _1,_2));
+    mFocusFinderStatusUpdHandlerConn = mFocusFinderImpl->registerStatusUpdListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderStatusUpdHandler, this, _1));
+    mFocusFinderNewSampleHandlerConn = mFocusFinderImpl->registerNewSampleListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewSampleHandler, this, _1, _2, _3));
+    mFocusFinderNewFocusCurveHandlerConn = mFocusFinderImpl->registerNewFocusCurveListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler, this, _1,_2,_3,_4,_5));
+    mFocusFinderAbortHandlerConn = mFocusFinderImpl->registerFocusFinderAbortListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderAbortHandler, this, _1,_2));
 
-    mFocusFinderImpl.setRecordBaseDir(inCmdLineMap["seq_record_dir"].as<string>());
+    mFocusFinderImpl->setRecordBaseDir(inCmdLineMap["seq_record_dir"].as<string>());
     mFocalDistance = (inCmdLineMap.count("focal_distance") ? inCmdLineMap["focal_distance"].as<unsigned int>() : 0);
     mPixelSizeUm = (inCmdLineMap.count("pixel_size") ? inCmdLineMap["pixel_size"].as<DimensionT<float> >() : 0);
 
@@ -375,10 +412,10 @@ namespace AT {
 							      focusFindCntlData.centerPosFF = mCurrCenterPosFF;
 							      focusFindCntlData.imgFrameRecenter = imgFrameRecenter;
 							      
-							      mFocusFinderImpl.setCntlData(focusFindCntlData);
+							      mFocusFinderImpl->setCntlData(focusFindCntlData);
 							      
 							      // TODO: Still required? & focusFindCntl, & focusFindStatus...??
-							      mFocusFindThread = thread(boost::bind(& FocusFinderImplT::run, boost::ref(mFocusFinderImpl)));
+							      mFocusFindThread = thread(boost::bind(& FocusFinderImplT::run, boost::ref(*mFocusFinderImpl)));
 							      // Just make sure that status is updated asap...
 							      // might not be required later when we have a class...
 							      mFocusFindStatus.isRunning = true;
@@ -415,10 +452,12 @@ namespace AT {
     // Unregistering console UI listeners
     LOG(debug) << "Unregistering focus finder handler..." << endl;
     lock_guard<mutex> guard(mFocusFinderMtx);
-    mFocusFinderImpl.unregisterStatusUpdListener(mFocusFinderStatusUpdHandlerConn);
-    mFocusFinderImpl.unregisterNewSampleListener(mFocusFinderNewSampleHandlerConn);
-    mFocusFinderImpl.unregisterNewFocusCurveListener(mFocusFinderNewFocusCurveHandlerConn);
-    mFocusFinderImpl.unregisterFocusFinderAbortListener(mFocusFinderAbortHandlerConn);
+    mFocusFinderImpl->unregisterStatusUpdListener(mFocusFinderStatusUpdHandlerConn);
+    mFocusFinderImpl->unregisterNewSampleListener(mFocusFinderNewSampleHandlerConn);
+    mFocusFinderImpl->unregisterNewFocusCurveListener(mFocusFinderNewFocusCurveHandlerConn);
+    mFocusFinderImpl->unregisterFocusFinderAbortListener(mFocusFinderAbortHandlerConn);
+
+    delete mFocusFinderImpl;
   }
 
   
@@ -572,8 +611,8 @@ namespace AT {
       ////////////////////////////
       
       if (mFocusFindStatus.isRunning) {
-      	mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress: %d, hfd: %f\n",
-      			     mFocusFindStatus.progress, mFocusFindStatus.hfd.getValue());
+      	mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress: %d\n",
+      			     mFocusFindStatus.progress);
       } else {
       	mFocusFindStartAbort = StartAbortT::START;
       }

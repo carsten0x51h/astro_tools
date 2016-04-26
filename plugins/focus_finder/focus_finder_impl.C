@@ -43,6 +43,35 @@ namespace AT {
   //   }
   // };
 
+    CImg<float>
+    FocusFinderImplT::extractImgFrame(const CImg<float> & inFrameImage, int * outDx, int * outDy) const {
+    // Post process image... we assume that the star did not move too far from the image center
+    // NOTE: Boundaries of currSubImage are based on currImageFrameFF.
+    // TODO: Should IWC etc. be parametrized? / Be configurable?
+    PointT<float> assumedCenter((float) inFrameImage.width() / 2.0, (float) inFrameImage.height() / 2.0);
+    FrameT<unsigned int> newSelectionFrameIF;
+    bool insideBounds = StarFrameSelectorT::calc(inFrameImage, 0 /*bitPix - TODO / HACK: not needed */,
+						 assumedCenter, & newSelectionFrameIF,
+						 StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY,
+						 CentroidT::CentroidTypeT::IWC, cSelectionFrameSize /*frameSize*/);
+	  
+    AT_ASSERT(StarFrameSelector, insideBounds, "Expected frame to be inside bounds.");	  
+
+    PointT<float> newCenterPosIF = frameToCenterPos(newSelectionFrameIF);
+    
+    if (outDx) {
+      *outDx = newCenterPosIF.get<0>() - assumedCenter.get<0>();
+    }
+    if (outDy) {
+      *outDy = newCenterPosIF.get<1>() - assumedCenter.get<1>();
+    }
+    
+    return inFrameImage.get_crop(newSelectionFrameIF.get<0>() /*x0*/,
+				 newSelectionFrameIF.get<1>() /*y0*/,
+				 newSelectionFrameIF.get<0>() + newSelectionFrameIF.get<2>() - 1/*x1=x0+w-1*/,
+				 newSelectionFrameIF.get<1>() + newSelectionFrameIF.get<3>() - 1/*y1=y0+h-1*/);
+  }
+  
   
   void
   FocusFinderImplT::writeRecordFile(const string & inCurrRecordDir, const CImg<float> & inImg, int inSegmentNo, int inStepNo, int inFocusPos) {
@@ -88,34 +117,25 @@ namespace AT {
   }
 
   
-  // TODO: Maybe as template... then supply e.g. HfdT as T...
-  // Then: calcStarValues -> calcStarValue as template as well...
   void
-  FocusFinderImplT::recordSequence(FocusCurveT * outHfdFocusCurve, int stepSize, int inNumSteps, float inHfdLimit) {
+  FocusFinderImplT::recordSequence(PosToImgMapT * outPosToImgMap, int stepSize, int inNumSteps) {
     vector<int> stepSizes; // all equal
 
     for (size_t i=0; i < inNumSteps; ++i) {
       stepSizes.push_back(stepSize);
     }
 
-    // HACK!! NEED BETER SOLUTION!!
-    if (! inNumSteps) { /*"INIFNITE NUMBER OF STEPS..."*/
-      for (size_t i=0; i < 100; ++i) {
-	stepSizes.push_back(stepSize);
-      }
-    }
-    
-    recordSequence(outHfdFocusCurve, stepSizes, inHfdLimit);
+    recordSequence(outPosToImgMap, stepSizes);
   }
   
   void
-  FocusFinderImplT::recordSequence(FocusCurveT * outHfdFocusCurve, const vector<int> & inStepSizes, float inHfdLimit) {
+  FocusFinderImplT::recordSequence(PosToImgMapT * outPosToImgMap, const vector<int> & inStepSizes) {
     if (! inStepSizes.size()) {
       LOG(warning) << "Step-size container empty! No sequence recorded." << endl;
       return;
     }
 
-    LOG(info) << "recordSequence - hfdLimit: " << inHfdLimit << endl;
+    LOG(info) << "recordSequence - limit: " << mLimit << endl;
 
     mFocusFindStatusData.isRunning = true;
     callStatusUpdListener(& mFocusFindStatusData);
@@ -130,10 +150,9 @@ namespace AT {
     CImg<float> currSubImage;
     mCameraDevice->takePicture(& currSubImage, mCntlData.exposureTime, getImageFrame(currCenterPosFF),
 			       FrameTypeT::LIGHT, mCntlData.binning, false /*compressed*/);
-    HfdT hfd;
     int dx = 0, dy = 0;
-    calcStarValues(currSubImage, & dx, & dy, & hfd);
-
+    CImg<float> imgFrame = extractImgFrame(currSubImage, & dx, & dy);
+    
     if (mCntlData.imgFrameRecenter) {
       currCenterPosFF.get<0>() += dx;
       currCenterPosFF.get<1>() += dy;
@@ -144,10 +163,9 @@ namespace AT {
     // Do "numSteps" steps in both directions
     int currAbsFocusDestPos = focusStartPos;
     int sign[2] = { -1, 1 };
-    string dir[2] = { "left", "right" };
     for (size_t i = 0; i < 2; ++i) {
-      FocusCurveT::SegmentT & curveSegment = outHfdFocusCurve->getSegment(i);
-	
+      FocusDirectionT::TypeE focusDirection = static_cast<FocusDirectionT::TypeE>(i);
+
       for (size_t step = 0; step < inStepSizes.size(); ++step) {
   	// Move focus
   	currAbsFocusDestPos += sign[i] * inStepSizes.at(step);
@@ -161,7 +179,7 @@ namespace AT {
   				    FrameTypeT::LIGHT, mCntlData.binning, false /*compressed*/);
 
 	try {
-	  calcStarValues(currSubImage, & dx, & dy, & hfd);
+	  imgFrame = extractImgFrame(currSubImage, & dx, & dy);
 	} catch (CentroidExceptionT & exc) {
 	  // Unable to determine star data - probably went far out of focus - stop in current direction...
 	  LOG(warning) << "Unable to determine star data while recording sequence. Stop going into that direction." << endl;
@@ -175,11 +193,20 @@ namespace AT {
 
 	// Record image if enabled
 	if (! currRecordDir.empty()) {
-	  writeRecordFile(currRecordDir, currSubImage, i, step, mFocuserDevice->getAbsPos());
+	  writeRecordFile(currRecordDir, imgFrame, i, step, mFocuserDevice->getAbsPos());
 	}
 	
 	// Notify listeners of new sample
-	callNewSampleListener(outHfdFocusCurve);
+	// TODO
+	// TODO
+	// TODO
+	//TODO: We may pass ptr to FocusCurve directly and store new values directly! Then recordedPosToImgMap might no longer be required!
+	// TODO: Only feature we loose is returning multiple FocusCurves at once...
+	// TODO
+	// TODO
+	// TODO
+	FocusCurveT recordedFocusCurve(*outPosToImgMap, mFocusMeasureFunc /*TODO: Add interpolation method...?*/);
+	callNewSampleListener(& recordedFocusCurve, mFocuserDevice->getAbsPos(), imgFrame);
 
 	
   	// Update status... - TODO: We may put lines below into a function or a macro...
@@ -189,19 +216,24 @@ namespace AT {
 	mFocusFindStatusData.dx = dx;
 	mFocusFindStatusData.dy = dy;
 	mFocusFindStatusData.progress = 100.0 * ((float) step / (inStepSizes.size() - 1)); // TODO: Need total progress as well...
-  	mFocusFindStatusData.hfd = hfd;
 	callStatusUpdListener(& mFocusFindStatusData);
 
-  	curveSegment[mFocuserDevice->getAbsPos()] = hfd.getValue();
+	
+	// Associate the current focus position with the current star image
+  	(*outPosToImgMap)[mFocuserDevice->getAbsPos()] = imgFrame;
 
+
+  	// Break move if focusMeasure limit is reached (only if limit is defined)
+	float focusMeasure = mFocusMeasureFunc(imgFrame);
+
+	if (mLimit && focusMeasure >= mLimit) {
+	  LOG(info) << "Limit ("<< mLimit << ") reached (" << FocusDirectionT::asStr(focusDirection)
+		    << "): " << focusMeasure << ". Stop." << endl;
+  	  break;
+	}
 	
 	boost::this_thread::interruption_point();
 
-  	// Break move if HFD limit is reached (only if HFD limit is defined)
-  	if (inHfdLimit && hfd.getValue() > inHfdLimit) {
-  	  LOG(info) << "HFD limit ("<< inHfdLimit << ") reached (" << dir[i] << "): " << hfd.getValue() << ". Stop." << endl;
-  	  break;
-  	}	
       } // inner for
       
       // Back to start pos for second curve part...
@@ -210,6 +242,111 @@ namespace AT {
     }
   }
 
+
+  float
+  FocusFinderImplT::determineLimit() {
+    PointT<float> currCenterPosFF = mCntlData.centerPosFF;
+
+    CImg<float> currSubImage, imgFrame;
+    mCameraDevice->takePicture(& currSubImage, mCntlData.exposureTime, getImageFrame(currCenterPosFF),
+			       FrameTypeT::LIGHT, mCntlData.binning, false /*compressed*/);
+
+    int dx = 0, dy = 0;
+    imgFrame = extractImgFrame(currSubImage, & dx, & dy);
+
+    // Recenter the image frame for the next shot (follow the star)
+    if (mCntlData.imgFrameRecenter) {
+      currCenterPosFF.get<0>() += dx;
+      currCenterPosFF.get<1>() += dy;
+    }
+
+    // Call the injected behaviour to calculate the focus measure (e.g. HFD)
+    float focusMeasure = mFocusMeasureFunc(imgFrame);
+      
+    // Call the injected behaviour to initially calculate the limiting value (e.g. HFD based)
+    bool initialMeasureAcceptable = true;
+    float limit = mCalcLimitFunc(focusMeasure, & initialMeasureAcceptable);
+
+    if (! initialMeasureAcceptable) {
+      throw FocusFinderImplExceptionT("Initial measure too close to limit.");
+    }
+
+    return limit;
+  }
+
+  void
+  FocusFinderImplT::determineStepSizeAndStartPos(int * outStepSize, float * outStartPos) {
+    AT_ASSERT(FocusFinderImpl, outStepSize, "outStepSize not set!");
+    AT_ASSERT(FocusFinderImpl, outStartPos, "outStartPos not set!");
+
+    // TODO: Update FocusFinder PHASE...
+    
+    // Determine initial boundaries - use current position (rough focus and min-max values of focuser)
+    // To protect hardware, we subtract another 10% to not reach the absolute focuser boundary 
+    // "Outer limits"
+    int focusStartPos = mFocuserDevice->getAbsPos();
+    int deltaL = fabs((1.1 * mFocuserDevice->getMinPos()) - focusStartPos);
+    int deltaR = fabs((0.9 * mFocuserDevice->getMaxPos()) - focusStartPos);
+    int minLR = std::min(deltaL, deltaR);
+
+    int absLimitL = focusStartPos - minLR;
+	
+    int maxStepSize = 0.05 * minLR; // 1/50 of minLR is maxStepSize
+	
+    LOG(debug) << "focusStartPos: " << focusStartPos << endl;
+    LOG(debug) << "MaxFocusPos: " << mFocuserDevice->getMaxPos() << endl;
+    LOG(debug) << "MinFocusPos: " << mFocuserDevice->getMinPos() << endl;
+    LOG(debug) << "absLimitL: " << absLimitL << endl;
+
+    // Calculate non-linear step-sizes
+    // NOTE: We also may have chosen right... - symmetry...
+    // TODO: Better naming... improve code..
+    vector<int> stepSizesLeft;
+
+    int currAbsPosLeft = focusStartPos;
+    int currStepSizeLeft = 1;
+    int numSteps = 0;
+	
+    // NOTE: This is only require for one direction - the step-size list is symmetric...
+    LOG(info) << "Calculating non-linear step sizes..." << endl;
+
+    while(currAbsPosLeft > absLimitL) {
+      currAbsPosLeft -= currStepSizeLeft;
+
+      stepSizesLeft.push_back(currStepSizeLeft);
+
+      LOG(info) << "Step-size " << (++numSteps) << ": " << currStepSizeLeft << endl;
+	  
+      currStepSizeLeft *= 2;
+      currStepSizeLeft = (currStepSizeLeft > maxStepSize ? maxStepSize : currStepSizeLeft);
+    }
+    LOG(info) << "Abs max focus movement in sum per direction: " << currAbsPosLeft << endl;
+
+    // Recording the sequence to determine best step size
+    PosToImgMapT recordedPosToImgMap;
+    recordSequence(& recordedPosToImgMap, stepSizesLeft);
+
+    FocusCurveT recordedFocusCurve(recordedPosToImgMap, mFocusMeasureFunc /*TODO: Add interpolation method...?*/);
+	
+    PointT<float> sp = recordedFocusCurve.getMinValPoint(); // Minimum found during scan is a good start position
+    LOG(info) << "Start position for curve recording: " << sp << endl;
+	
+    // Notify listeners of status update (TODO: Required here?)
+    mFocusFindStatusData.progress = 100; // TODO: CALC!! Update further values?
+    // TODO: Set focuser state...
+    callStatusUpdListener(& mFocusFindStatusData);
+
+    PointT<float> min, max;
+    recordedFocusCurve.getBounds(& min, & max);
+
+    float meanLength = fabs(max.get<0>() - min.get<0>()) / 2;
+
+    *outStepSize = meanLength / mNumStepsFine;
+    *outStartPos = sp.get<0>();
+      
+    LOG(info) << "STEP1 FINISHED: DETERMINED STEP SIZE FOR CURVE RECORDING: " << *outStepSize << " ("
+	      << mNumStepsFine << " steps per direction) and start pos: " << *outStartPos << endl;
+  }
 
   
   void
@@ -227,149 +364,58 @@ namespace AT {
       PointT<float> currCenterPosFF = mCntlData.centerPosFF;
       int stepSize = mCntlData.stepSize;
 
-      // TODO: Replace left/right positions by a "range" which is relative to the focusStartPos??!!! --> see meanLength in step 1.
-      int leftLimitPos = -1;  // TODO: Init from mCntlData / config?
-      int rightLimitPos = -1;  // TODO: Init from mCntlData / config?
+
+      /**
+       * 0. Take one shot to determine current limit (e.g. HFD) (assuming that focus is "ok") - this will
+       *    be the reference value to calculate the limiting value for the boundaries (important)
+       */
+      mLimit = determineLimit();
 
       
-      // 0. Take one shot to determine current hfd (assuming that focus is "ok") - this will
-      //    be the reference value to calculate the limiting HFD value for the boundaries (important)
-      //    TODO: Could also be supplied as parameter / configuration - then determination is not required.
-      CImg<float> currSubImage;
-      mCameraDevice->takePicture(& currSubImage, mCntlData.exposureTime, getImageFrame(currCenterPosFF), FrameTypeT::LIGHT, mCntlData.binning, false /*compressed*/);
-      
-      HfdT hfd;
-      int dx = 0, dy = 0;
-      calcStarValues(currSubImage, & dx, & dy, & hfd);
-      
-      // Determine HFD limit = N * initial HFD (star is roughly in focus). The value is limited by 80% of the max HFD value. 
-      // The limitation is important because otherwise - if star is not in focus the base HFD will be higher - this base HFD
-      // times the factor can lead to a huge HFD which can never be reached. Then the focus stop condition will never be
-      // fulfilled.
-      float hfdLimit = mHfdLimitFactor * hfd.getValue();
-      float maxHfdLimit = hfd.getMaxHfdLimit();
-      
-      if (hfdLimit > maxHfdLimit) {
-	hfdLimit = maxHfdLimit;
-      }
-
-      const float minHfdDistFactor = 0.8; /*80% - TODO: Improve name? Improve value? */
-      
-      if (hfd.getValue() > minHfdDistFactor * maxHfdLimit) {
-	// Star too weak? Bad seeing? Bad initial focus?
-	LOG(error) << "Initial HFD " << hfd.getValue() << " too close to max HFD " << maxHfdLimit << ". (limit is 50% of max HFD)." << endl;
-	throw FocusFinderImplExceptionT("Initial HFD too close to max HFD.");
-      }
-      
-      LOG(info) << "HFD limit = " << mHfdLimitFactor << " * " << hfd.getValue() << ", limited by max. HFD: " << maxHfdLimit << " --> " << hfdLimit << endl;
-      
-      
-      // 1. If no stepSize is configured, determine it
-      // NOTE / TODO: This step is also REQUIRED to roughly center the focus pos!
-      //              So we will porbably have to do it all the time... or if a "centerFocus" option is set...
+      /**
+       * 1. If no stepSize is configured, determine it - NOTE: This function also roughly centers the focus!
+       */
       if (! stepSize) {
-	// TODO: Update FocusFinder PHASE...
-
-    	// Determine initial boundaries - use current position (rough focus and min-max values of focuser)
-	// To protect hardware, we subtract another 10% to not reach the absolute focuser boundary 
-	// "Outer limits"
-    	int focusStartPos = mFocuserDevice->getAbsPos();
-    	int deltaL = fabs((1.1 * mFocuserDevice->getMinPos()) - focusStartPos);
-    	int deltaR = fabs((0.9 * mFocuserDevice->getMaxPos()) - focusStartPos);
-	int minLR = std::min(deltaL, deltaR);
-
-	int absLimitL = focusStartPos - minLR;
+	float focusStartPos;
+	determineStepSizeAndStartPos(& stepSize, & focusStartPos);
 	
-	int maxStepSize = 0.05 * minLR; // 1/50 of minLR is maxStepSize
-	
-    	LOG(debug) << "focusStartPos: " << focusStartPos << endl;
-    	LOG(debug) << "MaxFocusPos: " << mFocuserDevice->getMaxPos() << endl;
-    	LOG(debug) << "MinFocusPos: " << mFocuserDevice->getMinPos() << endl;
-    	LOG(debug) << "absLimitL: " << absLimitL << endl;
-
-	// Calculate non-linear step-sizes
-	// NOTE: We also may have chosen right... - symmetry...
-	// TODO: Better naming... improve code..
-	vector<int> stepSizesLeft;
-
-	int currAbsPosLeft = focusStartPos;
-	int currStepSizeLeft = 1;
-	int numSteps = 0;
-	
-	LOG(info) << "Calculating non-linear step sizes..." << endl;
-
-	// NOTE: This is only require for one direction - the step-size list is symmetric...
-	while(currAbsPosLeft > absLimitL) {
-	  currAbsPosLeft -= currStepSizeLeft;
-
-	  stepSizesLeft.push_back(currStepSizeLeft);
-
-	  LOG(info) << "Step-size " << (++numSteps) << ": " << currStepSizeLeft << endl;
-	  
-	  currStepSizeLeft *= 2;
-	  currStepSizeLeft = (currStepSizeLeft > maxStepSize ? maxStepSize : currStepSizeLeft);
-	}
-	LOG(info) << "Calculating non-linear step sizes..." << endl;
-
-    	LOG(info) << "Abs max focus movement in sum per direction: " << currAbsPosLeft << endl;
-
-	
-    	FocusCurveT recordedFocusCurve;
-    	//LineT<float> line1, line2;
-    	recordSequence(& recordedFocusCurve, stepSizesLeft, hfdLimit);
-
-    	//PointT<float> sp = recordedFocusCurve.calcOptFocusPos(LineFitTypeT::OLS /*LineFitTypeT::BISQUARE - sometimes does not converge!?*/, & line1, & line2);
-	// HACK!
-    	// TODO: ODER BESSER?? Einfach die Position mit dem kleinsten Messewert nehmen?? ->Besser als interpolation bzw. Schnittpunkt???
-	// TODO TODO TODO!!!!!!
-	// Idee: Geraden müssen durch HFD_min punkt gehen! Rest wird approximiert .. d.h. SP ist HFD_min...
-	PointT<float> sp = recordedFocusCurve.getMinValPoint(); // Minimum found during scan is a good start position
-    	LOG(info) << "Start position for curve recording: " << sp << endl;
-	
-	// Notify listeners of status update (TODO: Required here?)
-	mFocusFindStatusData.progress = 100; // TODO: CALC!! Update further values?
-	callStatusUpdListener(& mFocusFindStatusData);
-
-	PointT<float> min, max;
-	recordedFocusCurve.getBounds(& min, & max);
-	float meanLength = fabs(max.get<0>() - min.get<0>()) / 2;
-	
-    	stepSize = meanLength / mNumStepsFine;
-      
-    	LOG(info) << "STEP1 FINISHED: DETERMINED STEP SIZE FOR CURVE RECORDING: " << stepSize << " (" << mNumStepsFine << " steps per direction)." << endl;
-
-    	// Move focus to roughly determine start position
-    	mFocuserDevice->setAbsPos(sp.get<0>());
-    	LOG(info) << "INITIAL FOCUS POS FOR STEP 2: " << sp.get<0>() << endl;	
+	// Move focus to roughly determine start position
+	LOG(info) << "SETTING INITIAL FOCUS POS FOR STEP 2: " << focusStartPos << endl;
+	mFocuserDevice->setAbsPos(focusStartPos);
       }
 
-
       
-      // 3. Now, record M "fine" curves...
+      /**
+       * 2. Now, record M "fine" curves...
+       */
       LOG(info) << "Now, recording " << mNumCurvesToRecord << " curves. stepSize = " << stepSize << " (" << mNumStepsFine << " steps per direction)." << endl;
-      FocusCurveT recordedFocusCurves[mNumCurvesToRecord];
+      PosToImgMapT recordedPosToImgMap[mNumCurvesToRecord]; // TODO: Maybe as member?? Or maybe PosToFocusMeasure as member?? So results can be requested by client, later!
       PointT<float> sps[mNumCurvesToRecord];
     
       for (size_t m = 0; m < mNumCurvesToRecord; ++m) {
       	LOG(info) << "Recording fine sequence " << (m + 1) << "/" << mNumCurvesToRecord  << "..." << endl;
 	
+      	recordSequence(& recordedPosToImgMap[m], stepSize, 2 * mNumStepsFine /* max. number of steps - want to hit 'limit' */);
+
+	FocusCurveT recordedCurve(recordedPosToImgMap[m], mFocusMeasureFunc /*TODO: Add interpolation method...?*/);
+
       	LineT<float> line1, line2;
-      	recordSequence(& recordedFocusCurves[m], stepSize, 0 /* INFINITE - mNumStepsFine - maybe just pass absolute limits...or directly put check into recordSequence asking max boundaries -10% or something...... */, hfdLimit);
-	
-      	sps[m] = recordedFocusCurves[m].calcOptFocusPos(/*LineFitTypeT::OLS*/ LineFitTypeT::BISQUARE/* - sometimes does not converge!?*/, & line1, & line2);
+      	sps[m] = recordedCurve.calcOptFocusPos(LineFitTypeT::OLS /*LineFitTypeT::BISQUARE - sometimes does not converge!?*/, & line1, & line2);
       	LOG(info) << "SP of fine curve " << (m+1) << ": " << sps[m] << endl;
-
-	// Tell clients that there is a new focus curve available
-	callNewFocusCurveListener(& recordedFocusCurves[m], & sps[m], & line1, & line2);
-
+				  
+      	// Tell clients that there is a new focus curve available
+      	callNewFocusCurveListener(& recordedCurve, & recordedPosToImgMap[m], & sps[m], & line1, & line2);
 	
       	//TODO: Send a status update (call handlers) - new sequence (with line...)  -> different / additional handler/listener?
       	mFocusFindStatusData.progress = 100.0 * ((float) m / 10.0);
       	callStatusUpdListener(& mFocusFindStatusData);
       }
 
-      // Calculate mean position
-      // TODO: Here are multiple ways to do so...
+      
+      /**
+       * 3. Calculate opt. focus position and go for it... 
+       *    TODO: Here are multiple ways to do so...
+       */
       float sumX = 0;
       for (size_t m = 0; m < mNumCurvesToRecord; ++m) {
       	sumX += sps[m].get<0>();
@@ -379,30 +425,31 @@ namespace AT {
       // TODO: Finally, move focus to this position! (or should we return to start-pos?? and just return optimal pos? -
       //       so user can decide if he wants to go there...?) At least in GUI we can ask if user wants to go there..
       mFocuserDevice->setAbsPos(meanOptFocusPos);
-      
-      // Finally take another picture with "opt" focus
-      // TODO: Probably it makes senste to move code below (incl. status update) into a private member function
-      //CImg<float> currSubImage;
+
+
+      /**
+       * 4. Finally take another picture with "opt" focus.
+       */
+      CImg<float> currSubImage, imgFrame;
       mCameraDevice->takePicture(& currSubImage, mCntlData.exposureTime, getImageFrame(currCenterPosFF),
       				    FrameTypeT::LIGHT, mCntlData.binning, false /*compressed*/);
-      dx = 0;
-      dy = 0;
-      calcStarValues(currSubImage, & dx, & dy, & hfd);
 
-      LOG(info) << "FINALLY - MEAN OPT FOCUS POS REACHED: " << meanOptFocusPos << ", hfd: " << hfd.getValue() << endl;
+      imgFrame = extractImgFrame(currSubImage);
+      float focusMeasure = mFocusMeasureFunc(imgFrame);
+      
+      LOG(info) << "FINALLY - MEAN OPT FOCUS POS REACHED: " << meanOptFocusPos << ", focus-measure: " << focusMeasure << endl;
 
       // Tell clients that opt focus has been determined
-      callFocusDeterminedListener(meanOptFocusPos, & hfd /*TODO: FWHMs...*/);
+      callFocusDeterminedListener(meanOptFocusPos, imgFrame, focusMeasure);
 
       
       // Update status... - TODO: We may put lines below into a function or a macro...
       mFocusFindStatusData.currAbsFocusPos = mFocuserDevice->getAbsPos();
       mFocusFindStatusData.currCenterPosFF = currCenterPosFF;
       mFocusFindStatusData.currImage = currSubImage; // Copy
-      mFocusFindStatusData.dx = dx;
-      mFocusFindStatusData.dy = dy;
+      mFocusFindStatusData.dx = 0;
+      mFocusFindStatusData.dy = 0;
       mFocusFindStatusData.progress = 100.0;
-      mFocusFindStatusData.hfd = hfd;
       callStatusUpdListener(& mFocusFindStatusData);
 
       
@@ -416,7 +463,7 @@ namespace AT {
       callFocusFinderAbortListener(true /*manual abort*/, "Manually aborted.");
     } catch(const FocusFinderImplExceptionT & exc) {
       stringstream ss;
-      ss << "Initial HFD too close to max HFD. Star too weak? Bad seeing? Try to increase "
+      ss << "Initial focusMeasure too close to theoretical maximum. Star too weak? Bad seeing? Try to increase "
 	 << "exposure time. Or improve initial focus position. Details: "
 	 << exc.what() << endl;
       LOG(error) << ss.str() << endl;
@@ -429,6 +476,7 @@ namespace AT {
     } catch(const std::exception & exc) {
       stringstream ss;
       ss << "Unknown problem occured while executing focus finder. Details: " << exc.what() << endl;
+      LOG(error) << ss.str() << endl;
       callFocusFinderAbortListener(false /*no manual abort*/, ss.str());
     }
 

@@ -112,7 +112,8 @@ namespace AT {
     CImg<unsigned char> genView() const { return HfdT::genView(mImg, mHfdValue, mOuterDiameter, mScaleFactor); }
 
     // mOuterDiameter / (2.0 * sqrt(2))
-    inline float getMaxHfdLimit() const { return 0.353553390593 * mOuterDiameter; }
+    static float getMaxHfdLimit(float inOuterHfdDiameter = outerHfdDiameter) { return 0.353553390593 * inOuterHfdDiameter; }
+    inline float getMaxHfdLimit() const { HfdT::getMaxHfdLimit(mOuterDiameter); }
     
     // TODO: Required??? inline void getCentroid(float * xcom, float * ycom) const { *xcom = mXCom; *ycom = mYCom; }
   };

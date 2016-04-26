@@ -128,7 +128,7 @@ namespace AT {
     IndiCameraT * mCameraDevice;
     IndiFocuserT * mFocuserDevice;
     IndiFilterWheelT * mFilterWheelDevice;
-    FocusFinderImplT mFocusFinderImpl;
+    FocusFinderImplT * mFocusFinderImpl;
 
     // Focus finder task
     thread mFocusFindThread;
@@ -176,8 +176,8 @@ namespace AT {
     string mLastErrorStr;
     
   public:
-    void focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2);
-    void focusFinderNewSampleHandler(const FocusCurveT * inCurrFocusCurve);
+    void focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PosToImgMapT * inPosToImgMap, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2);
+    void focusFinderNewSampleHandler(const FocusCurveT * inFocusCurve, float inFocusPos, const CImg<float> & inImgFrame);
     void focusFinderStatusUpdHandler(const FocusFindStatusDataT * inFocusFindStatus);
     void focusFinderAbortHandler(bool inManualAbort, string inCause);
 

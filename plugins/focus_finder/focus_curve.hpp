@@ -29,6 +29,8 @@
 #include "hfd.hpp"
 #include "util.hpp"
 
+#include "focus_finder_common.hpp"
+
 namespace AT {
 // // TODO: Rename to StarDataT ?!
 //   // TODO: Use as FocusFindStatusDataT above? Or at least as member??
@@ -40,24 +42,30 @@ namespace AT {
 //     FocusFinderDataSetT(const HfdT & inHfd, const FwhmT & inFwhmHorz, const FwhmT & inFwhmVert) : mHfd(inHfd), mFwhmHorz(inFwhmHorz), mFwhmVert(inFwhmVert) {}
 //   };
 
+  
   DEF_Exception(FocusCurve);
   
   class FocusCurveT {
   public:
-    typedef map<int /*absPos*/, float /*e.g. HFD value*/> SegmentT;
+    typedef map<int /*absPos*/, float /*e.g. HFD value*/> PosToFocusMeasureT;
 
   private:
-    SegmentT mSegments[2];
+    PosToFocusMeasureT mPosToFocusMeasure;
+    FocusMeasureFuncT mFocusMeasureFunc;
     
   public:
-    SegmentT & getSegment(size_t inSegNo) {
-      AT_ASSERT(FocusCurve, inSegNo == 0 || inSegNo == 1, "Invalid segment!");
-      return mSegments[inSegNo];
+    FocusCurveT(const PosToImgMapT & inPosToImgMap, FocusMeasureFuncT inFocusMeasureFunc) : mFocusMeasureFunc(inFocusMeasureFunc) {
+      // Fill internal map based on inPosToImgMap
+      for (PosToImgMapT::const_iterator it = inPosToImgMap.begin(); it != inPosToImgMap.end(); ++it) {
+	mPosToFocusMeasure[it->first /*focus pos*/] = mFocusMeasureFunc(it->second) /*focus measure*/;
+      }
     }
-    const SegmentT & getSegment(size_t inSegNo) const {
-      AT_ASSERT(FocusCurve, inSegNo == 0 || inSegNo == 1, "Invalid segment!");
-      return mSegments[inSegNo];
-    }
+
+    // TODO: Add function to add single samples...
+    // TODO: Add clear function?
+    
+    inline PosToFocusMeasureT & getData() { return mPosToFocusMeasure; }
+    inline const PosToFocusMeasureT & getData() const { return mPosToFocusMeasure; }
 
     // TODO: Replace LineFitTypeT::TypeE by "methods" - e.g. also ABS_MIN
     PointT<float>
@@ -81,13 +89,11 @@ namespace AT {
       float minVal = numeric_limits<float>::max();
       int pos;
       
-      for (size_t i = 0; i < 2; ++i) {
-    	for(SegmentT::const_iterator it = mSegments[i].begin(); it != mSegments[i].end(); ++it) {
-    	  if (minVal > it->second) {
-    	    minVal = it->second;
-    	    pos = it->first; // Corresponding position
-    	  }
-    	}
+      for(PosToFocusMeasureT::const_iterator it = mPosToFocusMeasure.begin(); it != mPosToFocusMeasure.end(); ++it) {
+	if (minVal > it->second) {
+	  minVal = it->second;
+	  pos = it->first; // Corresponding position
+	}
       }
       return PointT<float>(pos, minVal);
     }

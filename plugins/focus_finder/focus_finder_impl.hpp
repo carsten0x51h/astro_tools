@@ -20,6 +20,8 @@
  *
  ****************************************************************************/
 
+#include <functional>
+
 #include "indi/indi_camera.hpp"
 #include "indi/indi_focuser.hpp"
 #include "indi/indi_filter_wheel.hpp"
@@ -50,9 +52,6 @@ namespace AT {
     int currAbsFocusPos;
     bool isRunning;
     int progress;
-    FwhmT fwhmHorz;
-    FwhmT fwhmVert;
-    HfdT hfd;
     FocusFindStatusDataT() : dx(0), dy(0), isRunning(false), currAbsFocusPos(0), progress(0) {}
   };
 
@@ -75,24 +74,34 @@ namespace AT {
     IndiFocuserT * mFocuserDevice;
     IndiFilterWheelT * mFilterWheelDevice;
 
+    FocusMeasureFuncT mFocusMeasureFunc;
+
+    typedef std::function<float(float, bool *)> CalcLimitFuncT;
+    CalcLimitFuncT mCalcLimitFunc;
+    float mLimit;
+    
     FocusFindCntlDataT mCntlData;
 
     string mRecordBaseDir;
     
     const size_t mNumStepsFine = 15;     // TODO: Not const, set function? Is this a good value?
     const size_t mNumCurvesToRecord = 3; // TODO: Not const, set function? Is this a good value?
-    const float mHfdLimitFactor = 1.8;   // 180% - We may formulate this as a percent value... - TODO: Configurable?! Is this a generic approach?
 
-    void recordSequence(FocusCurveT * outFocusCurve, int stepSize, int inNumSteps, float hfdLimit = 0);
-    void recordSequence(FocusCurveT * outHfdFocusCurve, const vector<int> & inStepSizes, float hfdLimit = 0);
+
+    
+    CImg<float> extractImgFrame(const CImg<float> & inFrameImage, int * outDx = 0, int * outDy = 0) const;
+    float determineLimit();
+    void determineStepSizeAndStartPos(int * outStepSize, float * outStartPos);
+    void recordSequence(PosToImgMapT * outPosToImgMap, int stepSize, int inNumSteps);
+    void recordSequence(PosToImgMapT * outPosToImgMap, const vector<int> & inStepSizes);
     string prepareRecordDir();
     
   public:
     // Events / Handlers
     DEFINE_PROP_LISTENER(FocusFinderStart, const FocusFindCntlDataT *);
-    DEFINE_PROP_LISTENER(NewSample, const FocusCurveT * /*TODO: HFD?*/);
-    DEFINE_PROP_LISTENER(NewFocusCurve, const FocusCurveT *, const PointT<float> *, const LineT<float> *, const LineT<float> *);
-    DEFINE_PROP_LISTENER(FocusDetermined, float /*focus*/, const HfdT *);
+    DEFINE_PROP_LISTENER(NewSample, const FocusCurveT *, float, const CImg<float> &);
+    DEFINE_PROP_LISTENER(NewFocusCurve, const FocusCurveT *, const PosToImgMapT *, const PointT<float> *, const LineT<float> *, const LineT<float> *);
+    DEFINE_PROP_LISTENER(FocusDetermined, float /*focus*/, const CImg<float> & /*img frame*/, float /*focus measure*/);
     DEFINE_PROP_LISTENER(FocusFinderAbort, bool /*manual abort?*/, string /*reason*/);
     DEFINE_PROP_LISTENER(FocusFinderFinished, float);
 
@@ -104,11 +113,14 @@ namespace AT {
 
     
   public:
-    FocusFinderImplT(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice) :
+    FocusFinderImplT(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, FocusMeasureFuncT inFocusMeasureFunc, CalcLimitFuncT inCalcLimitFunc = 0) :
       mCameraDevice(inCameraDevice),
       mFocuserDevice(inFocuserDevice),
       mFilterWheelDevice(inFilterWheelDevice),
-      mRecordBaseDir("") {
+      mFocusMeasureFunc(inFocusMeasureFunc),
+      mCalcLimitFunc(inCalcLimitFunc),
+      mRecordBaseDir(""),
+      mLimit(0) {
     }
 
     inline const FocusFindCntlDataT & getCntlData(const FocusFindCntlDataT & inCntlData) const { return mCntlData; }
