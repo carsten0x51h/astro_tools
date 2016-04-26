@@ -47,8 +47,16 @@ namespace AT {
   
   class FocusCurveT {
   public:
-    typedef map<int /*absPos*/, float /*e.g. HFD value*/> PosToFocusMeasureT;
+    typedef std::function<float(const CImg<float> &)> FocusMeasureFuncT;
 
+    static FocusMeasureFuncT sHfdStrategy;
+    static FocusMeasureFuncT sFwhmHorzStrategy;
+    static FocusMeasureFuncT sFwhmVertStrategy;
+    static FocusMeasureFuncT sFwhmMeanStrategy;
+
+    
+    typedef map<int /*absPos*/, float /*e.g. HFD value*/> PosToFocusMeasureT;
+    
   private:
     PosToFocusMeasureT mPosToFocusMeasure;
     FocusMeasureFuncT mFocusMeasureFunc;

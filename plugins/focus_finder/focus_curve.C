@@ -24,6 +24,60 @@
 
 namespace AT {
 
+  /**
+   * Available image to curve value mappings. Determines which value is extracted from each image
+   * and put into the curve as value.
+   */
+  FocusCurveT::FocusMeasureFuncT FocusCurveT::sHfdStrategy = [](const CImg<float> & inStarImg) {
+    // TODO: Error handling?!
+    return HfdT(inStarImg).getValue();
+  };
+  
+  FocusCurveT::FocusMeasureFuncT FocusCurveT::sFwhmHorzStrategy = [](const CImg<float> & inImgFrame) {
+    // Subtract median image
+    // TODO: Move into FwhmT ????????
+    double med = inImgFrame.median();
+    CImg<float> imageSubMed(inImgFrame.width(), inImgFrame.height());
+    cimg_forXY(inImgFrame, x, y) {
+      imageSubMed(x, y) = (inImgFrame(x, y) > med ? inImgFrame(x, y) - med : 0);
+    }
+    
+    // TODO: Error handling?!
+    return FwhmT(extractLine<DirectionT::HORZ>(imageSubMed)).getValue();
+  };
+  
+  FocusCurveT::FocusMeasureFuncT FocusCurveT::sFwhmVertStrategy = [](const CImg<float> & inImgFrame) {
+    // Subtract median image
+    // TODO: Move into FwhmT ????????
+    double med = inImgFrame.median();
+    CImg<float> imageSubMed(inImgFrame.width(), inImgFrame.height());
+    cimg_forXY(inImgFrame, x, y) {
+      imageSubMed(x, y) = (inImgFrame(x, y) > med ? inImgFrame(x, y) - med : 0);
+    }
+    
+    // TODO: Error handling?!
+    return FwhmT(extractLine<DirectionT::VERT>(imageSubMed)).getValue();
+  };
+
+  FocusCurveT::FocusMeasureFuncT FocusCurveT::sFwhmMeanStrategy = [](const CImg<float> & inImgFrame) {
+    // Subtract median image
+    // TODO: Move into FwhmT ????????
+    double med = inImgFrame.median();
+    CImg<float> imageSubMed(inImgFrame.width(), inImgFrame.height());
+    cimg_forXY(inImgFrame, x, y) {
+      imageSubMed(x, y) = (inImgFrame(x, y) > med ? inImgFrame(x, y) - med : 0);
+    }
+    
+    // TODO: Error handling?!
+    FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(imageSubMed));
+    FwhmT fwhmVert(extractLine<DirectionT::VERT>(imageSubMed));
+
+    return (fwhmHorz.getValue() + fwhmVert.getValue()) / 2;
+  };
+
+
+  
+  
   // TODO: Too many parameters... NEED NEW DESIGN...   maybe class / part of class with props as members...?!
   PointT<float>
   FocusCurveT::mapToImgCoords(const PointT<float> & inCurveCoords, float inWidth /*image width*/, float inHeight /*image height*/,

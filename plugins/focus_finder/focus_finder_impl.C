@@ -33,16 +33,40 @@ using namespace boost;
 
 namespace AT {
 
-  // template<typename T>
-  // class PointLstAccessorT {
-  // public:
-  //   typedef PointLstT<T> TypeT;
-  //   static DataPointT getDataPoint(size_t inIdx, typename TypeT::const_iterator inIt) {
-  //     DataPointT dp(inIt->get<0>(), inIt->get<1>());
-  //     return dp;
-  //   }
-  // };
+  
 
+  
+  /**
+   * Determine HFD limit = N * initial HFD (star is roughly in focus). The value is
+   * limited by 80% of the max HFD value. The limitation is important because
+   * otherwise - if star is not in focus the base HFD will be higher - this base HFD
+   * times the factor can lead to a huge HFD which can never be reached. Then the
+   * focus stop condition will never be fulfilled.
+   */
+  FocusFinderImplT::CalcLimitFuncT FocusFinderImplT::sHfdLimitStrategy = [](float inFocusMeasure, bool * outInitialMeasureAcceptable) {
+      const float hfdLimitFactor = 1.8;   // 180%
+			     
+      float hfdLimit = hfdLimitFactor * inFocusMeasure;
+      float maxHfdLimit = HfdT::getMaxHfdLimit(HfdT::outerHfdDiameter);
+			     
+      if (hfdLimit > maxHfdLimit) {
+	hfdLimit = maxHfdLimit;
+      }
+			     
+      // Star too weak? Bad seeing? Bad initial focus?
+      if (inFocusMeasure > 0.8 /*80%*/ * maxHfdLimit) {
+	*outInitialMeasureAcceptable = false;
+			       
+	LOG(error) << "Initial measure " << inFocusMeasure << " too close to max HFD " << maxHfdLimit
+	<< ". (limit is 80% of max HFD)." << endl;
+      }
+      return hfdLimit;
+    };
+
+
+
+
+  
     CImg<float>
     FocusFinderImplT::extractImgFrame(const CImg<float> & inFrameImage, int * outDx, int * outDy) const {
     // Post process image... we assume that the star did not move too far from the image center

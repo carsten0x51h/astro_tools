@@ -64,20 +64,22 @@ namespace AT {
     FocusFindCntlDataT() : exposureTime(0), binning(BinningT(1,1)), centerPosFF(PointT<float>(0,0)), imgFrameRecenter(true), stepSize(0) {}
     bool valid() const { return (exposureTime > 0); }
   };
-
+  
 
   
   class FocusFinderImplT {
+  public:
+    typedef std::function<float(float, bool *)> CalcLimitFuncT;
+
   private:
     FocusFindStatusDataT mFocusFindStatusData;
     IndiCameraT * mCameraDevice;
     IndiFocuserT * mFocuserDevice;
     IndiFilterWheelT * mFilterWheelDevice;
 
-    FocusMeasureFuncT mFocusMeasureFunc;
-
-    typedef std::function<float(float, bool *)> CalcLimitFuncT;
+    FocusCurveT::FocusMeasureFuncT mFocusMeasureFunc;
     CalcLimitFuncT mCalcLimitFunc;
+    
     float mLimit;
     
     FocusFindCntlDataT mCntlData;
@@ -113,7 +115,10 @@ namespace AT {
 
     
   public:
-    FocusFinderImplT(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, FocusMeasureFuncT inFocusMeasureFunc, CalcLimitFuncT inCalcLimitFunc = 0) :
+    static CalcLimitFuncT sHfdLimitStrategy;
+    
+  public:
+    FocusFinderImplT(IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, FocusCurveT::FocusMeasureFuncT inFocusMeasureFunc, CalcLimitFuncT inCalcLimitFunc = 0) :
       mCameraDevice(inCameraDevice),
       mFocuserDevice(inFocuserDevice),
       mFilterWheelDevice(inFilterWheelDevice),
