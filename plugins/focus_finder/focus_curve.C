@@ -29,22 +29,18 @@ namespace AT {
    * and put into the curve as value.
    */
   FocusCurveT::FocusMeasureFuncT FocusCurveT::sHfdStrategy = [](const CImg<float> & inStarImg) {
-    // TODO: Error handling?!
     return HfdT(inStarImg).getValue();
   };
   
   FocusCurveT::FocusMeasureFuncT FocusCurveT::sFwhmHorzStrategy = [](const CImg<float> & inImgFrame) {
-    // TODO: Error handling?!
     return FwhmT(extractLine<DirectionT::HORZ>(subMedianImg<float>(inImgFrame))).getValue();
   };
   
   FocusCurveT::FocusMeasureFuncT FocusCurveT::sFwhmVertStrategy = [](const CImg<float> & inImgFrame) {
-    // TODO: Error handling?!
     return FwhmT(extractLine<DirectionT::VERT>(subMedianImg<float>(inImgFrame))).getValue();
   };
 
   FocusCurveT::FocusMeasureFuncT FocusCurveT::sFwhmMeanStrategy = [](const CImg<float> & inImgFrame) {
-    // TODO: Error handling?!
     CImg<float> medImg = subMedianImg<float>(inImgFrame);
     FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(medImg));
     FwhmT fwhmVert(extractLine<DirectionT::VERT>(medImg));
@@ -173,7 +169,7 @@ namespace AT {
     LineT<float> bestFitLines[2];
     
     if (mPosToFocusMeasure.size() % 2 == 0 /*even*/) {
-      LOG(info) << "EVEN..." << endl;
+      LOG(info) << "Even number of data points..." << endl;
       int numPerLine = mPosToFocusMeasure.size() / 2;
       int counter = 0;
       for (typename FocusCurveT::PosToFocusMeasureT::const_iterator it = mPosToFocusMeasure.begin(); it != mPosToFocusMeasure.end(); ++it,++counter) {
@@ -185,7 +181,7 @@ namespace AT {
       }      
     } else {
       // Share the center point...
-      LOG(info) << "ODD..." << endl;
+      LOG(info) << "Odd number of data points..." << endl;
       int numPerLine = floor(mPosToFocusMeasure.size() / 2);
 
       int counter = 0;

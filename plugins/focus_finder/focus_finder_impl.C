@@ -32,7 +32,6 @@ using namespace boost;
 
 
 namespace AT {
-
   
 
   
@@ -58,7 +57,7 @@ namespace AT {
 	*outInitialMeasureAcceptable = false;
 			       
 	LOG(error) << "Initial measure " << inFocusMeasure << " too close to max HFD " << maxHfdLimit
-	<< ". (limit is 80% of max HFD)." << endl;
+	           << ". (limit is 80% of max HFD)." << endl;
       }
       return hfdLimit;
     };
@@ -148,7 +147,6 @@ namespace AT {
     for (size_t i=0; i < inNumSteps; ++i) {
       stepSizes.push_back(stepSize);
     }
-
     recordSequence(outPosToImgMap, stepSizes);
   }
   
@@ -387,7 +385,6 @@ namespace AT {
     try {
       PointT<float> currCenterPosFF = mCntlData.centerPosFF;
       int stepSize = mCntlData.stepSize;
-
 
       /**
        * 0. Take one shot to determine current limit (e.g. HFD) (assuming that focus is "ok") - this will

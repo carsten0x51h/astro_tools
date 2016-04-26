@@ -41,7 +41,12 @@ namespace AT {
     const size_t cCrossSize = 3;
 
     CImg<unsigned char> normalizedImage(inCurrSubImg);
-    normalizedImage.normalize(0, 255);
+    if (inCurrSubImg.max() > 255) {
+      normalizedImage.get_log10().normalize(0, 255);
+    } else {
+      normalizedImage.normalize(0, 255); // We do a log10() to stetch the image... maybe we need a better way...
+    }
+
     
     // NOTE: RGB because we may add additional things in color to indicate for example the centroid / frame...
     CImg<unsigned char> & rgbImgRef = *outRgbImg;
@@ -575,7 +580,6 @@ namespace AT {
       ////////////////////////////
       // Handle focus finder    //
       ////////////////////////////
-      
       if (mFocusFindStatus.isRunning) {
       	mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress: %d\n",
       			     mFocusFindStatus.progress);
@@ -590,7 +594,6 @@ namespace AT {
 	  mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 23, "Last error: %s", mLastErrorStr.c_str());
 	}
       }
-
       
       // Wait a moment to keep processor down...
       chrono::milliseconds dura(10);
