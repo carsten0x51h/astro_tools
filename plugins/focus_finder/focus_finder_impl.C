@@ -405,9 +405,16 @@ namespace AT {
 	mFocuserDevice->setAbsPos(focusStartPos);
       }
 
+
+      /**
+       * 2. Again, take one shot to determine current limit (e.g. HFD) (assuming that focus is "ok") - this will
+       *    be the reference value to calculate the limiting value for the boundaries.
+       */
+      mLimit = determineLimit();
+
       
       /**
-       * 2. Now, record M "fine" curves...
+       * 3. Now, record M "fine" curves...
        */
       LOG(info) << "Now, recording " << mNumCurvesToRecord << " curves. stepSize = " << stepSize << " (" << mNumStepsFine << " steps per direction)." << endl;
       PosToImgMapT recordedPosToImgMap[mNumCurvesToRecord]; // TODO: Maybe as member?? Or maybe PosToFocusMeasure as member?? So results can be requested by client, later!
@@ -434,7 +441,7 @@ namespace AT {
 
       
       /**
-       * 3. Calculate opt. focus position and go for it... 
+       * 4. Calculate opt. focus position and go for it... 
        *    TODO: Here are multiple ways to do so...
        */
       float sumX = 0;
@@ -449,7 +456,7 @@ namespace AT {
 
 
       /**
-       * 4. Finally take another picture with "opt" focus.
+       * 5. Finally take another picture with "opt" focus.
        */
       CImg<float> currSubImage, imgFrame;
       mCameraDevice->takePicture(& currSubImage, mCntlData.exposureTime, getImageFrame(currCenterPosFF),

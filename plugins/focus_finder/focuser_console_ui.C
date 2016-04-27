@@ -130,6 +130,13 @@ namespace AT {
   }
 
 
+  void
+  FocusFinderConsoleCntlT::focusFinderStartHandler(const FocusFindCntlDataT * inFocusFinderCntlData) {
+    lock_guard<mutex> guard(mFocusFinderMtx);
+    mFwhmHorzFocusCurve->clear();
+    mFwhmVertFocusCurve->clear();
+  }
+  
   //TODO: Move static variables if possible into class - same for FocusFinder event handlers!  
   // TODO: We may write this as a lambda function...  
   void
@@ -178,6 +185,15 @@ namespace AT {
 
     // Draw current dots (focus curve so far)
     currFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
+
+
+    
+    // Draw more curves
+    mFwhmHorzFocusCurve->add(inFocusPos, inImgFrame);
+    currFwhmHorzFocusCurveDisp.display(mFwhmHorzFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
+
+    mFwhmVertFocusCurve->add(inFocusPos, inImgFrame);
+    currFwhmVertFocusCurveDisp.display(mFwhmVertFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
   }
 
   void
@@ -185,6 +201,10 @@ namespace AT {
     // TODO:... lines and point should not be passed sep. here... either part of FocusCurve OR calculated in a sep "Interpolation" class...
     lock_guard<mutex> guard(mFocusFinderMtx);
     currFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, true, inLine1, inLine2));
+
+    // Clear others curves... TODO...
+    mFwhmHorzFocusCurve->clear();
+    mFwhmVertFocusCurve->clear();
   }
 
   
@@ -195,8 +215,13 @@ namespace AT {
 			   FocusCurveT::sHfdStrategy,
 			   FocusFinderImplT::sHfdLimitStrategy);
 
+    // Addirional curves... TODO: ok?
+    mFwhmHorzFocusCurve = new FocusCurveT(FocusCurveT::sFwhmHorzStrategy);
+    mFwhmVertFocusCurve = new FocusCurveT(FocusCurveT::sFwhmVertStrategy);
+    
     
     // Register focus finder listeners
+    mFocusFinderStartHandlerConn = mFocusFinderImpl->registerFocusFinderStartListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderStartHandler, this, _1));
     mFocusFinderStatusUpdHandlerConn = mFocusFinderImpl->registerStatusUpdListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderStatusUpdHandler, this, _1));
     mFocusFinderNewSampleHandlerConn = mFocusFinderImpl->registerNewSampleListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewSampleHandler, this, _1, _2, _3));
     mFocusFinderNewFocusCurveHandlerConn = mFocusFinderImpl->registerNewFocusCurveListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler, this, _1,_2,_3,_4,_5));
@@ -423,12 +448,16 @@ namespace AT {
     // Unregistering console UI listeners
     LOG(debug) << "Unregistering focus finder handler..." << endl;
     lock_guard<mutex> guard(mFocusFinderMtx);
+    mFocusFinderImpl->unregisterFocusFinderStartListener(mFocusFinderStartHandlerConn);
     mFocusFinderImpl->unregisterStatusUpdListener(mFocusFinderStatusUpdHandlerConn);
     mFocusFinderImpl->unregisterNewSampleListener(mFocusFinderNewSampleHandlerConn);
     mFocusFinderImpl->unregisterNewFocusCurveListener(mFocusFinderNewFocusCurveHandlerConn);
     mFocusFinderImpl->unregisterFocusFinderAbortListener(mFocusFinderAbortHandlerConn);
 
     delete mFocusFinderImpl;
+
+    delete mFwhmHorzFocusCurve;
+    delete mFwhmVertFocusCurve;
   }
 
   

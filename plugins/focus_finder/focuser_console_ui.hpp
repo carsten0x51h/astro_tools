@@ -132,6 +132,7 @@ namespace AT {
 
     // Focus finder task
     thread mFocusFindThread;
+    signals2::connection mFocusFinderStartHandlerConn;
     signals2::connection mFocusFinderStatusUpdHandlerConn;
     signals2::connection mFocusFinderNewSampleHandlerConn;
     signals2::connection mFocusFinderNewFocusCurveHandlerConn;
@@ -169,13 +170,20 @@ namespace AT {
 
     // Windows - TODO: Not always available? - TODO: Make as class members later..?!
     // TODO: RENAME!
-    CImgDisplay currImageDisp, currentHfdDisp, currFocusCurveDisp, currentFwhmHorzDisp, currentFwhmVertDisp;
+    CImgDisplay currImageDisp, currentHfdDisp, currentFwhmHorzDisp, currentFwhmVertDisp, currFocusCurveDisp, currFwhmHorzFocusCurveDisp, currFwhmVertFocusCurveDisp;
 
     mutex mFocusFinderMtx; // TODO: As class member...
     FocusFindStatusDataT mFocusFindStatus; // TODO: This might be a class member, later... no longer static...
     string mLastErrorStr;
+
+
+    // Further curves.... TODO... ok?!
+    FocusCurveT * mFwhmHorzFocusCurve;
+    FocusCurveT * mFwhmVertFocusCurve;
+
     
   public:
+    void focusFinderStartHandler(const FocusFindCntlDataT * inFocusFinderCntlData);
     void focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PosToImgMapT * inPosToImgMap, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2);
     void focusFinderNewSampleHandler(const FocusCurveT * inFocusCurve, float inFocusPos, const CImg<float> & inImgFrame);
     void focusFinderStatusUpdHandler(const FocusFindStatusDataT * inFocusFindStatus);

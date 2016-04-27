@@ -63,6 +63,7 @@ namespace AT {
     FocusMeasureFuncT mFocusMeasureFunc;
     
   public:
+    FocusCurveT(FocusMeasureFuncT inFocusMeasureFunc) : mFocusMeasureFunc(inFocusMeasureFunc) { }
     FocusCurveT(const PosToImgMapT & inPosToImgMap, FocusMeasureFuncT inFocusMeasureFunc) : mFocusMeasureFunc(inFocusMeasureFunc) {
       // Fill internal map based on inPosToImgMap
       for (PosToImgMapT::const_iterator it = inPosToImgMap.begin(); it != inPosToImgMap.end(); ++it) {
@@ -90,6 +91,14 @@ namespace AT {
     inline void
     getBounds(PointT<float> * outMin, PointT<float> * outMax) const { getBounds(*this, outMin, outMax); }
 
+    inline void
+    add(float inFocusPos, const CImg<float> & inImgFrame) {
+      mPosToFocusMeasure.insert(make_pair(inFocusPos, mFocusMeasureFunc(inImgFrame)));
+    }
+
+    inline void
+    clear() { mPosToFocusMeasure.clear(); }
+    
 
     // TODO: Should be replaced by calcOptFocusPos(ABS_MIN)...??
     // TODO: Improve code below... more generic...
