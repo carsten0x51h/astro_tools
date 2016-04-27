@@ -387,16 +387,12 @@ namespace AT {
       int stepSize = mCntlData.stepSize;
 
       /**
-       * 0. Take one shot to determine current limit (e.g. HFD) (assuming that focus is "ok") - this will
-       *    be the reference value to calculate the limiting value for the boundaries (important)
-       */
-      mLimit = determineLimit();
-
-      
-      /**
        * 1. If no stepSize is configured, determine it - NOTE: This function also roughly centers the focus!
        */
       if (! stepSize) {
+	// Initially determine limits
+	mLimit = determineLimit();
+
 	float focusStartPos;
 	determineStepSizeAndStartPos(& stepSize, & focusStartPos);
 	
