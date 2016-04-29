@@ -75,22 +75,29 @@ namespace AT {
 
   void
   FocusCurveT::getBounds(const FocusCurveT & inFocusCurve, PointT<float> * outMin, PointT<float> * outMax) {
+    const PosToFocusMeasureT & posFocusMeasure = inFocusCurve.getData();
+
+    if(posFocusMeasure.empty()) {
+      *outMin = 0;
+      *outMax = 0;
+      return;
+    }
+
     float minX = std::numeric_limits<float>::max();
     float maxX = std::numeric_limits<float>::min();
     float minY = std::numeric_limits<float>::max();
     float maxY = std::numeric_limits<float>::min();
 
     // Find min and max
-      const PosToFocusMeasureT & posFocusMeasure = inFocusCurve.getData();
-      for (PosToFocusMeasureT::const_iterator it = posFocusMeasure.begin(); it != posFocusMeasure.end(); ++it) {
-  	int pos = it->first;
-  	float value = it->second;
-  	if (pos < minX) { minX = pos; }
-  	if (pos > maxX) { maxX = pos; }
-  	if (value < minY) { minY = value; }
-  	if (value > maxY) { maxY = value; }
-      }
-
+    for (PosToFocusMeasureT::const_iterator it = posFocusMeasure.begin(); it != posFocusMeasure.end(); ++it) {
+      int pos = it->first;
+      float value = it->second;
+      if (pos < minX) { minX = pos; }
+      if (pos > maxX) { maxX = pos; }
+      if (value < minY) { minY = value; }
+      if (value > maxY) { maxY = value; }
+    }
+    
     if (outMin) {
       outMin->get<0>() = minX;
       outMin->get<1>() = minY;
