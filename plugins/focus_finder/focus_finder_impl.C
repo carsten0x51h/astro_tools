@@ -30,10 +30,7 @@ using namespace std;
 using namespace boost;
 
 
-
 namespace AT {
-  
-
   
   /**
    * Determine HFD limit = N * initial HFD (star is roughly in focus). The value is
@@ -143,7 +140,6 @@ namespace AT {
     }
     return ssNewRecordDir.str();
   }
-
   
   void
   FocusFinderImplT::recordSequence(PosToImgMapT * outPosToImgMap, int stepSize, int inNumSteps) {
@@ -165,12 +161,11 @@ namespace AT {
     LOG(info) << "recordSequence - limit: " << mLimit << endl;
 
     mFocusFindStatusData.isRunning = true;
+    mFocusFindStatusData.phase = mPhase;
     callStatusUpdListener(& mFocusFindStatusData);
 
     // Prepare image recording directory if enabled
     string currRecordDir = (! mRecordBaseDir.empty() ? prepareRecordDir() : string(""));
-    
-    //PointT<float> currCenterPosFF = mCntlData.centerPosFF;
     int focusStartPos = mFocuserDevice->getAbsPos();
     
     // Take one picture to make sure that star is (will be) centered. This shot will not be recorded!
@@ -179,8 +174,6 @@ namespace AT {
 			       FrameTypeT::LIGHT, mCntlData.binning, false /*compressed*/);
     int dx = 0, dy = 0;
     CImg<float> imgFrame = extractImgFrame(currSubImage, & dx, & dy);
-    
-    LOG(error) << "Inside impl - recordSequence - mCntlData.imgFrameRecenter" << mCntlData.imgFrameRecenter << endl;
     
     if (mCntlData.imgFrameRecenter) {
       LOG(info) << "Frame recentering enabled - dx: " << dx << ", dy: " << dy << endl;
@@ -216,8 +209,6 @@ namespace AT {
 	  break;
 	}
 
-	LOG(error) << "Inside impl - recordSequence 2 - mCntlData.imgFrameRecenter" << mCntlData.imgFrameRecenter << endl;
-	
 	if (mCntlData.imgFrameRecenter) {
 	  LOG(info) << "Frame recentering enabled - dx: " << dx << ", dy: " << dy << endl;
   	  mCurrCenterPosFF.get<0>() += dx;
@@ -250,6 +241,7 @@ namespace AT {
 	mFocusFindStatusData.dx = dx;
 	mFocusFindStatusData.dy = dy;
 	mFocusFindStatusData.progress = 100.0 * ((float) step / (inStepSizes.size() - 1)); // TODO: Need total progress as well...
+	mFocusFindStatusData.phase = mPhase;
 	callStatusUpdListener(& mFocusFindStatusData);
 
 	
@@ -278,8 +270,6 @@ namespace AT {
 
   float
   FocusFinderImplT::determineLimit() {
-    //PointT<float> currCenterPosFF = mCntlData.centerPosFF;
-
     mPhase = PhaseT::DET_LIMIT;
 
     CImg<float> currSubImage, imgFrame;
@@ -290,8 +280,6 @@ namespace AT {
     imgFrame = extractImgFrame(currSubImage, & dx, & dy);
 
     // Recenter the image frame for the next shot (follow the star)
-    LOG(error) << "Inside impl - determineLimit - mCntlData.imgFrameRecenter" << mCntlData.imgFrameRecenter << endl;
-
     if (mCntlData.imgFrameRecenter) {
       LOG(info) << "Frame recentering enabled - dx: " << dx << ", dy: " << dy << endl;
       mCurrCenterPosFF.get<0>() += dx;
@@ -372,6 +360,7 @@ namespace AT {
 	
     // Notify listeners of status update (TODO: Required here?)
     mFocusFindStatusData.progress = 100; // TODO: CALC!! Update further values?
+    mFocusFindStatusData.phase = mPhase;
     // TODO: Set focuser state...
     callStatusUpdListener(& mFocusFindStatusData);
 
@@ -395,6 +384,7 @@ namespace AT {
     // Set running...
     mPhase = PhaseT::INITIALIZING;
     mFocusFindStatusData.isRunning = true;
+    mFocusFindStatusData.phase = mPhase;
     callStatusUpdListener(& mFocusFindStatusData);
 
     // Call start handler...
@@ -455,6 +445,7 @@ namespace AT {
 	
       	//TODO: Send a status update (call handlers) - new sequence (with line...)  -> different / additional handler/listener?
       	mFocusFindStatusData.progress = 100.0 * ((float) m / 10.0);
+	mFocusFindStatusData.phase = mPhase;
       	callStatusUpdListener(& mFocusFindStatusData);
       }
 
@@ -499,6 +490,7 @@ namespace AT {
       mFocusFindStatusData.dx = 0;
       mFocusFindStatusData.dy = 0;
       mFocusFindStatusData.progress = 100.0;
+      mFocusFindStatusData.phase = mPhase;
       callStatusUpdListener(& mFocusFindStatusData);
 
       
@@ -534,6 +526,7 @@ namespace AT {
 
     mPhase = PhaseT::READY;
     mFocusFindStatusData.isRunning = false;
+    mFocusFindStatusData.phase = mPhase;
     callStatusUpdListener(& mFocusFindStatusData);
   }
 };

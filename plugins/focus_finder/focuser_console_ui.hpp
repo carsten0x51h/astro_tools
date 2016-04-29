@@ -168,19 +168,18 @@ namespace AT {
     float mFocalDistance;
     DimensionT<float> mPixelSizeUm;
 
-    // Windows - TODO: Not always available? - TODO: Make as class members later..?!
-    // TODO: RENAME!
-    CImgDisplay currImageDisp, currentHfdDisp, currentFwhmHorzDisp, currentFwhmVertDisp, currFocusCurveDisp, currFwhmHorzFocusCurveDisp, currFwhmVertFocusCurveDisp;
+    // Windows - TODO: Not always available?
+    CImgDisplay mCurrImageDisp, mCurrentHfdDisp, mCurrentFwhmHorzDisp, mCurrentFwhmVertDisp, mCurrFocusCurveDisp;
 
-    mutex mFocusFinderMtx; // TODO: As class member...
-    FocusFindStatusDataT mFocusFindStatus; // TODO: This might be a class member, later... no longer static...
+    mutex mFocusFinderMtx;
+    FocusFinderImplT::FocusFindStatusDataT mFocusFindStatus;
     string mLastErrorStr;
     
   public:
-    void focusFinderStartHandler(const FocusFindCntlDataT * inFocusFinderCntlData);
+    void focusFinderStartHandler(const FocusFinderImplT::FocusFindCntlDataT * inFocusFinderCntlData);
     void focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PosToImgMapT * inPosToImgMap, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2);
     void focusFinderNewSampleHandler(const FocusCurveT * inFocusCurve, float inFocusPos, const CImg<float> & inImgFrame);
-    void focusFinderStatusUpdHandler(const FocusFindStatusDataT * inFocusFindStatus);
+    void focusFinderStatusUpdHandler(const FocusFinderImplT::FocusFindStatusDataT * inFocusFindStatus);
     void focusFinderAbortHandler(bool inManualAbort, string inCause);
 
     
@@ -189,11 +188,6 @@ namespace AT {
     ~FocusFinderConsoleCntlT();
     void show();
   };
-  
-  
-  // TODO: Create ManualConsoleFocusCntl class or similar...??!
-  void
-  manualConsoleFocusCntl(const po::variables_map & inCmdLineMap, IndiCameraT * inCameraDevice, IndiFocuserT * inFocuserDevice, IndiFilterWheelT * inFilterWheelDevice, const FrameT<unsigned int> & inSelectionFrame, float inExposureTimeSec, BinningT inBinning, bool inFollowStar = true);
   
 }; // end AT
 

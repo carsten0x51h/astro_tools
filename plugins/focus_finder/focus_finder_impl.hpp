@@ -43,34 +43,10 @@ DEF_Exception(FocusFinderImplRecording);
 
 namespace AT {
 
-  struct FocusFindStatusDataT {
-    float dx; // Centroid x relative to currImage center
-    float dy; // Centroid y relative to currImage center
-    CImg<float> currImage;
-    PointT<float> currCenterPosFF;
-    BinningT currBinning;
-    
-    int currAbsFocusPos;
-    bool isRunning;
-    int progress;
-    FocusFindStatusDataT() : dx(0), dy(0), isRunning(false), currAbsFocusPos(0), progress(0) {}
-  };
-
-  struct FocusFindCntlDataT {
-    float exposureTime;
-    PointT<float> centerPosFF;
-    BinningT binning;
-    bool imgFrameRecenter;
-    int stepSize;
-    FocusFindCntlDataT() : exposureTime(0), binning(BinningT(1,1)), centerPosFF(PointT<float>(0,0)), imgFrameRecenter(true), stepSize(0) {}
-    bool valid() const { return (exposureTime > 0); }
-  };
-
   
   class FocusFinderImplT {
   public:
     typedef std::function<float(float, bool *)> CalcLimitFuncT;
-
     
     struct PhaseT {
       enum TypeE {
@@ -97,7 +73,30 @@ namespace AT {
       MAC_AS_TYPE(Type, E, _Count);  
     };
   
-    PhaseT::TypeE mPhase;
+
+    struct FocusFindStatusDataT {
+      float dx; // Centroid x relative to currImage center
+      float dy; // Centroid y relative to currImage center
+      CImg<float> currImage;
+      PointT<float> currCenterPosFF;
+      BinningT currBinning;
+      FocusFinderImplT::PhaseT::TypeE phase;
+      int currAbsFocusPos;
+      bool isRunning;
+      int progress;
+      FocusFindStatusDataT() : dx(0), dy(0), isRunning(false), currAbsFocusPos(0), progress(0) {}
+    };
+
+    struct FocusFindCntlDataT {
+      float exposureTime;
+      PointT<float> centerPosFF;
+      BinningT binning;
+      bool imgFrameRecenter;
+      int stepSize;
+      FocusFindCntlDataT() : exposureTime(0), binning(BinningT(1,1)), centerPosFF(PointT<float>(0,0)), imgFrameRecenter(true), stepSize(0) {}
+      bool valid() const { return (exposureTime > 0); }
+    };
+
 
 
     
@@ -111,6 +110,7 @@ namespace AT {
     CalcLimitFuncT mCalcLimitFunc;
     
     float mLimit;
+    PhaseT::TypeE mPhase;
     
     FocusFindCntlDataT mCntlData;
 
