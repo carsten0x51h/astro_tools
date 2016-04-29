@@ -175,12 +175,6 @@ namespace AT {
     mutex mFocusFinderMtx; // TODO: As class member...
     FocusFindStatusDataT mFocusFindStatus; // TODO: This might be a class member, later... no longer static...
     string mLastErrorStr;
-
-
-    // Further curves.... TODO... ok?!
-    FocusCurveT * mFwhmHorzFocusCurve;
-    FocusCurveT * mFwhmVertFocusCurve;
-
     
   public:
     void focusFinderStartHandler(const FocusFindCntlDataT * inFocusFinderCntlData);

@@ -117,7 +117,10 @@ sim_find_focus:
 # --seq_record_dir=/home/devnull/workspace/astro_tools/plugins/focus_finder/records2
 
 atik_find_focus:
-	gdb --args ./build/astro_tools focus_find --camera_device="Atik 383L+ CCD" --filter_device="ATIK Wheel" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --focus_mode=manual --star_select=display
+	gdb --args ./build/astro_tools focus_find --camera_device="Atik 383L+ CCD" --filter_device="ATIK Wheel" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --focus_mode=manual --star_select=display --pixel_size=5.4x5.4 --focal_distance=1000
+#--star_select=264,574
+#./build/astro_tools focus_find --camera_device="Atik 383L+ CCD" --filter_device="ATIK Wheel" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB2 --exposure_time=3 --focus_mode=manual --star_select=display --pixel_size=5.4x5.4 --focal_distance=1000 -vvv --seq_record_dir=/home/devnull/workspace/astro_tools/plugins/focus_finder/records
+
 
 
 #	./build/astro_tools focus_find -v --camera_device="ATIK CCD Atik 383L+" --focuser_device="MoonLite" --focuser_device_port=/dev/ttyUSB1 --exposure_time=1 --star_select=2390,1267 --num_steps_to_determine_direction=300 --steps_to_reach_focus=300 --extrema_fitness_boundary=16 --rough_focus_granularity_steps=50 --fine_focus_granularity_steps=10 --fine_search_range_steps=150 --outer_hfd_radius_px=15 --fine_focus_record_num_curves=1

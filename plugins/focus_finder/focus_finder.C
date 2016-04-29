@@ -1,5 +1,5 @@
 /*****************************************************************************
- *
+- *
  *  AstroTools
  *
  *  Copyright(C) 2015 Carsten Schmitt <c.schmitt51h@gmail.com>
@@ -40,7 +40,7 @@
 #include "indi/indi_filter_wheel.hpp"
 
 #include "threshold.hpp"
-#include "normalize.hpp"
+#include "stretch.hpp"
 #include "cluster.hpp"
 #include "centroid.hpp"
 #include "star_frame_selector.hpp"
@@ -64,7 +64,7 @@ namespace AT {
   getStarFrame(const CImg<float> & inImg, long bitPix, const string & starSelectMethod,
 	       typename StarFrameSelectorT::StarRecognitionTypeT::TypeE inStarRecognitionMethod,
 	       typename CentroidT::CentroidTypeT::TypeE inCentroidMethod, unsigned int inFrameSize = 31) {
-
+    
     DimensionT<int> imageDimension(inImg.width(), inImg.height());
     PointT<float> selectionCenter;
     FrameT<unsigned int> selectedFrame;
@@ -98,16 +98,17 @@ namespace AT {
       selectedFrame = *selectionList.begin();
       
     } else if (! strcmp(starSelectMethod.c_str(), "display")) {
-      // Normalize image
-      // TODO / FIXME: 5%???
-      // TODO: Rename own normalize (used here) to non-linear normalize since it is not provided by CImg. Otherwise use CImg normalize.
-      // TODO: own non-linear normalize should be improved (see wikipedia - non-linear image normalization)...
-      CImg<unsigned char> normalizedImage(normalize(inImg, pow(2.0, bitPix), 10 /*5%*/));
+      // Stretch image
+      CImg<unsigned char> normalizedImage = stretch(inImg);
 
-      // FIXME / normalize results in star images is bad!!!
-      //CImg<unsigned char> normalizedImage(inImg);
-      //normalizedImage.normalize(0, 255);
 
+      // Zoom image to screen/window/given size so that full image is visible
+      // TODO: Figure out..when using Qt..see http://stackoverflow.com/questions/13421399/portable-way-in-c-to-get-desktop-resolution
+      const size_t resizedWidth = 1280;
+      const size_t resizedHeight = (float) normalizedImage.height() * (float) resizedWidth / (float) normalizedImage.width();
+      normalizedImage.resize(resizedWidth, resizedHeight); 
+
+      
       // NOTE: See http://cimg.eu/reference/structcimg__library_1_1CImgDisplay.html
       // TODO: We will use our own graphical star-selector later - with zoom, value preview etc.
       CImgDisplay dispStarSelect(normalizedImage, "Select a star (click left)...");
@@ -119,8 +120,8 @@ namespace AT {
 	  
 	  // NOTE:  If the image is bigger than the screen / window it is stretched and the mouse position
 	  //        returned has to be computed accordingly.
-	  int x = (float) inImg.width() / (float) dispStarSelect.width() * (float)dispStarSelect.mouse_x();
-	  int y = (float) inImg.height() / (float) dispStarSelect.height() * (float)dispStarSelect.mouse_y();
+	  int x = ((float) inImg.width() / (float) dispStarSelect.width() * (float)dispStarSelect.mouse_x());
+	  int y = ((float) inImg.height() / (float) dispStarSelect.height() * (float)dispStarSelect.mouse_y());
 	  selectionCenter = PointT<float>(x, y);
 	  LOG(debug) << "Left click - position (x,y)=" << selectionCenter << endl;
 
@@ -350,7 +351,7 @@ namespace AT {
 	LOG(trace) << "startExposure(" << exposureTimeSec << "s)..." << endl;
 	cameraDevice->startExposure(exposureTimeSec); // Non-blocking call...!!
 	// We have to wait for the first image...
-	unsigned int estimatedTime = 1000 * exposureTimeSec + 15000 /* 15 sec. to transfer 1x1 binned image */;
+	unsigned int estimatedTime = 1000 * exposureTimeSec + 20000 /* 20 sec. to transfer 1x1 binned image - TODO: define const elsewhere? */;
 	WAIT_MAX_FOR_PRINT(! cameraDevice->isExposureInProgress(), estimatedTime,
 			   CommonAstroToolsAppT::isInQuietMode(), "[Exposure left " << cameraDevice->getExposureTime() << "s]...",
 			   "Hit timeout while waiting for camera.");
@@ -362,9 +363,21 @@ namespace AT {
 	const string & starSelectMethod = cmdLineMap["star_select"].as<string>();
 	typename StarFrameSelectorT::StarRecognitionTypeT::TypeE starRecognitionMethod = cmdLineMap["star_recognition"].as<typename StarFrameSelectorT::StarRecognitionTypeT::TypeE>();
 	typename CentroidT::CentroidTypeT::TypeE centroidMethod = cmdLineMap["centroid_method"].as<typename CentroidT::CentroidTypeT::TypeE>();
-	FrameT<unsigned int> selectedFrame = getStarFrame(image, bitPix, starSelectMethod, starRecognitionMethod, centroidMethod);
+	FrameT<unsigned int> selectedFrame;
 
-	LOG(debug) << "Selected frame by click: " << selectedFrame << endl;
+	const size_t starFrameSize = 31; // TODO... not const...
+	try {
+	  selectedFrame = getStarFrame(image, bitPix, starSelectMethod, starRecognitionMethod, centroidMethod, starFrameSize);
+	} catch (const CentroidExceptionT & exc) {
+	  LOG(error) << "Unable to detect star centroid. Initially selecting image center." << endl;
+	  // NOTE... also scale factor 3.0 should not be hard coded here.. because it is used in different places...
+	  float imgFrameSize = 3.0 * starFrameSize;
+	  float x = (float) (image.width() - imgFrameSize) / 2.0;
+	  float y = (float) (image.height() - imgFrameSize) / 2.0;
+	  selectedFrame = FrameT<unsigned int>(x, y, imgFrameSize, imgFrameSize);
+	}
+	
+	LOG(debug) << "Selected frame: " << selectedFrame << endl;
 	
 	if (! strcmp(focusMode.c_str(), "manual")) { // Manual focusing
 	  FocusFinderConsoleCntlT focusFinderConsoleCntl(cmdLineMap, cameraDevice, focuserDevice, filterWheelDevice, selectedFrame);

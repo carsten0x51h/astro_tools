@@ -79,9 +79,21 @@ namespace AT {
       if (inStarRecognitionMethod == StarRecognitionTypeT::PROXIMITY) {
 	// Calc frame of specified size around selectionCenter
 	// NOTE: For now we just look around in 3 times the frame size for the maximum pixel
-	FrameT<int> starSearchFrame = centerPosToFrame(inSelectionCenter, 3.0 * inFrameSize);
-	LOG(debug) << "inSelectionCenter: " << inSelectionCenter << ", starSearchFrame: " << starSearchFrame << endl;
-	    
+
+	// HACK!!!! IMPROVE - unify handling of frames, centers rounding etc...
+	// NOTE: AtikDriver rounds a frameSize of 93 in binning 2 mode to 46 (rounds low)...
+	//       This produces an imageDimension which is one pixel too small compared to the starSearchFrame...
+	//       NEED A CLEAN WAY TO HANDLE THAT... 
+	//int frameSize = (((int)inSelectionCenter.get<0>() % 2 == 0) ? (3.0 * inFrameSize - 1) : (3.0 * inFrameSize));
+	//LOG(debug) << "inSelectionCenter.get<0>(): " << inSelectionCenter.get<0>() << " --> frameSize: " << frameSize << endl;
+	// HACL DOES NOT WORK...
+	float frameSize = inFrameSize;
+	
+	FrameT<int> starSearchFrame = centerPosToFrame(inSelectionCenter, frameSize);
+	LOG(error) << "inSelectionCenter: " << inSelectionCenter << ", starSearchFrame: " << starSearchFrame << endl;
+	LOG(error) << "imageDimension: " << imageDimension << endl;
+	// TODO...
+	
 	if (! insideBounds(imageDimension, starSearchFrame)) {
 	  LOG(debug) << "Frame hits image boundary." << endl;
 	  return false;
@@ -96,7 +108,7 @@ namespace AT {
 	// Re-center frame of same size around max pixel pos.
 	// NOTE: maxRecenteredFrame cannot hit the boundary because search frame was 3 * inFrameSize.
 	// NOTE: We decided to use int instead of float since sub-pixel accuracy is not needed here.
-	FrameT<int> maxRecenteredFrame = centerPosToFrame(maxPixelPos, inFrameSize);
+	FrameT<int> maxRecenteredFrame = centerPosToFrame(maxPixelPos, frameSize);
 	LOG(debug) << "maxRecenteredFrame: " << maxRecenteredFrame << endl;
 	
 	// Calc centroid given the new frame
@@ -112,7 +124,7 @@ namespace AT {
 	
 	// Re-center frame to calculated centroid
 	// NOTE: centroidRecenteredFrame cannot hit the boundary because search frame was 3 * inFrameSize.
-	FrameT<int> centroidRecenteredFrame = centerPosToFrame(centroid, inFrameSize);
+	FrameT<int> centroidRecenteredFrame = centerPosToFrame(centroid, frameSize);
 	LOG(debug) << "centroidRecenteredFrame: " << centroidRecenteredFrame << endl;
 	    
 	// TODO: How to detect if there is no valid star detected?? Should this actually be done here?

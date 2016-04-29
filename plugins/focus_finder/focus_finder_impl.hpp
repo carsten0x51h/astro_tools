@@ -48,6 +48,7 @@ namespace AT {
     float dy; // Centroid y relative to currImage center
     CImg<float> currImage;
     PointT<float> currCenterPosFF;
+    BinningT currBinning;
     
     int currAbsFocusPos;
     bool isRunning;
@@ -64,13 +65,42 @@ namespace AT {
     FocusFindCntlDataT() : exposureTime(0), binning(BinningT(1,1)), centerPosFF(PointT<float>(0,0)), imgFrameRecenter(true), stepSize(0) {}
     bool valid() const { return (exposureTime > 0); }
   };
-  
 
   
   class FocusFinderImplT {
   public:
     typedef std::function<float(float, bool *)> CalcLimitFuncT;
 
+    
+    struct PhaseT {
+      enum TypeE {
+	READY,
+	INITIALIZING,
+	DET_LIMIT,
+	DET_STEP_SIZE,
+	FOCUS_CURVES_RECORDING,
+	SET_OPT_POS,
+	_Count
+      };
+    
+      static const char * asStr(const TypeE & inType) {
+	switch (inType) {
+	case READY: return "READY";
+	case INITIALIZING: return "INITIALIZING";
+	case DET_LIMIT: return "DET_LIMIT";
+	case DET_STEP_SIZE: return "DET_STEP_SIZE";
+	case FOCUS_CURVES_RECORDING: return "FOCUS_CURVES_RECORDING";
+	case SET_OPT_POS: return "SET_OPT_POS";
+	default: return "<?>";
+	}
+      }
+      MAC_AS_TYPE(Type, E, _Count);  
+    };
+  
+    PhaseT::TypeE mPhase;
+
+
+    
   private:
     FocusFindStatusDataT mFocusFindStatusData;
     IndiCameraT * mCameraDevice;
@@ -85,6 +115,8 @@ namespace AT {
     FocusFindCntlDataT mCntlData;
 
     string mRecordBaseDir;
+
+    PointT<float> mCurrCenterPosFF;
     
     const size_t mNumStepsFine = 15;     // TODO: Not const, set function? Is this a good value?
     const size_t mNumCurvesToRecord = 3; // TODO: Not const, set function? Is this a good value?
@@ -125,7 +157,9 @@ namespace AT {
       mFocusMeasureFunc(inFocusMeasureFunc),
       mCalcLimitFunc(inCalcLimitFunc),
       mRecordBaseDir(""),
-      mLimit(0) {
+      mLimit(0),
+      mCurrCenterPosFF(PointT<float>(0,0)),
+      mPhase(PhaseT::READY) {
     }
 
     inline const FocusFindCntlDataT & getCntlData(const FocusFindCntlDataT & inCntlData) const { return mCntlData; }
@@ -136,23 +170,30 @@ namespace AT {
       if (! inRecordBaseDir.empty()) {
 	// If directory does not exist but inCreateIfNotExists is true, create it.
 	// Othwerwise throw. If creating directory fails, throw.
-
-	// TODO!! Fails if directory already exists!!
-	if (inCreateIfNotExists) {
-	  const int dir_err = mkdir(inRecordBaseDir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-	  if (-1 == dir_err) {
+	// TODO: USE BOOST!!! http://www.boost.org/doc/libs/1_47_0/libs/filesystem/v3/doc/tutorial.html
+	struct stat sb;
+	
+	if (! (stat(inRecordBaseDir.c_str(), & sb) == 0 && S_ISDIR(sb.st_mode))) {
+	  /* Directory does not exists. */
+	  if (inCreateIfNotExists) {
+	    const int dir_err = mkdir(inRecordBaseDir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	    if (-1 == dir_err) {
+	      stringstream ss;
+	      ss << "Error creating record base directory '" << inRecordBaseDir << "'!" << endl;
+	      throw FocusFinderImplRecordingExceptionT(ss.str());
+	    }
+	  } else {
+	    // Check if directory exists...
+	    // TODO: Better error handling...
 	    stringstream ss;
-	    ss << "Error creating record base directory '" << inRecordBaseDir << "'!" << endl;
+	    ss << "Base directory '" << inRecordBaseDir << "' does not exist. Set inCreateIfNotExists=true to create." << endl;
 	    throw FocusFinderImplRecordingExceptionT(ss.str());
-	  }
-	} else {
-	  // Check if directory exists...
-	  // TODO - FIXME
+	  }      
 	}
       }
-      
       mRecordBaseDir = inRecordBaseDir;
     }
+    
     void run();
     
     static void

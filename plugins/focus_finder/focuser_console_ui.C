@@ -22,6 +22,7 @@
 
 #include "focuser_console_ui.hpp"
 #include "centroid.hpp"
+#include "stretch.hpp"
 #include "fwhm.hpp"
 #include "hfd.hpp"
 #include "util.hpp"
@@ -35,17 +36,19 @@ namespace AT {
 
 
   void
-  genSelectionView(const CImg<float> & inCurrSubImg, int dx, int dy,
+  genSelectionView(const CImg<float> & inCurrSubImg, float dx, float dy,
 		   CImg<unsigned char> * outRgbImg, float inScaleFactor = 3.0) {
     const unsigned char red[3] = { 255, 0, 0 }, green[3] = { 0, 255, 0 }, blue[3] = { 0, 0, 255 };
     const size_t cCrossSize = 3;
 
-    CImg<unsigned char> normalizedImage(inCurrSubImg);
-    if (inCurrSubImg.max() > 255) {
-      normalizedImage.get_log10().normalize(0, 255);
-    } else {
-      normalizedImage.normalize(0, 255); // We do a log10() to stetch the image... maybe we need a better way...
-    }
+    //CImg<unsigned char> normalizedImage(inCurrSubImg);
+    // if (inCurrSubImg.max() > 255) {
+    //   normalizedImage.get_log10().normalize(0, 255);
+    // } else {
+    //   normalizedImage.normalize(0, 255); // We do a log10() to stetch the image... maybe we need a better way...
+    // }
+    
+    CImg<unsigned char> normalizedImage = stretch(inCurrSubImg);
 
     
     // NOTE: RGB because we may add additional things in color to indicate for example the centroid / frame...
@@ -87,9 +90,12 @@ namespace AT {
 
     //TODO: setBinning after first selection of imageFrame causes CentroidException (Frame hit simage bounds...)
     //      -> need to recalc imageFrame(?) - based on old binning and given new binning!
-    LOG(trace) << "setBinnedFrame(" << getImageFrame(cntl.centerPosFF) << ", " << cntl.binning << ")..." << endl;
-    inCameraDevice->setBinnedFrame(getImageFrame(cntl.centerPosFF), cntl.binning);
-	
+    //LOG(trace) << "setBinnedFrame(" << getImageFrame(cntl.centerPosFF) << ", " << cntl.binning << ")..." << endl;
+    //inCameraDevice->setBinnedFrame(getImageFrame(cntl.centerPosFF), cntl.binning);
+    LOG(trace) << "setFrame(" << getImageFrame(cntl.centerPosFF) << ")..." << endl;
+    inCameraDevice->setFrame(getImageFrame(cntl.centerPosFF));
+
+    
     LOG(trace) << "setFrameType(" << FrameTypeT::asStr(FrameTypeT::LIGHT) << ")..." << endl;
     inCameraDevice->setFrameType(FrameTypeT::LIGHT);
 
@@ -110,7 +116,13 @@ namespace AT {
 	chrono::milliseconds dura(200);
 	this_thread::sleep_for(dura); // Sleeps for a bit - this is a predefined interruption point
       } catch(boost::thread_interrupted const& ) {
-	inCameraDevice->abortExposure();
+
+	try {
+	  inCameraDevice->abortExposure();
+	} catch(SetPropValueFailedExceptionT & exc) {
+	  LOG(error) <<"Camera-Abortion failed. Details: " << exc.what() << endl; 
+	}
+	
 	status.taskState = TaskStateT::ABORTED;
 	statusData->store(status);  // updates the variable safely
 	return;
@@ -132,9 +144,7 @@ namespace AT {
 
   void
   FocusFinderConsoleCntlT::focusFinderStartHandler(const FocusFindCntlDataT * inFocusFinderCntlData) {
-    lock_guard<mutex> guard(mFocusFinderMtx);
-    mFwhmHorzFocusCurve->clear();
-    mFwhmVertFocusCurve->clear();
+    //lock_guard<mutex> guard(mFocusFinderMtx);
   }
   
   //TODO: Move static variables if possible into class - same for FocusFinder event handlers!  
@@ -157,7 +167,7 @@ namespace AT {
     // Update UI
     if (! mFocusFindStatus.currImage.is_empty()) {
       CImg<unsigned char> rgbImg;
-      genSelectionView(mFocusFindStatus.currImage, mFocusFindStatus.dx, mFocusFindStatus.dy, & rgbImg, 3.0);
+      genSelectionView(mFocusFindStatus.currImage, mFocusFindStatus.dx, mFocusFindStatus.dy, & rgbImg, 3.0 * mFocusFindStatus.currBinning.get<0>());
       currImageDisp.display(rgbImg); // TODO - disable if no Wnds...
     }
   }
@@ -185,15 +195,6 @@ namespace AT {
 
     // Draw current dots (focus curve so far)
     currFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
-
-
-    
-    // Draw more curves
-    mFwhmHorzFocusCurve->add(inFocusPos, inImgFrame);
-    currFwhmHorzFocusCurveDisp.display(mFwhmHorzFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
-
-    mFwhmVertFocusCurve->add(inFocusPos, inImgFrame);
-    currFwhmVertFocusCurveDisp.display(mFwhmVertFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
   }
 
   void
@@ -201,10 +202,6 @@ namespace AT {
     // TODO:... lines and point should not be passed sep. here... either part of FocusCurve OR calculated in a sep "Interpolation" class...
     lock_guard<mutex> guard(mFocusFinderMtx);
     currFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, true, inLine1, inLine2));
-
-    // Clear others curves... TODO...
-    mFwhmHorzFocusCurve->clear();
-    mFwhmVertFocusCurve->clear();
   }
 
   
@@ -215,11 +212,6 @@ namespace AT {
 			   FocusCurveT::sHfdStrategy,
 			   FocusFinderImplT::sHfdLimitStrategy);
 
-    // Addirional curves... TODO: ok?
-    mFwhmHorzFocusCurve = new FocusCurveT(FocusCurveT::sFwhmHorzStrategy);
-    mFwhmVertFocusCurve = new FocusCurveT(FocusCurveT::sFwhmVertStrategy);
-    
-    
     // Register focus finder listeners
     mFocusFinderStartHandlerConn = mFocusFinderImpl->registerFocusFinderStartListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderStartHandler, this, _1));
     mFocusFinderStatusUpdHandlerConn = mFocusFinderImpl->registerStatusUpdListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderStatusUpdHandler, this, _1));
@@ -231,8 +223,10 @@ namespace AT {
     mFocalDistance = (inCmdLineMap.count("focal_distance") ? inCmdLineMap["focal_distance"].as<unsigned int>() : 0);
     mPixelSizeUm = (inCmdLineMap.count("pixel_size") ? inCmdLineMap["pixel_size"].as<DimensionT<float> >() : 0);
 
-    bool imgFrameRecenter = inCmdLineMap["img_frame_recenter"].as<bool>();
-
+    // TODO: Does not work somehow... is false by default!!!
+    //bool imgFrameRecenter = inCmdLineMap["img_frame_recenter"].as<bool>();
+    LOG(error) << "YYYYY img_frame_recenter: " << inCmdLineMap["img_frame_recenter"].as<bool>() << endl;
+    bool imgFrameRecenter = true;
     // Set the initial image frame
     // NOTE:
     //   FF = Full Frame coordinates
@@ -406,7 +400,11 @@ namespace AT {
 							      focusFindCntlData.binning = BinningT(mBinValXY, mBinValXY);
 							      focusFindCntlData.exposureTime = mExpTimeVal;
 							      focusFindCntlData.centerPosFF = mCurrCenterPosFF;
-							      focusFindCntlData.imgFrameRecenter = imgFrameRecenter;
+
+							      // TODO: imgFrameRecenter is false!!!!!!
+							      focusFindCntlData.imgFrameRecenter = mCmdLineMap["img_frame_recenter"].as<bool>();
+							      // TODO: focusFindCntlData.imgFrameRecenter still false even if set imgFrameRecenter to true ??!
+							      LOG(error) << "XXXXX NEWimgFrameRecenter: " << mCmdLineMap["img_frame_recenter"].as<bool>() << ", focusFindCntlData.imgFrameRecenter: " << focusFindCntlData.imgFrameRecenter << endl; 
 							      
 							      mFocusFinderImpl->setCntlData(focusFindCntlData);
 							      
@@ -455,9 +453,6 @@ namespace AT {
     mFocusFinderImpl->unregisterFocusFinderAbortListener(mFocusFinderAbortHandlerConn);
 
     delete mFocusFinderImpl;
-
-    delete mFwhmHorzFocusCurve;
-    delete mFwhmVertFocusCurve;
   }
 
   
@@ -540,16 +535,17 @@ namespace AT {
       case TaskStateT::ABORTED:
 	if (exposureStatusData.taskState == TaskStateT::FINISHED) {
 
-	  int dx = 0, dy = 0;
+	  float dx = 0, dy = 0;
 	  HfdT hfd;
 	  FwhmT fwhmHorz, fwhmVert;
 	  int maxPixValue = 0;
 	  
 	  try {
-	    calcStarValues(mCurrSubImage, & dx, & dy, & hfd, & fwhmHorz, & fwhmVert, & maxPixValue);
+	    calcStarValues(mCurrSubImage, BinningT(mBinValXY, mBinValXY), & dx, & dy, & hfd, & fwhmHorz, & fwhmVert, & maxPixValue);
 	    bool imgFrameRecenter = mCmdLineMap["img_frame_recenter"].as<bool>();
 
 	    if (imgFrameRecenter) {
+	      LOG(info) << "Frame recentering enabled - dx: " << dx << ", dy: " << dy << endl;
 	      mCurrCenterPosFF.get<0>() += dx;
 	      mCurrCenterPosFF.get<1>() += dy;
 	    }
@@ -586,12 +582,12 @@ namespace AT {
 
 	  } catch(CentroidExceptionT & exc) {
 	    // Unable to calculate star values - probably no star...
-	    LOG(info) << "Unable to calculate star data... probably no valid star selected" << endl; 
+	    LOG(info) << "Unable to calculate star data... probably no valid star selected. Details: " << exc.what() << endl; 
 	  }
 	  
 	  // Finally, generate and display the image
 	  CImg<unsigned char> rgbImg;
-	  genSelectionView(mCurrSubImage, dx, dy, & rgbImg, 3.0 /*zoom*/);
+	  genSelectionView(mCurrSubImage, dx, dy, & rgbImg, 3.0 * mBinValXY /*zoom*/);
 	  currImageDisp.display(rgbImg);
 	}
 

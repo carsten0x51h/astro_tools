@@ -72,12 +72,28 @@ namespace AT {
   
   // TODO: Question: Should this static function be part of the FocusFinderImpl? Actually it is more generic...
   static void
-  calcStarValues(CImg<float> & inFrameImage, int * outDx = 0, int * outDy = 0, HfdT * outHfd = 0, FwhmT * outFwhmHorz = 0, FwhmT * outFwhmVert = 0, int * outMaxPixValue = 0) {
+  calcStarValues(CImg<float> & inFrameImage, const BinningT & inBinning = BinningT(1,1), float * outDx = 0, float * outDy = 0, HfdT * outHfd = 0, FwhmT * outFwhmHorz = 0, FwhmT * outFwhmVert = 0, int * outMaxPixValue = 0) {
+
+    // TODO / FIXME: In case of binning, the image needs to be scaled up to hit the minimum resolution requirements
+    // TODO
+    // TODO
+    // TODO
+    // Instread the corresponding window-sizes might be split in half.... TEST WHAT IS BETTER!!!
+    CImg<float> zoomedImgFrame(inFrameImage);
+    zoomedImgFrame.resize(inFrameImage.width() * inBinning.get<0>(), inFrameImage.height() * inBinning.get<1>());
+
+    
     // Post process image... we assume that the star did not move too far from the image center
     // NOTE: Boundaries of currSubImage are based on currImageFrameFF.
-    PointT<float> assumedCenter((float) inFrameImage.width() / 2.0, (float) inFrameImage.height() / 2.0);
+    PointT<float> assumedCenter((float) zoomedImgFrame.width() / 2.0, (float) zoomedImgFrame.height() / 2.0);
     FrameT<unsigned int> newSelectionFrameIF;
-    bool insideBounds = StarFrameSelectorT::calc(inFrameImage, 0 /*bitPix - TODO / HACK: not needed */,
+
+    LOG(trace) << "inFrameImage.width(): " << inFrameImage.width() << ", inFrameImage.height(): " << inFrameImage.height()
+	       << ", binning: " << inBinning << " --> zoomedImgFrame.width(): " << zoomedImgFrame.width()
+	       << ", zoomedImgFrame.height(): " << zoomedImgFrame.height()
+	       << " --> assumedCenter: " << assumedCenter << endl;
+
+    bool insideBounds = StarFrameSelectorT::calc(zoomedImgFrame, 0 /*bitPix - TODO / HACK: not needed */,
 						 assumedCenter, & newSelectionFrameIF,
 						 StarFrameSelectorT::StarRecognitionTypeT::PROXIMITY,
 						 CentroidT::CentroidTypeT::IWC, cSelectionFrameSize /*frameSize*/);
@@ -95,10 +111,10 @@ namespace AT {
     
     // Calculate star data
     // ------------------------------------------------------------------------------------------------------------ //
-    CImg<float> subImg = inFrameImage.get_crop(newSelectionFrameIF.get<0>() /*x0*/,
-					       newSelectionFrameIF.get<1>() /*y0*/,
-					       newSelectionFrameIF.get<0>() + newSelectionFrameIF.get<2>() - 1/*x1=x0+w-1*/,
-					       newSelectionFrameIF.get<1>() + newSelectionFrameIF.get<3>() - 1/*y1=y0+h-1*/);
+    CImg<float> subImg = zoomedImgFrame.get_crop(newSelectionFrameIF.get<0>() /*x0*/,
+						 newSelectionFrameIF.get<1>() /*y0*/,
+						 newSelectionFrameIF.get<0>() + newSelectionFrameIF.get<2>() - 1/*x1=x0+w-1*/,
+						 newSelectionFrameIF.get<1>() + newSelectionFrameIF.get<3>() - 1/*y1=y0+h-1*/);
     if (outHfd) {
       try {
 	// TODO: HFD value INCREASES if coming to focus using the simulator... !!! Maybe a simulator problem?! --> need real test!!!
@@ -132,7 +148,7 @@ namespace AT {
     }
 
     if (outMaxPixValue) {
-      *outMaxPixValue = (int)inFrameImage.max();
+      *outMaxPixValue = (int)zoomedImgFrame.max();
     }
   }
 

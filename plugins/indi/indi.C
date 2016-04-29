@@ -274,7 +274,7 @@ namespace AT {
 	LOG(trace) << "CameraTakePictureT - startExposure(" << exposureTime << "s)..." << endl;
 	inDevice->startExposure(exposureTime); // Non-blocking call...
 
-	unsigned int estimatedTime = 1000 * exposureTime + 15000 /* 15 sec. to transfer 1x1 binned image */;
+	unsigned int estimatedTime = 1000 * exposureTime + 20000 /* 20 sec. to transfer 1x1 binned image */;
 	WAIT_MAX_FOR_PRINT(! inDevice->isExposureInProgress(), estimatedTime,
 			   CommonAstroToolsAppT::isInQuietMode(), "[Exposure left " << inDevice->getExposureTime() << "s]...",
 			   "Hit timeout while waiting for camera.");

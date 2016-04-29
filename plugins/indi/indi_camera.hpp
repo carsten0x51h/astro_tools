@@ -378,19 +378,11 @@ public:
   }
 
   inline void setBinnedFrame(const FrameT<int> & inUnbinnedFrame, const BinningT & inBinning, int inTimeout = sDefaultTimeoutMs) {
-    // TODO: Is this ok?!?!
-    // NOTE: This could be different from driver to driver... in simulator the way it is implemented does not work... here the problem is that binning=2 is multiplied with a quite big y value (e.g. 527) -> 2*527 = 1054 - this is out of bounds (which hs 1023). ...
-    // --> TEST with real camera!
-    DimensionT<unsigned int> maxRes = this->getMaxResolution();
     FrameT<int> binnedFrame;
-    binnedFrame.get<0>() = inBinning.get<0>() /*bin_x*/ * inUnbinnedFrame.get<0>();
-    binnedFrame.get<1>() = inBinning.get<1>() /*bin_y*/ * inUnbinnedFrame.get<1>();
-
-    unsigned int binnedW = inBinning.get<0>() /*bin_x*/ * inUnbinnedFrame.get<2>();
-    binnedFrame.get<2>() = (binnedW > maxRes.get<0>() ? maxRes.get<0>() : binnedW);
-    
-    unsigned int binnedH = inBinning.get<1>() /*bin_y*/ * inUnbinnedFrame.get<3>();
-    binnedFrame.get<3>() = (binnedH > maxRes.get<1>() ? maxRes.get<1>() : binnedH);
+    binnedFrame.get<0>() /*x*/ = inUnbinnedFrame.get<0>() / inBinning.get<0>() /*bin_x*/;
+    binnedFrame.get<1>() /*y*/ = inUnbinnedFrame.get<1>() / inBinning.get<1>() /*bin_y*/;
+    binnedFrame.get<2>() /*w*/ = inUnbinnedFrame.get<2>() / inBinning.get<0>() /*bin_x*/;
+    binnedFrame.get<3>() /*h*/ = inUnbinnedFrame.get<3>() / inBinning.get<1>() /*bin_y*/;
     
     this->setFrame(binnedFrame, inTimeout);
   }
@@ -503,7 +495,7 @@ public:
     if (this->isExposureInProgress())
       throw IndiCameraExposureInProgressExceptionT();
 
-    this->setExposureTime(inExposureTimeSec, 1000 * inExposureTimeSec + 15000 /* TODO: 15sec for transfer?!?!?! */);
+    this->setExposureTime(inExposureTimeSec, 1000 * inExposureTimeSec + 20000 /* TODO: 20sec for transfer?!?!?! */);
   }
 
   /**
