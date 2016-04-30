@@ -119,20 +119,20 @@ namespace AT {
     
     
     static CImg<unsigned char>
-    genView(const FocusCurveT & inFocusCurve, size_t inWidth, size_t inHeight, bool inDrawBestFit, const LineT<float> * inLineL, const LineT<float> * inLineR, const PointT<float> * inSp);
+    genView(const FocusCurveT & inFocusCurve, size_t inWidth, size_t inHeight, bool inDrawBestFit, float inLimit, const LineT<float> * inLineL, const LineT<float> * inLineR, const PointT<float> * inSp);
     
     CImg<unsigned char>
-    genView(size_t inWidth, size_t inHeight, bool inDrawBestFit, const LineT<float> * inLineL = 0, const LineT<float> * inLineR = 0, const PointT<float> * inSp = 0) const {
+    genView(size_t inWidth, size_t inHeight, bool inDrawBestFit, float inLimit = 0.0, const LineT<float> * inLineL = 0, const LineT<float> * inLineR = 0, const PointT<float> * inSp = 0) const {
       // TODO: inLineL and inLineR could be class members...? 
       LineT<float> line1, line2;
       PointT<float> sp;
       
       if (inDrawBestFit) {
 	sp = calcOptFocusPos(LineFitTypeT::OLS /*TODO: Should this be a member of the FocusCurveT??*/, & line1, & line2);
-	return FocusCurveT::genView(*this, inWidth, inHeight, inDrawBestFit, & line1, & line2, & sp);
+	return FocusCurveT::genView(*this, inWidth, inHeight, inDrawBestFit, inLimit, & line1, & line2, & sp);
       }
       
-      return FocusCurveT::genView(*this, inWidth, inHeight, inDrawBestFit, 0, 0, 0);
+      return FocusCurveT::genView(*this, inWidth, inHeight, inDrawBestFit, inLimit, 0, 0, 0);
     }
   };
 };

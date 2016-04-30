@@ -230,7 +230,7 @@ namespace AT {
 	// TODO
 	// TODO
 	FocusCurveT recordedFocusCurve(*outPosToImgMap, mFocusMeasureFunc /*TODO: Add interpolation method...?*/);
-	callNewSampleListener(& recordedFocusCurve, mFocuserDevice->getAbsPos(), imgFrame);
+	callNewSampleListener(& recordedFocusCurve, mFocuserDevice->getAbsPos(), imgFrame, mLimit);
 
 	
   	// Update status... - TODO: We may put lines below into a function or a macro...

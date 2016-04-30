@@ -137,6 +137,7 @@ namespace AT {
     signals2::connection mFocusFinderNewSampleHandlerConn;
     signals2::connection mFocusFinderNewFocusCurveHandlerConn;
     signals2::connection mFocusFinderAbortHandlerConn;
+    signals2::connection mFocusFinderFocusDeterminedHandlerConn;
 
     // Exposure task
     thread mExposureThread;
@@ -177,10 +178,11 @@ namespace AT {
     
   public:
     void focusFinderStartHandler(const FocusFinderImplT::FocusFindCntlDataT * inFocusFinderCntlData);
-    void focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PosToImgMapT * inPosToImgMap, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2);
-    void focusFinderNewSampleHandler(const FocusCurveT * inFocusCurve, float inFocusPos, const CImg<float> & inImgFrame);
+    void focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PosToImgMapT * inPosToImgMap, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2, float inLimit);
+    void focusFinderNewSampleHandler(const FocusCurveT * inFocusCurve, float inFocusPos, const CImg<float> & inImgFrame, float inLimit);
     void focusFinderStatusUpdHandler(const FocusFinderImplT::FocusFindStatusDataT * inFocusFindStatus);
     void focusFinderAbortHandler(bool inManualAbort, string inCause);
+    void focusFinderFocusDeterminedHandler(float inMeanOptFocusPos, const CImg<float> & inImgFrame, float inFocusMeasure);
 
     
   public:

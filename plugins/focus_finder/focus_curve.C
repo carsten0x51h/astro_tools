@@ -110,7 +110,7 @@ namespace AT {
   
   // TODO: We may pass in img as pointer...
   CImg<unsigned char>
-  FocusCurveT::genView(const FocusCurveT & inFocusCurve, size_t inWidth, size_t inHeight, bool inDrawBestFit,
+  FocusCurveT::genView(const FocusCurveT & inFocusCurve, size_t inWidth, size_t inHeight, bool inDrawBestFit, float inLimit,
 		       const LineT<float> * inLineL, const LineT<float> * inLineR, const PointT<float> * inSp) {
     const size_t borderPx = 40;
     const size_t fontHeight = 25;
@@ -120,8 +120,13 @@ namespace AT {
     img.fill(0);
 
     PointT<float> minXY, maxXY;
-    getBounds(inFocusCurve, & minXY, & maxXY);    
+    getBounds(inFocusCurve, & minXY, & maxXY);
 
+    // Limit must be taken into account so that limit-line is visible from the beginning.
+    if (inLimit > maxXY.get<1>()) {
+      maxXY.get<1>() = inLimit;
+    }
+    
     if (inSp && minXY.get<1>() > inSp->get<1>()) {
       minXY.get<1>() = inSp->get<1>();
     }
@@ -165,7 +170,16 @@ namespace AT {
     img.draw_text(borderPx /* left */, focusPosTextHeight, std::to_string((int)minXY.get<0>()).c_str(), blue, black, 1 /*opacity*/, fontHeight); 
     img.draw_text(inWidth / 2 /* center */, focusPosTextHeight, std::to_string((int) ((maxXY.get<0>() + minXY.get<0>()) / 2)).c_str(), blue, black, 1 /*opacity*/, fontHeight); 
     img.draw_text(inWidth - 2*borderPx /* right */, focusPosTextHeight, std::to_string((int)maxXY.get<0>()).c_str(), blue, black, 1 /*opacity*/, fontHeight); 
-
+    
+    // Draw limit
+    if (inLimit) {
+      PointT<float> mapPoint = FocusCurveT::mapToImgCoords(PointT<float>(0, inLimit), inWidth, inHeight, minXY, maxXY, borderPx);
+      stringstream ssLimit;
+      ssLimit << "Limit=" << inLimit << endl;
+	img.draw_text(borderPx /* left */, mapPoint.get<1>(), ssLimit.str().c_str(), green, black, 1 /*opacity*/, fontHeight); 
+      img.draw_line(0, mapPoint.get<1>(), inWidth, mapPoint.get<1>(), green, 1 /*opacity*/);
+    }
+    
     return img;
   }
 

@@ -78,13 +78,6 @@ namespace AT {
       CImg<float> thresholdImg(inImg); // Create a copy
       thresholdImg.threshold(th);
 	  
-      // // DEBUG START
-      // CImgDisplay thDsp(thresholdImg, "TH IMG...");
-      // while (! thDsp.is_closed()) {
-      // 	thDsp.wait();
-      // }
-      // // DEBUG END
-	  
       // Perform star clustering to determine interesting regions
       // TODO: Enabled clustering should not exit program!! Comment in...
       list<FrameT<int> > selectionList;
@@ -126,16 +119,6 @@ namespace AT {
 	  LOG(debug) << "Left click - position (x,y)=" << selectionCenter << endl;
 
 	  if (StarFrameSelectorT::calc(inImg, bitPix, selectionCenter, & selectedFrame, inStarRecognitionMethod, inCentroidMethod, inFrameSize)) {
-	    //DEBUG START - Show, what has been selected!!
-	    // CImg<float> cropImg = normalizedImage.get_crop(selectedFrame.get<0>(), selectedFrame.get<1>(),
-	    // 						 selectedFrame.get<0>() + selectedFrame.get<2>() - 1,
-	    // 						 selectedFrame.get<1>() + selectedFrame.get<3>() - 1);
-	    // CImgDisplay cropDsp(cropImg, "DEBUG - CROP IMG...");
-	    // while (! cropDsp.is_closed()) {
-	    //   cropDsp.wait();
-	    // }
-	    //DEBUG END
-
 	    // We have a valid selecction - exit selection loop
 	    break;
 	  } else {

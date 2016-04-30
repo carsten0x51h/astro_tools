@@ -143,7 +143,33 @@ namespace AT {
       mLastErrorStr = inCause;
     }
   }
+  
+  void
+  FocusFinderConsoleCntlT::focusFinderFocusDeterminedHandler(float inMeanOptFocusPos, const CImg<float> & inImgFrame, float inFocusMeasure) {
+    lock_guard<mutex> guard(mFocusFinderMtx);
 
+    HfdT hfd(inImgFrame);
+    if (hfd.valid()) {
+      mCurrentHfdDisp.display(hfd.genView());      
+    }
+
+    CImg<float> subMedImg = subMedianImg<float>(inImgFrame);
+    
+    FwhmT fwhmHorz(extractLine<DirectionT::HORZ>(subMedImg));
+    if (fwhmHorz.valid()) {
+      mCurrentFwhmHorzDisp.display(fwhmHorz.genView());
+    }
+    
+    FwhmT fwhmVert(extractLine<DirectionT::VERT>(subMedImg));
+    if (fwhmVert.valid()) {
+      mCurrentFwhmVertDisp.display(fwhmVert.genView());
+    }
+
+    // TODO: Thread safety.....?!?!?
+    mAbsFocusPosDest = inMeanOptFocusPos;
+    
+    mCurrFocusCurveDisp.close();
+  }
 
   void
   FocusFinderConsoleCntlT::focusFinderStatusUpdHandler(const FocusFinderImplT::FocusFindStatusDataT * inFocusFindStatus) {
@@ -159,7 +185,7 @@ namespace AT {
   }
 
   void
-  FocusFinderConsoleCntlT::focusFinderNewSampleHandler(const FocusCurveT * inFocusCurve, float inFocusPos, const CImg<float> & inImgFrame) {
+  FocusFinderConsoleCntlT::focusFinderNewSampleHandler(const FocusCurveT * inFocusCurve, float inFocusPos, const CImg<float> & inImgFrame, float inLimit) {
     lock_guard<mutex> guard(mFocusFinderMtx);
 
     HfdT hfd(inImgFrame);
@@ -180,14 +206,14 @@ namespace AT {
     }
 
     // Draw current dots (focus curve so far)
-    mCurrFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/));
+    mCurrFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, false /*do not draw interpolation lines*/, inLimit));
   }
 
   void
-  FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PosToImgMapT * inPosToImgMap, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2) {
+  FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler(const FocusCurveT * inFocusCurve, const PosToImgMapT * inPosToImgMap, const PointT<float> * inSp, const LineT<float> * inLine1, const LineT<float> * inLine2, float inLimit) {
     // TODO:... lines and point should not be passed sep. here... either part of FocusCurve OR calculated in a sep "Interpolation" class...
     lock_guard<mutex> guard(mFocusFinderMtx);
-    mCurrFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, true, inLine1, inLine2));
+    mCurrFocusCurveDisp.display(inFocusCurve->genView(600 /*width*/, 600 /*height*/, true, inLimit, inLine1, inLine2));
   }
 
   
@@ -201,10 +227,13 @@ namespace AT {
     // Register focus finder listeners
     mFocusFinderStartHandlerConn = mFocusFinderImpl->registerFocusFinderStartListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderStartHandler, this, _1));
     mFocusFinderStatusUpdHandlerConn = mFocusFinderImpl->registerStatusUpdListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderStatusUpdHandler, this, _1));
-    mFocusFinderNewSampleHandlerConn = mFocusFinderImpl->registerNewSampleListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewSampleHandler, this, _1, _2, _3));
-    mFocusFinderNewFocusCurveHandlerConn = mFocusFinderImpl->registerNewFocusCurveListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler, this, _1,_2,_3,_4,_5));
+    mFocusFinderNewSampleHandlerConn = mFocusFinderImpl->registerNewSampleListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewSampleHandler, this, _1, _2, _3, _4));
+    mFocusFinderNewFocusCurveHandlerConn = mFocusFinderImpl->registerNewFocusCurveListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderNewFocusCurveHandler, this, _1,_2,_3,_4,_5,_6));
     mFocusFinderAbortHandlerConn = mFocusFinderImpl->registerFocusFinderAbortListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderAbortHandler, this, _1,_2));
+    mFocusFinderFocusDeterminedHandlerConn = mFocusFinderImpl->registerFocusDeterminedListener(boost::bind(& FocusFinderConsoleCntlT::focusFinderFocusDeterminedHandler, this, _1,_2,_3));
 
+
+    
     mFocusFinderImpl->setRecordBaseDir(inCmdLineMap["seq_record_dir"].as<string>());
     mFocalDistance = (inCmdLineMap.count("focal_distance") ? inCmdLineMap["focal_distance"].as<unsigned int>() : 0);
     mPixelSizeUm = (inCmdLineMap.count("pixel_size") ? inCmdLineMap["pixel_size"].as<DimensionT<float> >() : 0);
@@ -214,9 +243,25 @@ namespace AT {
     //   FF = Full Frame coordinates
     //   IF = Image Frame coordinates
     mCurrCenterPosFF = frameToCenterPos(inSelectionFrameFF);
-
     
     // Build the menu
+    bool bTmp;
+    mMenuEntries.push_back(new MenuFieldT<bool>(& bTmp, "Center pos: ", 0 /* steps */, StepModeT::LINEAR, 0 /* min */, 0 /*max*/,
+						[&](bool * inValue) {
+						  stringstream ss;
+						  ss << mCurrCenterPosFF;
+						  return ss.str();
+						},
+						[&](bool * inValue) {
+						  // TODO: OPEN SELECT DIALOG!
+						  // TODO: IMPLEMENT - Generalize code fro, focus_finder.C - FocusFinderActionT...
+						},
+						[&]() {
+						  /*ABORT handler*/
+						})
+			   );
+			   
+
     mExpTimeVal = mCmdLineMap["exposure_time"].as<float>();
     mMenuEntries.push_back(new MenuFieldT<float>(& mExpTimeVal, "Exposure time: ", 1 /* steps */, StepModeT::LINEAR,
 						 mCameraDevice->getMinExposureTime() /* min */, mCameraDevice->getMaxExposureTime() /*max*/,
@@ -370,7 +415,6 @@ namespace AT {
     mMenuEntries.push_back(new MenuSelectT<StartAbortT>(& mFocusFindStartAbort, "Focus find: ",
 							[](StartAbortT::TypeE * inValPtr) { return StartAbortT::asStr(*inValPtr); },
 							[&](StartAbortT::TypeE * inValPtr) {
-							  lock_guard<mutex> guard(mFocusFinderMtx);
 							  bool running = mFocusFindStatus.isRunning;
 							  
 							  if (*inValPtr == StartAbortT::ABORT) {
@@ -398,12 +442,19 @@ namespace AT {
 							},
 							[&]() {
 							  /*ABORT handler*/
-							  lock_guard<mutex> guard(mFocusFinderMtx);
 							  if (mFocusFindStatus.isRunning) {
 							    mFocusFindThread.interrupt();
 							  }
 							})
 			   );
+
+
+
+
+
+
+
+
     
     
     // Finally, create the menu
@@ -436,8 +487,11 @@ namespace AT {
     while (! mConsoleMenu.wantExit()) {
 
       // Handle menu
-      mConsoleMenu.update();
-
+      {
+	lock_guard<mutex> guard(mFocusFinderMtx);
+	mConsoleMenu.update();
+      }
+      
       ////////////////////////////
       // Handle filter selction //
       ////////////////////////////

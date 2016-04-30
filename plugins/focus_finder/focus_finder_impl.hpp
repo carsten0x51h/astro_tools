@@ -133,8 +133,8 @@ namespace AT {
   public:
     // Events / Handlers
     DEFINE_PROP_LISTENER(FocusFinderStart, const FocusFindCntlDataT *);
-    DEFINE_PROP_LISTENER(NewSample, const FocusCurveT *, float, const CImg<float> &);
-    DEFINE_PROP_LISTENER(NewFocusCurve, const FocusCurveT *, const PosToImgMapT *, const PointT<float> *, const LineT<float> *, const LineT<float> *);
+    DEFINE_PROP_LISTENER(NewSample, const FocusCurveT *, float, const CImg<float> &, float);
+    DEFINE_PROP_LISTENER(NewFocusCurve, const FocusCurveT *, const PosToImgMapT *, const PointT<float> *, const LineT<float> *, const LineT<float> *, float);
     DEFINE_PROP_LISTENER(FocusDetermined, float /*focus*/, const CImg<float> & /*img frame*/, float /*focus measure*/);
     DEFINE_PROP_LISTENER(FocusFinderAbort, bool /*manual abort?*/, string /*reason*/);
     DEFINE_PROP_LISTENER(FocusFinderFinished, float);
