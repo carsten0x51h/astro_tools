@@ -449,13 +449,6 @@ namespace AT {
 			   );
 
 
-
-
-
-
-
-
-    
     
     // Finally, create the menu
     mConsoleMenu = ConsoleMenuT(& mConsoleDisplay, & mMenuEntries);
@@ -633,10 +626,11 @@ namespace AT {
       ////////////////////////////
       // Handle focus finder    //
       ////////////////////////////
-      if (mFocusFindStatus.isRunning) {
-      	mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress: %d%, Phase: %s\n",
-			      mFocusFindStatus.progress, FocusFinderImplT::PhaseT::asStr(mFocusFindStatus.phase));
-      } else {
+      mConsoleDisplay.print(ConsoleMenuT::cLeftMenuBorder, 14, "Focus finder progress - Phase: %s (%d%) - seq: %d%\n",
+			    FocusFinderImplT::PhaseT::asStr(mFocusFindStatus.phase), (int) mFocusFindStatus.phaseProgress,
+			    (int) mFocusFindStatus.sequenceProgress);
+      
+      if (! mFocusFindStatus.isRunning) {
       	mFocusFindStartAbort = StartAbortT::START;
       }
 

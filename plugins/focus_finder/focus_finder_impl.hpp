@@ -83,8 +83,9 @@ namespace AT {
       FocusFinderImplT::PhaseT::TypeE phase;
       int currAbsFocusPos;
       bool isRunning;
-      int progress;
-      FocusFindStatusDataT() : dx(0), dy(0), isRunning(false), currAbsFocusPos(0), progress(0) {}
+      float sequenceProgress;
+      float phaseProgress;
+      FocusFindStatusDataT() : dx(0), dy(0), isRunning(false), currAbsFocusPos(0), sequenceProgress(0), phaseProgress(0), phase(FocusFinderImplT::PhaseT::READY)  {}
     };
 
     struct FocusFindCntlDataT {
@@ -117,7 +118,7 @@ namespace AT {
     string mRecordBaseDir;
 
     PointT<float> mCurrCenterPosFF;
-    
+
     const size_t mNumStepsFine = 15;     // TODO: Not const, set function? Is this a good value?
     const size_t mNumCurvesToRecord = 3; // TODO: Not const, set function? Is this a good value?
 
@@ -126,8 +127,8 @@ namespace AT {
     CImg<float> extractImgFrame(const CImg<float> & inFrameImage, int * outDx = 0, int * outDy = 0) const;
     float determineLimit();
     void determineStepSizeAndStartPos(int * outStepSize, float * outStartPos);
-    void recordSequence(PosToImgMapT * outPosToImgMap, int stepSize, int inNumSteps);
-    void recordSequence(PosToImgMapT * outPosToImgMap, const vector<int> & inStepSizes);
+    void recordSequence(PosToImgMapT * outPosToImgMap, int stepSize, int inNumSteps, size_t inNumSeqIterations, size_t inSeqNo);
+    void recordSequence(PosToImgMapT * outPosToImgMap, const vector<int> & inStepSizes, size_t inNumSeqIterations, size_t inSeqNo);
     string prepareRecordDir();
     
   public:
@@ -161,7 +162,7 @@ namespace AT {
       mCurrCenterPosFF(PointT<float>(0,0)),
       mPhase(PhaseT::READY) {
     }
-
+    
     inline const FocusFindCntlDataT & getCntlData(const FocusFindCntlDataT & inCntlData) const { return mCntlData; }
     inline void setCntlData(const FocusFindCntlDataT & inCntlData) { mCntlData = inCntlData; }
 

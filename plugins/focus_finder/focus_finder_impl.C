@@ -142,17 +142,17 @@ namespace AT {
   }
   
   void
-  FocusFinderImplT::recordSequence(PosToImgMapT * outPosToImgMap, int stepSize, int inNumSteps) {
+  FocusFinderImplT::recordSequence(PosToImgMapT * outPosToImgMap, int stepSize, int inNumSteps, size_t inNumSeqIterations, size_t inSeqNo) {
     vector<int> stepSizes; // all equal
 
     for (size_t i=0; i < inNumSteps; ++i) {
       stepSizes.push_back(stepSize);
     }
-    recordSequence(outPosToImgMap, stepSizes);
+    recordSequence(outPosToImgMap, stepSizes, inNumSeqIterations, inSeqNo);
   }
   
   void
-  FocusFinderImplT::recordSequence(PosToImgMapT * outPosToImgMap, const vector<int> & inStepSizes) {
+  FocusFinderImplT::recordSequence(PosToImgMapT * outPosToImgMap, const vector<int> & inStepSizes, size_t inNumSeqIterations, size_t inSeqNo) {
     if (! inStepSizes.size()) {
       LOG(warning) << "Step-size container empty! No sequence recorded." << endl;
       return;
@@ -161,6 +161,7 @@ namespace AT {
     LOG(info) << "recordSequence - limit: " << mLimit << endl;
 
     mFocusFindStatusData.isRunning = true;
+    mFocusFindStatusData.sequenceProgress = 0.0;
     mFocusFindStatusData.phase = mPhase;
     callStatusUpdListener(& mFocusFindStatusData);
 
@@ -189,7 +190,7 @@ namespace AT {
     for (size_t i = 0; i < 2; ++i) {
       FocusDirectionT::TypeE focusDirection = static_cast<FocusDirectionT::TypeE>(i);
 
-      for (size_t step = 0; step < inStepSizes.size(); ++step) {
+      for (size_t step = 0; step < inStepSizes.size(); ++step) {	
   	// Move focus
   	currAbsFocusDestPos += sign[i] * inStepSizes.at(step);
 
@@ -232,6 +233,9 @@ namespace AT {
 	FocusCurveT recordedFocusCurve(*outPosToImgMap, mFocusMeasureFunc /*TODO: Add interpolation method...?*/);
 	callNewSampleListener(& recordedFocusCurve, mFocuserDevice->getAbsPos(), imgFrame, mLimit);
 
+
+	float focusMeasure = mFocusMeasureFunc(imgFrame);
+	bool limitReached = (mLimit && focusMeasure >= mLimit);
 	
   	// Update status... - TODO: We may put lines below into a function or a macro...
   	mFocusFindStatusData.currAbsFocusPos = mFocuserDevice->getAbsPos();
@@ -240,15 +244,13 @@ namespace AT {
 	mFocusFindStatusData.currBinning = mCntlData.binning;
 	mFocusFindStatusData.dx = dx;
 	mFocusFindStatusData.dy = dy;
-	mFocusFindStatusData.progress = 100.0 * ((float) step / (inStepSizes.size() - 1)); // TODO: Need total progress as well...
+	mFocusFindStatusData.sequenceProgress = (! limitReached ? 50.0 * i + 50.0 * ((float) step / (inStepSizes.size() - 1)) : 50 * (i + 1));
+	mFocusFindStatusData.phaseProgress = 100.0 * inSeqNo / (float) inNumSeqIterations + (mFocusFindStatusData.sequenceProgress / inNumSeqIterations);
 	mFocusFindStatusData.phase = mPhase;
 	callStatusUpdListener(& mFocusFindStatusData);
-
 	
   	// Break move if focusMeasure limit is reached (only if limit is defined)
-	float focusMeasure = mFocusMeasureFunc(imgFrame);
-
-	if (mLimit && focusMeasure >= mLimit) {
+	if (limitReached) {
 	  LOG(info) << "Limit ("<< mLimit << ") reached (" << FocusDirectionT::asStr(focusDirection)
 		    << "): " << focusMeasure << ". Stop." << endl;
   	  break;
@@ -256,7 +258,7 @@ namespace AT {
 	  // Associate the current focus position with the current star image
 	  (*outPosToImgMap)[mFocuserDevice->getAbsPos()] = imgFrame;
 	}
-	
+
 	boost::this_thread::interruption_point();
 
       } // inner for
@@ -306,7 +308,7 @@ namespace AT {
     AT_ASSERT(FocusFinderImpl, outStartPos, "outStartPos not set!");
 
     // Update FocusFinder PHASE...
-    mPhase = FocusFinderImplT::PhaseT::DET_STEP_SIZE;
+    mPhase = PhaseT::DET_STEP_SIZE;
     
     // Determine initial boundaries - use current position (rough focus and min-max values of focuser)
     // To protect hardware, we subtract another 10% to not reach the absolute focuser boundary 
@@ -351,7 +353,7 @@ namespace AT {
 
     // Recording the sequence to determine best step size
     PosToImgMapT recordedPosToImgMap;
-    recordSequence(& recordedPosToImgMap, stepSizesLeft);
+    recordSequence(& recordedPosToImgMap, stepSizesLeft, 1 /*numSeqIterations*/, 0 /*seq no*/);
 
     FocusCurveT recordedFocusCurve(recordedPosToImgMap, mFocusMeasureFunc /*TODO: Add interpolation method...?*/);
 	
@@ -359,9 +361,9 @@ namespace AT {
     LOG(info) << "Start position for curve recording: " << sp << endl;
 	
     // Notify listeners of status update (TODO: Required here?)
-    mFocusFindStatusData.progress = 100; // TODO: CALC!! Update further values?
+    mFocusFindStatusData.sequenceProgress = 100;
+    mFocusFindStatusData.phaseProgress = 100;
     mFocusFindStatusData.phase = mPhase;
-    // TODO: Set focuser state...
     callStatusUpdListener(& mFocusFindStatusData);
 
     PointT<float> min, max;
@@ -383,8 +385,11 @@ namespace AT {
 
     // Set running...
     mPhase = PhaseT::INITIALIZING;
+    
     mFocusFindStatusData.isRunning = true;
     mFocusFindStatusData.phase = mPhase;
+    mFocusFindStatusData.sequenceProgress = 0;
+    mFocusFindStatusData.phaseProgress = 0;
     callStatusUpdListener(& mFocusFindStatusData);
 
     // Call start handler...
@@ -432,7 +437,8 @@ namespace AT {
       for (size_t m = 0; m < mNumCurvesToRecord; ++m) {
       	LOG(info) << "Recording fine sequence " << (m + 1) << "/" << mNumCurvesToRecord  << "..." << endl;
 	
-      	recordSequence(& recordedPosToImgMap[m], stepSize, 2 * mNumStepsFine /* max. number of steps - want to hit 'limit' */);
+      	recordSequence(& recordedPosToImgMap[m], stepSize, 2 * mNumStepsFine /* max. number of steps - want to hit 'limit' */,
+		       mNumCurvesToRecord /*numSeqIterations*/, m /*seq no*/);
 
 	FocusCurveT recordedCurve(recordedPosToImgMap[m], mFocusMeasureFunc /*TODO: Add interpolation method...?*/);
 
@@ -441,10 +447,13 @@ namespace AT {
       	LOG(info) << "SP of fine curve " << (m+1) << ": " << sps[m] << endl;
 				  
       	// Tell clients that there is a new focus curve available
-      	callNewFocusCurveListener(& recordedCurve, & recordedPosToImgMap[m], & sps[m], & line1, & line2);
+      	callNewFocusCurveListener(& recordedCurve, & recordedPosToImgMap[m], & sps[m], & line1, & line2, mLimit);
 	
       	//TODO: Send a status update (call handlers) - new sequence (with line...)  -> different / additional handler/listener?
-      	mFocusFindStatusData.progress = 100.0 * ((float) m / 10.0);
+
+	mFocusFindStatusData.sequenceProgress = 100; // Sequence recorded
+	mFocusFindStatusData.phaseProgress = 100.0 * ((float) (m + 1) / (float) mNumCurvesToRecord); // Depends on number of curves to record
+
 	mFocusFindStatusData.phase = mPhase;
       	callStatusUpdListener(& mFocusFindStatusData);
       }
@@ -489,7 +498,8 @@ namespace AT {
       mFocusFindStatusData.currBinning = mCntlData.binning;
       mFocusFindStatusData.dx = 0;
       mFocusFindStatusData.dy = 0;
-      mFocusFindStatusData.progress = 100.0;
+      mFocusFindStatusData.sequenceProgress = 100.0;
+      mFocusFindStatusData.phaseProgress = 100.0;
       mFocusFindStatusData.phase = mPhase;
       callStatusUpdListener(& mFocusFindStatusData);
 
@@ -527,6 +537,8 @@ namespace AT {
     mPhase = PhaseT::READY;
     mFocusFindStatusData.isRunning = false;
     mFocusFindStatusData.phase = mPhase;
+    mFocusFindStatusData.sequenceProgress = 0;
+    mFocusFindStatusData.phaseProgress = 0;
     callStatusUpdListener(& mFocusFindStatusData);
   }
 };
